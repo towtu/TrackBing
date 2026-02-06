@@ -408,10 +408,10 @@ export function ProfilePage() {
           >
             {[
               { l: "-1 kg/wk", v: -1100 },
-              { l: "-0.5 kg", v: -550 },
+              { l: "-0.5 kg/wk", v: -550 },
               { l: "Maintain", v: 0 },
-              { l: "+0.5 kg", v: 550 },
-              { l: "+1 kg", v: 1100 },
+              { l: "+0.5 kg/wk", v: 550 },
+              { l: "+1 kg/wk", v: 1100 },
             ].map((item) => (
               <TouchableOpacity
                 key={item.v}

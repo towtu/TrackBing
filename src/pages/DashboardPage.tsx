@@ -37,6 +37,8 @@ export function DashboardPage() {
     fat: 0,
   });
   const [calorieGoal, setCalorieGoal] = useState(2000);
+
+  // ✅ FETCH MACRO GOALS FROM DATABASE (not hardcoded)
   const [goals, setGoals] = useState({ p: 150, c: 200, f: 70 });
 
   const [loading, setLoading] = useState(true);
@@ -59,15 +61,24 @@ export function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Fetch Goal
+    // 1. Fetch Goal + Macro Grams
     const { data: userGoal } = await supabase
       .from("user_goals")
-      .select("calorie_target")
+      .select("calorie_target, protein_grams, carbs_grams, fat_grams")
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (userGoal?.calorie_target) {
       setCalorieGoal(userGoal.calorie_target);
+    }
+
+    // ✅ SET MACRO GOALS FROM DATABASE
+    if (userGoal) {
+      setGoals({
+        p: userGoal.protein_grams || 150,
+        c: userGoal.carbs_grams || 200,
+        f: userGoal.fat_grams || 70,
+      });
     }
 
     // 2. Fetch Logs
@@ -101,6 +112,32 @@ export function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
+    // ✅ FETCH CURRENT MACRO RATIOS
+    const { data: currentGoals } = await supabase
+      .from("user_goals")
+      .select("protein_ratio, carbs_ratio, fat_ratio")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    // ✅ RECALCULATE MACRO GRAMS BASED ON NEW CALORIE GOAL
+    let proteinGrams = 150;
+    let carbsGrams = 200;
+    let fatGrams = 70;
+
+    if (currentGoals) {
+      const pRatio = currentGoals.protein_ratio || 30;
+      const cRatio = currentGoals.carbs_ratio || 35;
+      const fRatio = currentGoals.fat_ratio || 35;
+
+      proteinGrams = Math.round((val * pRatio) / 100 / 4);
+      carbsGrams = Math.round((val * cRatio) / 100 / 4);
+      fatGrams = Math.round((val * fRatio) / 100 / 9);
+
+      // ✅ UPDATE LOCAL STATE
+      setGoals({ p: proteinGrams, c: carbsGrams, f: fatGrams });
+    }
+
+    // ✅ SAVE CALORIE GOAL + RECALCULATED MACRO GRAMS
     const { data: existing } = await supabase
       .from("user_goals")
       .select("id")
@@ -110,12 +147,23 @@ export function DashboardPage() {
     if (existing) {
       await supabase
         .from("user_goals")
-        .update({ calorie_target: val })
+        .update({
+          calorie_target: val,
+          protein_grams: proteinGrams,
+          carbs_grams: carbsGrams,
+          fat_grams: fatGrams,
+        })
         .eq("user_id", user.id);
     } else {
-      await supabase
-        .from("user_goals")
-        .insert([{ user_id: user.id, calorie_target: val }]);
+      await supabase.from("user_goals").insert([
+        {
+          user_id: user.id,
+          calorie_target: val,
+          protein_grams: proteinGrams,
+          carbs_grams: carbsGrams,
+          fat_grams: fatGrams,
+        },
+      ]);
     }
   };
 

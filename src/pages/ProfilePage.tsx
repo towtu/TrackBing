@@ -45,10 +45,15 @@ export function ProfilePage() {
   const [goalOffset, setGoalOffset] = useState(0);
   const [calories, setCalories] = useState(0);
 
-  // Macros
+  // Macros (Ratios as percentages)
   const [pRatio, setPRatio] = useState("30");
   const [cRatio, setCRatio] = useState("35");
   const [fRatio, setFRatio] = useState("35");
+
+  // ✅ Calculated Macro Grams (derived from ratios)
+  const [proteinGrams, setProteinGrams] = useState(0);
+  const [carbsGrams, setCarbsGrams] = useState(0);
+  const [fatGrams, setFatGrams] = useState(0);
 
   useEffect(() => {
     fetchProfile();
@@ -131,6 +136,24 @@ export function ProfilePage() {
     }
   }, [weight, height, age, gender, activity, goalOffset]);
 
+  // ✅ CALCULATE MACRO GRAMS whenever calories or ratios change
+  useEffect(() => {
+    if (calories > 0) {
+      const p = parseInt(pRatio) || 0;
+      const c = parseInt(cRatio) || 0;
+      const f = parseInt(fRatio) || 0;
+
+      // Protein: 4 cal/g, Carbs: 4 cal/g, Fat: 9 cal/g
+      const proteinCals = (calories * p) / 100;
+      const carbsCals = (calories * c) / 100;
+      const fatCals = (calories * f) / 100;
+
+      setProteinGrams(Math.round(proteinCals / 4));
+      setCarbsGrams(Math.round(carbsCals / 4));
+      setFatGrams(Math.round(fatCals / 9));
+    }
+  }, [calories, pRatio, cRatio, fRatio]);
+
   // ✅ HELPER: Cross-Platform Alert
   const showMessage = (title: string, message: string) => {
     if (Platform.OS === "web") {
@@ -186,6 +209,7 @@ export function ProfilePage() {
     } = await supabase.auth.getUser();
 
     if (user) {
+      // ✅ SAVE BOTH RATIOS AND CALCULATED GRAMS
       const updates = {
         user_id: user.id,
         current_weight: numWeight,
@@ -198,6 +222,10 @@ export function ProfilePage() {
         protein_ratio: p,
         carbs_ratio: c,
         fat_ratio: f,
+        // ✅ ADD CALCULATED GRAMS (these will update your dashboard)
+        protein_grams: proteinGrams,
+        carbs_grams: carbsGrams,
+        fat_grams: fatGrams,
       };
 
       const { error } = await supabase
@@ -408,10 +436,10 @@ export function ProfilePage() {
           >
             {[
               { l: "-1 kg/wk", v: -1100 },
-              { l: "-0.5 kg", v: -550 },
+              { l: "-0.5 kg/wk", v: -550 },
               { l: "Maintain", v: 0 },
-              { l: "+0.5 kg", v: 550 },
-              { l: "+1 kg", v: 1100 },
+              { l: "+0.5 kg/wk", v: 550 },
+              { l: "+1 kg/wk", v: 1100 },
             ].map((item) => (
               <TouchableOpacity
                 key={item.v}
@@ -452,7 +480,8 @@ export function ProfilePage() {
             <Barbell color={Colors.accent} weight="fill" />
             <Text style={styles.cardTitle}>Macros (%)</Text>
           </View>
-          <View style={{ flexDirection: "row", gap: 10 }}>
+
+          <View style={{ flexDirection: "row", gap: 10, marginBottom: 15 }}>
             {[
               { l: "Prot", v: pRatio, f: setPRatio, c: "#3b82f6" },
               { l: "Carb", v: cRatio, f: setCRatio, c: "#22c55e" },
@@ -478,6 +507,31 @@ export function ProfilePage() {
                 />
               </View>
             ))}
+          </View>
+
+          {/* ✅ SHOW CALCULATED GRAMS */}
+          <View style={styles.gramsPreview}>
+            <Text style={styles.gramsLabel}>Calculated Daily Targets:</Text>
+            <View style={styles.gramsRow}>
+              <View style={styles.gramItem}>
+                <Text style={[styles.gramValue, { color: "#3b82f6" }]}>
+                  {proteinGrams}g
+                </Text>
+                <Text style={styles.gramLabel}>Protein</Text>
+              </View>
+              <View style={styles.gramItem}>
+                <Text style={[styles.gramValue, { color: "#22c55e" }]}>
+                  {carbsGrams}g
+                </Text>
+                <Text style={styles.gramLabel}>Carbs</Text>
+              </View>
+              <View style={styles.gramItem}>
+                <Text style={[styles.gramValue, { color: "#ef4444" }]}>
+                  {fatGrams}g
+                </Text>
+                <Text style={styles.gramLabel}>Fat</Text>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -521,7 +575,7 @@ export function ProfilePage() {
             <Text style={styles.modalTitle}>Success!</Text>
             <Text style={styles.modalText}>
               Your profile has been updated. Return to the dashboard to see your
-              new goal.
+              new goals.
             </Text>
             <TouchableOpacity
               style={styles.modalButton}
@@ -625,6 +679,39 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: Colors.accent,
     marginTop: 10,
+  },
+
+  // ✅ GRAMS PREVIEW STYLES
+  gramsPreview: {
+    backgroundColor: "#1a1a1a",
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  gramsLabel: {
+    color: "#888",
+    fontSize: 11,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textTransform: "uppercase",
+  },
+  gramsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+  },
+  gramItem: {
+    alignItems: "center",
+  },
+  gramValue: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  gramLabel: {
+    color: "#666",
+    fontSize: 10,
+    textTransform: "uppercase",
   },
 
   saveBtn: {

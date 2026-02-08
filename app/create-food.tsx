@@ -22,10 +22,13 @@ export default function CreateFoodPage() {
   const [prot, setProt] = useState("");
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
-  const [submitting, setSubmitting] = useState(false); // Prevents spamming
 
-  // --- AUTO CALCULATE CALORIES ---
-  // standard rule: Protein(4) + Carbs(4) + Fat(9)
+  // ✅ NEW: Unit Selection State
+  const [unit, setUnit] = useState<"g" | "ml" | "oz">("g");
+
+  const [submitting, setSubmitting] = useState(false);
+
+  // Auto-Calculate Calories
   useEffect(() => {
     const p = parseFloat(prot) || 0;
     const c = parseFloat(carbs) || 0;
@@ -38,7 +41,7 @@ export default function CreateFoodPage() {
   }, [prot, carbs, fat]);
 
   const handleSave = async () => {
-    if (submitting) return; // Stop if already clicked
+    if (submitting) return;
     if (!name || !cal) {
       return Alert.alert(
         "Missing Info",
@@ -46,8 +49,7 @@ export default function CreateFoodPage() {
       );
     }
 
-    setSubmitting(true); // Disable button
-
+    setSubmitting(true);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -64,12 +66,13 @@ export default function CreateFoodPage() {
         protein: parseFloat(prot) || 0,
         carbs: parseFloat(carbs) || 0,
         fat: parseFloat(fat) || 0,
+        default_unit: unit, // ✅ Save the selected unit to database
       },
     ]);
 
     if (error) {
       Alert.alert("Error", error.message);
-      setSubmitting(false); // Re-enable if error
+      setSubmitting(false);
     } else {
       Alert.alert("Success", "Food saved!");
       router.back();
@@ -105,9 +108,37 @@ export default function CreateFoodPage() {
           autoFocus
         />
 
+        {/* ✅ NEW UNIT SELECTOR UI */}
+        <Text style={styles.label}>Default Unit</Text>
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
+          {["g", "ml", "oz"].map((u) => (
+            <TouchableOpacity
+              key={u}
+              onPress={() => setUnit(u as any)}
+              style={{
+                backgroundColor: unit === u ? Colors.accent : "#333",
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: 15,
+                minWidth: 60,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: unit === u ? "black" : "white",
+                  fontWeight: "bold",
+                }}
+              >
+                {u}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <View style={styles.grid}>
           <View style={styles.gridItem}>
-            <Text style={styles.label}>Protein (g)</Text>
+            <Text style={styles.label}>Protein (per 100{unit})</Text>
             <TextInput
               style={styles.input}
               placeholder="0"
@@ -118,7 +149,7 @@ export default function CreateFoodPage() {
             />
           </View>
           <View style={styles.gridItem}>
-            <Text style={styles.label}>Carbs (g)</Text>
+            <Text style={styles.label}>Carbs (per 100{unit})</Text>
             <TextInput
               style={styles.input}
               placeholder="0"
@@ -132,7 +163,7 @@ export default function CreateFoodPage() {
 
         <View style={styles.grid}>
           <View style={styles.gridItem}>
-            <Text style={styles.label}>Fat (g)</Text>
+            <Text style={styles.label}>Fat (per 100{unit})</Text>
             <TextInput
               style={styles.input}
               placeholder="0"
@@ -143,7 +174,6 @@ export default function CreateFoodPage() {
             />
           </View>
 
-          {/* Calories is last so it updates automatically */}
           <View style={styles.gridItem}>
             <Text style={{ ...styles.label, color: Colors.accent }}>
               Calories

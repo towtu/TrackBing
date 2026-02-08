@@ -37,8 +37,6 @@ export function DashboardPage() {
     fat: 0,
   });
   const [calorieGoal, setCalorieGoal] = useState(2000);
-
-  // ✅ FETCH MACRO GOALS FROM DATABASE (not hardcoded)
   const [goals, setGoals] = useState({ p: 150, c: 200, f: 70 });
 
   const [loading, setLoading] = useState(true);
@@ -48,10 +46,11 @@ export function DashboardPage() {
   const [editGoalModal, setEditGoalModal] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState("");
 
-  // ✅ EDIT LOG STATES
+  // Edit Log States
   const [editLogModal, setEditLogModal] = useState(false);
   const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
   const [editWeightInput, setEditWeightInput] = useState("");
+  const [editUnit, setEditUnit] = useState<"g" | "ml" | "oz">("g");
 
   const router = useRouter();
 
@@ -61,18 +60,14 @@ export function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Fetch Goal + Macro Grams
+    // 1. Fetch Goals
     const { data: userGoal } = await supabase
       .from("user_goals")
       .select("calorie_target, protein_grams, carbs_grams, fat_grams")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (userGoal?.calorie_target) {
-      setCalorieGoal(userGoal.calorie_target);
-    }
-
-    // ✅ SET MACRO GOALS FROM DATABASE
+    if (userGoal?.calorie_target) setCalorieGoal(userGoal.calorie_target);
     if (userGoal) {
       setGoals({
         p: userGoal.protein_grams || 150,
@@ -99,7 +94,6 @@ export function DashboardPage() {
     setLoading(false);
   };
 
-  // --- SAVE GOAL ---
   const handleSaveGoal = async () => {
     const val = parseInt(newGoalInput);
     if (!val || val < 500) return alert("Please enter a valid calorie goal.");
@@ -112,14 +106,12 @@ export function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    // ✅ FETCH CURRENT MACRO RATIOS
     const { data: currentGoals } = await supabase
       .from("user_goals")
       .select("protein_ratio, carbs_ratio, fat_ratio")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // ✅ RECALCULATE MACRO GRAMS BASED ON NEW CALORIE GOAL
     let proteinGrams = 150;
     let carbsGrams = 200;
     let fatGrams = 70;
@@ -128,80 +120,70 @@ export function DashboardPage() {
       const pRatio = currentGoals.protein_ratio || 30;
       const cRatio = currentGoals.carbs_ratio || 35;
       const fRatio = currentGoals.fat_ratio || 35;
-
       proteinGrams = Math.round((val * pRatio) / 100 / 4);
       carbsGrams = Math.round((val * cRatio) / 100 / 4);
       fatGrams = Math.round((val * fRatio) / 100 / 9);
-
-      // ✅ UPDATE LOCAL STATE
       setGoals({ p: proteinGrams, c: carbsGrams, f: fatGrams });
     }
 
-    // ✅ SAVE CALORIE GOAL + RECALCULATED MACRO GRAMS
     const { data: existing } = await supabase
       .from("user_goals")
       .select("id")
       .eq("user_id", user.id)
       .maybeSingle();
 
+    const updates = {
+      user_id: user.id,
+      calorie_target: val,
+      protein_grams: proteinGrams,
+      carbs_grams: carbsGrams,
+      fat_grams: fatGrams,
+    };
+
     if (existing) {
-      await supabase
-        .from("user_goals")
-        .update({
-          calorie_target: val,
-          protein_grams: proteinGrams,
-          carbs_grams: carbsGrams,
-          fat_grams: fatGrams,
-        })
-        .eq("user_id", user.id);
+      await supabase.from("user_goals").update(updates).eq("user_id", user.id);
     } else {
-      await supabase.from("user_goals").insert([
-        {
-          user_id: user.id,
-          calorie_target: val,
-          protein_grams: proteinGrams,
-          carbs_grams: carbsGrams,
-          fat_grams: fatGrams,
-        },
-      ]);
+      await supabase.from("user_goals").insert([updates]);
     }
   };
 
-  // ✅ START EDITING A LOG
   const handleEditLogStart = (log: FoodLog) => {
     setEditingLog(log);
-    // Extract number from "100g" string
     const numericWeight = parseFloat(log.serving_size || "0");
     setEditWeightInput(numericWeight ? numericWeight.toString() : "");
+    setEditUnit((log.serving_unit as any) || "g");
     setEditLogModal(true);
   };
 
-  // ✅ SAVE EDITED LOG (RECALCULATE MACROS)
   const handleSaveLogEdit = async () => {
     if (!editingLog || !editWeightInput) return;
 
     const newWeight = parseFloat(editWeightInput);
-    const oldWeight = parseFloat(editingLog.serving_size || "100"); // Prevent divide by zero
+    const oldWeight = parseFloat(editingLog.serving_size || "100");
 
     if (isNaN(newWeight) || newWeight <= 0) return alert("Invalid weight");
-    if (oldWeight <= 0)
-      return alert("Original weight invalid, cannot recalculate.");
 
-    // Calculate Ratio (New / Old)
-    const ratio = newWeight / oldWeight;
+    let weightInGramsNew = newWeight;
+    let weightInGramsOld = oldWeight;
 
-    // Recalculate Values
+    if (editUnit === "oz") weightInGramsNew = newWeight * 28.3495;
+    if (editingLog.serving_unit === "oz")
+      weightInGramsOld = oldWeight * 28.3495;
+
+    const ratio =
+      weightInGramsOld > 0 ? weightInGramsNew / weightInGramsOld : 1;
+
     const newCalories = Math.round(editingLog.calories * ratio);
     const newProtein = Math.round(editingLog.protein * ratio);
     const newCarbs = Math.round(editingLog.carbs * ratio);
     const newFat = Math.round(editingLog.fat * ratio);
 
-    // Optimistic Update
     const updatedLogs = logs.map((l) =>
       l.id === editingLog.id
         ? {
             ...l,
-            serving_size: `${newWeight}g`,
+            serving_size: editWeightInput,
+            serving_unit: editUnit,
             calories: newCalories,
             protein: newProtein,
             carbs: newCarbs,
@@ -214,11 +196,11 @@ export function DashboardPage() {
     calculateTotals(updatedLogs);
     setEditLogModal(false);
 
-    // Update Supabase
     const { error } = await supabase
       .from("food_logs")
       .update({
-        serving_size: `${newWeight}g`,
+        serving_size: editWeightInput,
+        serving_unit: editUnit,
         calories: newCalories,
         protein: newProtein,
         carbs: newCarbs,
@@ -228,8 +210,7 @@ export function DashboardPage() {
 
     if (error) {
       console.error("Update failed", error);
-      alert("Failed to save changes.");
-      fetchData(); // Revert
+      fetchData();
     }
   };
 
@@ -282,7 +263,11 @@ export function DashboardPage() {
 
   const getProgress = (current: number, goal: number) =>
     Math.min((current / goal) * 100, 100);
-  const remaining = Math.max(0, Math.round(calorieGoal - totals.calories));
+
+  // ✅ NEW LOGIC: Calculate difference and "Over" state
+  const rawDiff = calorieGoal - totals.calories;
+  const isOver = rawDiff < 0;
+  const displayDiff = Math.abs(Math.round(rawDiff));
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
@@ -314,21 +299,23 @@ export function DashboardPage() {
               <Text style={styles.summaryUnit}>kcal</Text>
             </View>
 
+            {/* ✅ CIRCULAR PROGRESS UPDATED */}
             <CircularProgress
               value={totals.calories}
               radius={50}
               maxValue={calorieGoal}
               showProgressValue={false}
-              activeStrokeColor={
-                totals.calories > calorieGoal ? "#ef4444" : Colors.accent
-              }
+              activeStrokeColor={isOver ? "#ef4444" : Colors.accent} // Red if over
               inActiveStrokeColor={"#333"}
               inActiveStrokeOpacity={0.5}
-              title={remaining.toString()}
-              titleColor={"white"}
+              title={displayDiff.toString()} // Shows remaining OR surplus
+              titleColor={isOver ? "#ef4444" : "white"} // Red text if over
               titleStyle={{ fontWeight: "bold", fontSize: 20 }}
-              subtitle={"Left"}
-              subtitleStyle={{ color: Colors.textSecondary, fontSize: 10 }}
+              subtitle={isOver ? "Over" : "Left"} // Changes text
+              subtitleStyle={{
+                color: isOver ? "#ef4444" : Colors.textSecondary,
+                fontSize: 10,
+              }}
             />
 
             <TouchableOpacity
@@ -397,7 +384,6 @@ export function DashboardPage() {
           contentContainerStyle={{ paddingBottom: 100 }}
           renderItem={({ item }) => (
             <View style={styles.logItem}>
-              {/* ✅ TAP TO EDIT */}
               <TouchableOpacity
                 style={{ flex: 1 }}
                 onPress={() => handleEditLogStart(item)}
@@ -410,7 +396,6 @@ export function DashboardPage() {
                     {Math.round(item.calories)} kcal
                   </Text>
                   <Text style={{ color: "#444" }}>|</Text>
-                  {/* Highlight the weight to show it's editable */}
                   <View
                     style={{
                       backgroundColor: "#333",
@@ -427,6 +412,7 @@ export function DashboardPage() {
                       }}
                     >
                       {item.serving_size}
+                      {item.serving_unit || "g"}
                     </Text>
                   </View>
                 </View>
@@ -524,13 +510,13 @@ export function DashboardPage() {
           </View>
         </Modal>
 
-        {/* ✅ EDIT LOG WEIGHT MODAL */}
+        {/* EDIT LOG WEIGHT MODAL */}
         <Modal visible={editLogModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Edit Amount</Text>
               <Text style={{ color: "#888", marginBottom: 15 }}>
-                Update grams for "{editingLog?.name}"
+                Update amount for "{editingLog?.name}"
               </Text>
 
               <View
@@ -549,11 +535,32 @@ export function DashboardPage() {
                   autoFocus
                   selectTextOnFocus
                 />
-                <Text
-                  style={{ color: "white", fontSize: 20, fontWeight: "bold" }}
-                >
-                  g
-                </Text>
+                {/* UNIT TOGGLE */}
+                <View style={{ flexDirection: "column", gap: 5 }}>
+                  {["g", "ml", "oz"].map((u) => (
+                    <TouchableOpacity
+                      key={u}
+                      onPress={() => setEditUnit(u as any)}
+                      style={{
+                        backgroundColor:
+                          editUnit === u ? Colors.accent : "#333",
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: "bold",
+                          color: editUnit === u ? "black" : "#888",
+                        }}
+                      >
+                        {u}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
               <View style={styles.modalBtnRow}>
@@ -688,8 +695,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     elevation: 5,
   },
-
-  // Shared Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.8)",

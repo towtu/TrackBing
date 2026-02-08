@@ -45,7 +45,10 @@ export default function AddFoodPage() {
   const [viewMode, setViewMode] = useState<"search" | "my_foods">("search");
 
   const [selectedFood, setSelectedFood] = useState<ProductResult | null>(null);
+
+  // ✅ NEW: Unit Selection State
   const [inputWeight, setInputWeight] = useState("100");
+  const [selectedUnit, setSelectedUnit] = useState<"g" | "ml" | "oz">("g");
 
   useEffect(() => {
     const fetchGist = async () => {
@@ -56,6 +59,7 @@ export default function AddFoodPage() {
           code: "gist-" + f.name,
           product_name: f.name,
           brands: "Generic",
+          default_unit: f.unit || "g", // Read default unit from JSON
           nutriments: {
             "energy-kcal_100g": f.c,
             proteins_100g: f.p,
@@ -82,6 +86,7 @@ export default function AddFoodPage() {
         code: "personal-" + f.id,
         product_name: f.name,
         brands: "My Food",
+        default_unit: f.default_unit || "g", // Read default unit from Database
         nutriments: {
           "energy-kcal_100g": f.calories,
           proteins_100g: f.protein,
@@ -108,14 +113,8 @@ export default function AddFoodPage() {
         },
       });
       setInputWeight("100");
-      // Important: Clear params so it doesn't re-trigger on close
-      router.setParams({
-        initialName: "",
-        initialCal: "",
-        initialProt: "",
-        initialCarbs: "",
-        initialFat: "",
-      });
+      setSelectedUnit("g");
+      router.setParams({ initialName: "" });
     }
   }, [params]);
 
@@ -190,11 +189,13 @@ export default function AddFoodPage() {
       .from("personal_foods")
       .select("*")
       .ilike("name", `%${query}%`);
+
     const pResults =
       pData?.map((f) => ({
         code: "personal-" + f.id,
         product_name: f.name,
         brands: "My Food",
+        default_unit: f.default_unit || "g",
         nutriments: {
           "energy-kcal_100g": f.calories,
           proteins_100g: f.protein,
@@ -230,10 +231,21 @@ export default function AddFoodPage() {
     setLoading(false);
   };
 
+  // ✅ UPDATED: Calculation Logic for OZ
   const calculateMacros = () => {
     if (!selectedFood) return { c: 0, p: 0, cb: 0, f: 0 };
-    const ratio = (parseFloat(inputWeight) || 0) / 100;
+
+    let weightInGrams = parseFloat(inputWeight) || 0;
+
+    // Convert Ounces to Grams for correct calculation
+    if (selectedUnit === "oz") {
+      weightInGrams = weightInGrams * 28.3495;
+    }
+    // ml is treated as 1:1 with grams for calorie density estimation
+
+    const ratio = weightInGrams / 100;
     const n = selectedFood.nutriments;
+
     return {
       c: Math.round((n?.["energy-kcal_100g"] || 0) * ratio),
       p: Math.round((n?.proteins_100g || 0) * ratio),
@@ -255,6 +267,7 @@ export default function AddFoodPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     if (user) {
       await supabase.from("food_logs").insert([
         {
@@ -264,7 +277,8 @@ export default function AddFoodPage() {
           protein: macros.p,
           carbs: macros.cb,
           fat: macros.f,
-          serving_size: `${inputWeight}g`,
+          serving_size: inputWeight, // Save just the number (e.g. 12)
+          serving_unit: selectedUnit, // ✅ Save the unit (e.g. "oz")
         },
       ]);
       Alert.alert("Success", "Added to your log!");
@@ -367,6 +381,10 @@ export default function AddFoodPage() {
                   onPress={() => {
                     Keyboard.dismiss();
                     setSelectedFood(item);
+                    // ✅ AUTO-SELECT UNIT: Automatically switch to ml or oz if defined
+                    if (item.default_unit === "ml") setSelectedUnit("ml");
+                    else if (item.default_unit === "oz") setSelectedUnit("oz");
+                    else setSelectedUnit("g");
                   }}
                 >
                   <View style={localStyles.iconCircle}>
@@ -392,12 +410,10 @@ export default function AddFoodPage() {
                     <Plus size={20} color={Colors.accent} weight="bold" />
                   )}
                 </TouchableOpacity>
-
                 {viewMode === "my_foods" && (
                   <TouchableOpacity
                     style={localStyles.deleteBtn}
                     onPress={() => handleDelete(item)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
                     <Trash size={22} color="#FF4444" weight="bold" />
                   </TouchableOpacity>
@@ -442,22 +458,22 @@ export default function AddFoodPage() {
                   </Text>
                   <Text style={{ color: "#888" }}>{selectedFood?.brands}</Text>
                 </View>
-                {/* ✅ FIXED X BUTTON: Increased HitSlop & Padding */}
                 <TouchableOpacity
                   onPress={() => setSelectedFood(null)}
                   style={localStyles.closeBtn}
-                  hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                 >
                   <X size={24} color="white" />
                 </TouchableOpacity>
               </View>
+
               <View style={localStyles.weightSection}>
                 <TouchableOpacity
-                  onPress={() => adjustWeight(-50)}
+                  onPress={() => adjustWeight(-10)}
                   style={localStyles.adjustBtn}
                 >
                   <Minus size={20} color="white" weight="bold" />
                 </TouchableOpacity>
+
                 <View style={localStyles.weightInputContainer}>
                   <TextInput
                     style={localStyles.weightInput}
@@ -466,15 +482,43 @@ export default function AddFoodPage() {
                     onChangeText={setInputWeight}
                     selectTextOnFocus
                   />
-                  <Text style={localStyles.unitLabel}>grams</Text>
+
+                  {/* ✅ UNIT TOGGLE BUTTONS */}
+                  <View style={{ flexDirection: "row", gap: 5, marginTop: 5 }}>
+                    {["g", "ml", "oz"].map((u) => (
+                      <TouchableOpacity
+                        key={u}
+                        onPress={() => setSelectedUnit(u as any)}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 10,
+                          backgroundColor:
+                            selectedUnit === u ? Colors.accent : "#333",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: selectedUnit === u ? "black" : "#888",
+                            fontWeight: "bold",
+                            fontSize: 14,
+                          }}
+                        >
+                          {u}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
+
                 <TouchableOpacity
-                  onPress={() => adjustWeight(50)}
+                  onPress={() => adjustWeight(10)}
                   style={localStyles.adjustBtn}
                 >
                   <Plus size={20} color="white" weight="bold" />
                 </TouchableOpacity>
               </View>
+
               <View style={localStyles.bentoContainer}>
                 <View style={localStyles.bentoMain}>
                   <Text style={localStyles.bentoValue}>{macros.c}</Text>
@@ -497,6 +541,7 @@ export default function AddFoodPage() {
                   </View>
                 </View>
               </View>
+
               <TouchableOpacity
                 style={localStyles.confirmBtn}
                 onPress={confirmAdd}
@@ -549,16 +594,6 @@ const localStyles = RNStyleSheet.create({
     borderWidth: 1,
     borderColor: "#262626",
     marginRight: 10,
-  },
-  deleteBtn: {
-    backgroundColor: "#330000",
-    padding: 14,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#550000",
-    minWidth: 50,
   },
   iconCircle: {
     width: 45,
@@ -631,7 +666,6 @@ const localStyles = RNStyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
   },
-  unitLabel: { color: "#666", fontSize: 14, fontWeight: "bold", marginTop: -5 },
   bentoContainer: { flexDirection: "row", gap: 12, marginBottom: 35 },
   bentoMain: {
     flex: 1.2,
@@ -666,4 +700,14 @@ const localStyles = RNStyleSheet.create({
     alignItems: "center",
   },
   confirmText: { color: "black", fontSize: 18, fontWeight: "900" },
+  deleteBtn: {
+    backgroundColor: "#330000",
+    padding: 14,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#550000",
+    minWidth: 50,
+  },
 });

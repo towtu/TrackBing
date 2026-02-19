@@ -435,11 +435,11 @@ export function ProfilePage() {
             style={{ marginBottom: 20 }}
           >
             {[
-              { l: "-1 kg/wk", v: -1100 },
-              { l: "-0.5 kg/wk", v: -550 },
+              { l: "-1 kg/wk", v: -750 },
+              { l: "-0.5 kg/wk", v: -500 },
               { l: "Maintain", v: 0 },
-              { l: "+0.5 kg/wk", v: 550 },
-              { l: "+1 kg/wk", v: 1100 },
+              { l: "+0.5 kg/wk", v: 500 },
+              { l: "+1 kg/wk", v: 750 },
             ].map((item) => (
               <TouchableOpacity
                 key={item.v}

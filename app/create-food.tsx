@@ -24,7 +24,9 @@ export default function CreateFoodPage() {
   const [fat, setFat] = useState("");
 
   // ✅ NEW: Unit Selection State
-  const [unit, setUnit] = useState<"g" | "ml" | "oz">("g");
+  const [unit, setUnit] = useState<"g" | "ml" | "oz" | "tsp" | "tbsp" | "cup">(
+    "g",
+  );
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -110,8 +112,15 @@ export default function CreateFoodPage() {
 
         {/* ✅ NEW UNIT SELECTOR UI */}
         <Text style={styles.label}>Default Unit</Text>
-        <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-          {["g", "ml", "oz"].map((u) => (
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 10,
+            marginBottom: 20,
+            flexWrap: "wrap",
+          }}
+        >
+          {["g", "ml", "oz", "tsp", "tbsp", "cup"].map((u) => (
             <TouchableOpacity
               key={u}
               onPress={() => setUnit(u as any)}

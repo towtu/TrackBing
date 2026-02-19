@@ -46,9 +46,11 @@ export default function AddFoodPage() {
 
   const [selectedFood, setSelectedFood] = useState<ProductResult | null>(null);
 
-  // ✅ NEW: Unit Selection State
+  // ✅ UPDATED: Unit Selection State
   const [inputWeight, setInputWeight] = useState("100");
-  const [selectedUnit, setSelectedUnit] = useState<"g" | "ml" | "oz">("g");
+  const [selectedUnit, setSelectedUnit] = useState<
+    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup"
+  >("g");
 
   useEffect(() => {
     const fetchGist = async () => {
@@ -59,7 +61,7 @@ export default function AddFoodPage() {
           code: "gist-" + f.name,
           product_name: f.name,
           brands: "Generic",
-          default_unit: f.unit || "g", // Read default unit from JSON
+          default_unit: f.unit || "g",
           nutriments: {
             "energy-kcal_100g": f.c,
             proteins_100g: f.p,
@@ -86,7 +88,7 @@ export default function AddFoodPage() {
         code: "personal-" + f.id,
         product_name: f.name,
         brands: "My Food",
-        default_unit: f.default_unit || "g", // Read default unit from Database
+        default_unit: f.default_unit || "g",
         nutriments: {
           "energy-kcal_100g": f.calories,
           proteins_100g: f.protein,
@@ -231,17 +233,16 @@ export default function AddFoodPage() {
     setLoading(false);
   };
 
-  // ✅ UPDATED: Calculation Logic for OZ
+  // ✅ UPDATED: Calculation Logic for multiple units
   const calculateMacros = () => {
     if (!selectedFood) return { c: 0, p: 0, cb: 0, f: 0 };
 
     let weightInGrams = parseFloat(inputWeight) || 0;
 
-    // Convert Ounces to Grams for correct calculation
-    if (selectedUnit === "oz") {
-      weightInGrams = weightInGrams * 28.3495;
-    }
-    // ml is treated as 1:1 with grams for calorie density estimation
+    if (selectedUnit === "oz") weightInGrams *= 28.3495;
+    else if (selectedUnit === "tsp") weightInGrams *= 4.92892;
+    else if (selectedUnit === "tbsp") weightInGrams *= 14.7868;
+    else if (selectedUnit === "cup") weightInGrams *= 236.588;
 
     const ratio = weightInGrams / 100;
     const n = selectedFood.nutriments;
@@ -277,8 +278,8 @@ export default function AddFoodPage() {
           protein: macros.p,
           carbs: macros.cb,
           fat: macros.f,
-          serving_size: inputWeight, // Save just the number (e.g. 12)
-          serving_unit: selectedUnit, // ✅ Save the unit (e.g. "oz")
+          serving_size: inputWeight,
+          serving_unit: selectedUnit,
         },
       ]);
       Alert.alert("Success", "Added to your log!");
@@ -381,10 +382,17 @@ export default function AddFoodPage() {
                   onPress={() => {
                     Keyboard.dismiss();
                     setSelectedFood(item);
-                    // ✅ AUTO-SELECT UNIT: Automatically switch to ml or oz if defined
-                    if (item.default_unit === "ml") setSelectedUnit("ml");
-                    else if (item.default_unit === "oz") setSelectedUnit("oz");
-                    else setSelectedUnit("g");
+                    // ✅ AUTO-SELECT UNIT
+                    if (
+                      item.default_unit &&
+                      ["g", "ml", "oz", "tsp", "tbsp", "cup"].includes(
+                        item.default_unit,
+                      )
+                    ) {
+                      setSelectedUnit(item.default_unit as any);
+                    } else {
+                      setSelectedUnit("g");
+                    }
                   }}
                 >
                   <View style={localStyles.iconCircle}>
@@ -484,8 +492,16 @@ export default function AddFoodPage() {
                   />
 
                   {/* ✅ UNIT TOGGLE BUTTONS */}
-                  <View style={{ flexDirection: "row", gap: 5, marginTop: 5 }}>
-                    {["g", "ml", "oz"].map((u) => (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: 5,
+                      marginTop: 5,
+                      flexWrap: "wrap",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {["g", "ml", "oz", "tsp", "tbsp", "cup"].map((u) => (
                       <TouchableOpacity
                         key={u}
                         onPress={() => setSelectedUnit(u as any)}

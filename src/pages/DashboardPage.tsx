@@ -50,7 +50,9 @@ export function DashboardPage() {
   const [editLogModal, setEditLogModal] = useState(false);
   const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
   const [editWeightInput, setEditWeightInput] = useState("");
-  const [editUnit, setEditUnit] = useState<"g" | "ml" | "oz">("g");
+  const [editUnit, setEditUnit] = useState<
+    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup"
+  >("g");
 
   const router = useRouter();
 
@@ -163,12 +165,19 @@ export function DashboardPage() {
 
     if (isNaN(newWeight) || newWeight <= 0) return alert("Invalid weight");
 
-    let weightInGramsNew = newWeight;
-    let weightInGramsOld = oldWeight;
+    const getWeightInGrams = (val: number, unit: string) => {
+      if (unit === "oz") return val * 28.3495;
+      if (unit === "tsp") return val * 4.92892;
+      if (unit === "tbsp") return val * 14.7868;
+      if (unit === "cup") return val * 236.588;
+      return val;
+    };
 
-    if (editUnit === "oz") weightInGramsNew = newWeight * 28.3495;
-    if (editingLog.serving_unit === "oz")
-      weightInGramsOld = oldWeight * 28.3495;
+    let weightInGramsNew = getWeightInGrams(newWeight, editUnit);
+    let weightInGramsOld = getWeightInGrams(
+      oldWeight,
+      editingLog.serving_unit || "g",
+    );
 
     const ratio =
       weightInGramsOld > 0 ? weightInGramsNew / weightInGramsOld : 1;
@@ -264,7 +273,6 @@ export function DashboardPage() {
   const getProgress = (current: number, goal: number) =>
     Math.min((current / goal) * 100, 100);
 
-  // ✅ NEW LOGIC: Calculate difference and "Over" state
   const rawDiff = calorieGoal - totals.calories;
   const isOver = rawDiff < 0;
   const displayDiff = Math.abs(Math.round(rawDiff));
@@ -299,19 +307,18 @@ export function DashboardPage() {
               <Text style={styles.summaryUnit}>kcal</Text>
             </View>
 
-            {/* ✅ CIRCULAR PROGRESS UPDATED */}
             <CircularProgress
               value={totals.calories}
               radius={50}
               maxValue={calorieGoal}
               showProgressValue={false}
-              activeStrokeColor={isOver ? "#ef4444" : Colors.accent} // Red if over
+              activeStrokeColor={isOver ? "#ef4444" : Colors.accent}
               inActiveStrokeColor={"#333"}
               inActiveStrokeOpacity={0.5}
-              title={displayDiff.toString()} // Shows remaining OR surplus
-              titleColor={isOver ? "#ef4444" : "white"} // Red text if over
+              title={displayDiff.toString()}
+              titleColor={isOver ? "#ef4444" : "white"}
               titleStyle={{ fontWeight: "bold", fontSize: 20 }}
-              subtitle={isOver ? "Over" : "Left"} // Changes text
+              subtitle={isOver ? "Over" : "Left"}
               subtitleStyle={{
                 color: isOver ? "#ef4444" : Colors.textSecondary,
                 fontSize: 10,
@@ -521,10 +528,11 @@ export function DashboardPage() {
 
               <View
                 style={{
-                  flexDirection: "row",
+                  flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 10,
+                  width: "100%",
                 }}
               >
                 <TextInput
@@ -536,22 +544,30 @@ export function DashboardPage() {
                   selectTextOnFocus
                 />
                 {/* UNIT TOGGLE */}
-                <View style={{ flexDirection: "column", gap: 5 }}>
-                  {["g", "ml", "oz"].map((u) => (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 5,
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    marginTop: 10,
+                  }}
+                >
+                  {["g", "ml", "oz", "tsp", "tbsp", "cup"].map((u) => (
                     <TouchableOpacity
                       key={u}
                       onPress={() => setEditUnit(u as any)}
                       style={{
                         backgroundColor:
                           editUnit === u ? Colors.accent : "#333",
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        borderRadius: 6,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 8,
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: 12,
                           fontWeight: "bold",
                           color: editUnit === u ? "black" : "#888",
                         }}

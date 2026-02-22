@@ -26,7 +26,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../src/lib/supabase";
 import { Colors } from "../../src/styles/colors";
-import { ProductResult } from "../../src/types";
 
 const CUSTOM_DB_URL =
   "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";
@@ -36,20 +35,19 @@ export default function AddFoodPage() {
   const params = useLocalSearchParams();
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ProductResult[]>([]);
+  const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [customFoods, setCustomFoods] = useState<ProductResult[]>([]);
+  const [customFoods, setCustomFoods] = useState<any[]>([]);
   const [personalFoods, setPersonalFoods] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<"search" | "my_foods">("search");
 
-  const [selectedFood, setSelectedFood] = useState<ProductResult | null>(null);
+  const [selectedFood, setSelectedFood] = useState<any | null>(null);
 
-  // ✅ UPDATED: Unit Selection State
   const [inputWeight, setInputWeight] = useState("100");
   const [selectedUnit, setSelectedUnit] = useState<
-    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup"
+    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "pc"
   >("g");
 
   useEffect(() => {
@@ -62,6 +60,8 @@ export default function AddFoodPage() {
           product_name: f.name,
           brands: "Generic",
           default_unit: f.unit || "g",
+          piece_weight: f.piece_weight,
+          cup_weight: f.cup_weight,
           nutriments: {
             "energy-kcal_100g": f.c,
             proteins_100g: f.p,
@@ -107,6 +107,7 @@ export default function AddFoodPage() {
         code: (params.code as string) || "scanned",
         product_name: params.initialName as string,
         brands: "Scanned",
+        default_unit: "g",
         nutriments: {
           "energy-kcal_100g": parseFloat(params.initialCal as string) || 0,
           proteins_100g: parseFloat(params.initialProt as string) || 0,
@@ -207,7 +208,7 @@ export default function AddFoodPage() {
         original_id: f.id,
       })) || [];
 
-    let offResults: ProductResult[] = [];
+    let offResults: any[] = [];
     try {
       const offRes = await fetch(
         `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=10&lc=en`,
@@ -218,6 +219,7 @@ export default function AddFoodPage() {
           code: item.code || Math.random().toString(),
           product_name: item.product_name || "Unknown Food",
           brands: item.brands || "Packaged",
+          default_unit: "g",
           nutriments: {
             "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
             proteins_100g: item.nutriments?.proteins_100g || 0,
@@ -233,18 +235,34 @@ export default function AddFoodPage() {
     setLoading(false);
   };
 
-  // ✅ UPDATED: Calculation Logic for multiple units
   const calculateMacros = () => {
     if (!selectedFood) return { c: 0, p: 0, cb: 0, f: 0 };
 
-    let weightInGrams = parseFloat(inputWeight) || 0;
+    const inputAmount = parseFloat(inputWeight) || 0;
+    let ratio = 1;
 
-    if (selectedUnit === "oz") weightInGrams *= 28.3495;
-    else if (selectedUnit === "tsp") weightInGrams *= 4.92892;
-    else if (selectedUnit === "tbsp") weightInGrams *= 14.7868;
-    else if (selectedUnit === "cup") weightInGrams *= 236.588;
+    if (selectedUnit === "pc") {
+      ratio = selectedFood.piece_weight
+        ? (inputAmount * selectedFood.piece_weight) / 100
+        : inputAmount;
+    } else if (selectedUnit === "cup") {
+      ratio = selectedFood.cup_weight
+        ? (inputAmount * selectedFood.cup_weight) / 100
+        : inputAmount;
+    } else if (selectedUnit === "tbsp") {
+      ratio = selectedFood.cup_weight
+        ? (inputAmount * (selectedFood.cup_weight / 16)) / 100
+        : inputAmount;
+    } else if (selectedUnit === "tsp") {
+      ratio = selectedFood.cup_weight
+        ? (inputAmount * (selectedFood.cup_weight / 48)) / 100
+        : inputAmount;
+    } else {
+      let weightInGrams = inputAmount;
+      if (selectedUnit === "oz") weightInGrams *= 28.3495;
+      ratio = weightInGrams / 100;
+    }
 
-    const ratio = weightInGrams / 100;
     const n = selectedFood.nutriments;
 
     return {
@@ -258,7 +276,10 @@ export default function AddFoodPage() {
 
   const adjustWeight = (amount: number) => {
     const current = parseFloat(inputWeight) || 0;
-    const next = Math.max(0, current + amount);
+    const isWeight =
+      selectedUnit === "g" || selectedUnit === "ml" || selectedUnit === "oz";
+    const step = isWeight ? amount : Math.sign(amount) * 1;
+    const next = Math.max(0, current + step);
     setInputWeight(next.toString());
   };
 
@@ -382,16 +403,21 @@ export default function AddFoodPage() {
                   onPress={() => {
                     Keyboard.dismiss();
                     setSelectedFood(item);
-                    // ✅ AUTO-SELECT UNIT
                     if (
                       item.default_unit &&
-                      ["g", "ml", "oz", "tsp", "tbsp", "cup"].includes(
+                      ["g", "ml", "oz", "tsp", "tbsp", "cup", "pc"].includes(
                         item.default_unit,
                       )
                     ) {
                       setSelectedUnit(item.default_unit as any);
+                      setInputWeight(
+                        item.default_unit === "g" || item.default_unit === "ml"
+                          ? "100"
+                          : "1",
+                      );
                     } else {
                       setSelectedUnit("g");
+                      setInputWeight("100");
                     }
                   }}
                 >
@@ -487,11 +513,13 @@ export default function AddFoodPage() {
                     style={localStyles.weightInput}
                     keyboardType="numeric"
                     value={inputWeight}
-                    onChangeText={setInputWeight}
+                    // ✅ FIXED: Strips out letters!
+                    onChangeText={(t) =>
+                      setInputWeight(t.replace(/[^0-9.]/g, ""))
+                    }
                     selectTextOnFocus
                   />
 
-                  {/* ✅ UNIT TOGGLE BUTTONS */}
                   <View
                     style={{
                       flexDirection: "row",
@@ -501,7 +529,7 @@ export default function AddFoodPage() {
                       justifyContent: "center",
                     }}
                   >
-                    {["g", "ml", "oz", "tsp", "tbsp", "cup"].map((u) => (
+                    {["g", "ml", "oz", "tsp", "tbsp", "cup", "pc"].map((u) => (
                       <TouchableOpacity
                         key={u}
                         onPress={() => setSelectedUnit(u as any)}

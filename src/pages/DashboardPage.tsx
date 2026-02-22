@@ -42,16 +42,14 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Modal States
   const [editGoalModal, setEditGoalModal] = useState(false);
   const [newGoalInput, setNewGoalInput] = useState("");
 
-  // Edit Log States
   const [editLogModal, setEditLogModal] = useState(false);
   const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
   const [editWeightInput, setEditWeightInput] = useState("");
   const [editUnit, setEditUnit] = useState<
-    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup"
+    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "pc"
   >("g");
 
   const router = useRouter();
@@ -62,7 +60,6 @@ export function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Fetch Goals
     const { data: userGoal } = await supabase
       .from("user_goals")
       .select("calorie_target, protein_grams, carbs_grams, fat_grams")
@@ -78,7 +75,6 @@ export function DashboardPage() {
       });
     }
 
-    // 2. Fetch Logs
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -160,27 +156,29 @@ export function DashboardPage() {
   const handleSaveLogEdit = async () => {
     if (!editingLog || !editWeightInput) return;
 
-    const newWeight = parseFloat(editWeightInput);
-    const oldWeight = parseFloat(editingLog.serving_size || "100");
+    const newAmount = parseFloat(editWeightInput);
+    const oldAmount = parseFloat(editingLog.serving_size || "100");
+    const oldUnit = editingLog.serving_unit || "g";
 
-    if (isNaN(newWeight) || newWeight <= 0) return alert("Invalid weight");
+    if (isNaN(newAmount) || newAmount <= 0) return alert("Invalid weight");
 
-    const getWeightInGrams = (val: number, unit: string) => {
-      if (unit === "oz") return val * 28.3495;
-      if (unit === "tsp") return val * 4.92892;
-      if (unit === "tbsp") return val * 14.7868;
-      if (unit === "cup") return val * 236.588;
-      return val;
-    };
+    let ratio = 1;
 
-    let weightInGramsNew = getWeightInGrams(newWeight, editUnit);
-    let weightInGramsOld = getWeightInGrams(
-      oldWeight,
-      editingLog.serving_unit || "g",
-    );
-
-    const ratio =
-      weightInGramsOld > 0 ? weightInGramsNew / weightInGramsOld : 1;
+    // Fixed math so switching units in the UI doesn't crash the numbers
+    if (editUnit === oldUnit || editUnit === "pc" || oldUnit === "pc") {
+      ratio = oldAmount > 0 ? newAmount / oldAmount : 1;
+    } else {
+      const getWeightInGrams = (val: number, unit: string) => {
+        if (unit === "oz") return val * 28.3495;
+        if (unit === "tsp") return val * 4.92892;
+        if (unit === "tbsp") return val * 14.7868;
+        if (unit === "cup") return val * 236.588;
+        return val;
+      };
+      let weightInGramsNew = getWeightInGrams(newAmount, editUnit);
+      let weightInGramsOld = getWeightInGrams(oldAmount, oldUnit);
+      ratio = weightInGramsOld > 0 ? weightInGramsNew / weightInGramsOld : 1;
+    }
 
     const newCalories = Math.round(editingLog.calories * ratio);
     const newProtein = Math.round(editingLog.protein * ratio);
@@ -280,7 +278,6 @@ export function DashboardPage() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <View style={styles.contentContainer}>
-        {/* HEADER */}
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>
@@ -296,7 +293,6 @@ export function DashboardPage() {
           </TouchableOpacity>
         </View>
 
-        {/* SUMMARY CARD */}
         <View style={styles.summaryCard}>
           <View style={styles.ringRow}>
             <View>
@@ -377,7 +373,6 @@ export function DashboardPage() {
           </View>
         </View>
 
-        {/* LOG LIST */}
         <FlatList
           data={logs}
           keyExtractor={(item) => item.id || Math.random().toString()}
@@ -438,7 +433,6 @@ export function DashboardPage() {
           }
         />
 
-        {/* MENU */}
         {menuOpen && (
           <View style={styles.menuContainer}>
             <View style={styles.menuItem}>
@@ -487,7 +481,6 @@ export function DashboardPage() {
           )}
         </TouchableOpacity>
 
-        {/* EDIT GOAL MODAL */}
         <Modal visible={editGoalModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -496,7 +489,8 @@ export function DashboardPage() {
                 style={styles.goalInput}
                 keyboardType="numeric"
                 value={newGoalInput}
-                onChangeText={setNewGoalInput}
+                // ✅ FIXED: Strips out letters!
+                onChangeText={(t) => setNewGoalInput(t.replace(/[^0-9.]/g, ""))}
                 autoFocus
               />
               <View style={styles.modalBtnRow}>
@@ -517,7 +511,6 @@ export function DashboardPage() {
           </View>
         </Modal>
 
-        {/* EDIT LOG WEIGHT MODAL */}
         <Modal visible={editLogModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -539,11 +532,13 @@ export function DashboardPage() {
                   style={styles.goalInput}
                   keyboardType="numeric"
                   value={editWeightInput}
-                  onChangeText={setEditWeightInput}
+                  // ✅ FIXED: Strips out letters!
+                  onChangeText={(t) =>
+                    setEditWeightInput(t.replace(/[^0-9.]/g, ""))
+                  }
                   autoFocus
                   selectTextOnFocus
                 />
-                {/* UNIT TOGGLE */}
                 <View
                   style={{
                     flexDirection: "row",
@@ -553,7 +548,7 @@ export function DashboardPage() {
                     marginTop: 10,
                   }}
                 >
-                  {["g", "ml", "oz", "tsp", "tbsp", "cup"].map((u) => (
+                  {["g", "ml", "oz", "tsp", "tbsp", "cup", "pc"].map((u) => (
                     <TouchableOpacity
                       key={u}
                       onPress={() => setEditUnit(u as any)}

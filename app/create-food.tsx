@@ -23,10 +23,9 @@ export default function CreateFoodPage() {
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
 
-  // ✅ NEW: Unit Selection State
-  const [unit, setUnit] = useState<"g" | "ml" | "oz" | "tsp" | "tbsp" | "cup">(
-    "g",
-  );
+  const [unit, setUnit] = useState<
+    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "pc"
+  >("g");
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -68,7 +67,7 @@ export default function CreateFoodPage() {
         protein: parseFloat(prot) || 0,
         carbs: parseFloat(carbs) || 0,
         fat: parseFloat(fat) || 0,
-        default_unit: unit, // ✅ Save the selected unit to database
+        default_unit: unit,
       },
     ]);
 
@@ -80,6 +79,9 @@ export default function CreateFoodPage() {
       router.back();
     }
   };
+
+  const isPer100 = unit === "g" || unit === "ml";
+  const unitLabel = `(per ${isPer100 ? "100" : "1"}${unit === "pc" ? " pc" : unit})`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -110,7 +112,6 @@ export default function CreateFoodPage() {
           autoFocus
         />
 
-        {/* ✅ NEW UNIT SELECTOR UI */}
         <Text style={styles.label}>Default Unit</Text>
         <View
           style={{
@@ -120,7 +121,7 @@ export default function CreateFoodPage() {
             flexWrap: "wrap",
           }}
         >
-          {["g", "ml", "oz", "tsp", "tbsp", "cup"].map((u) => (
+          {["g", "ml", "oz", "tsp", "tbsp", "cup", "pc"].map((u) => (
             <TouchableOpacity
               key={u}
               onPress={() => setUnit(u as any)}
@@ -147,7 +148,7 @@ export default function CreateFoodPage() {
 
         <View style={styles.grid}>
           <View style={styles.gridItem}>
-            <Text style={styles.label}>Protein (per 100{unit})</Text>
+            <Text style={styles.label}>Protein {unitLabel}</Text>
             <TextInput
               style={styles.input}
               placeholder="0"
@@ -158,7 +159,7 @@ export default function CreateFoodPage() {
             />
           </View>
           <View style={styles.gridItem}>
-            <Text style={styles.label}>Carbs (per 100{unit})</Text>
+            <Text style={styles.label}>Carbs {unitLabel}</Text>
             <TextInput
               style={styles.input}
               placeholder="0"
@@ -172,7 +173,7 @@ export default function CreateFoodPage() {
 
         <View style={styles.grid}>
           <View style={styles.gridItem}>
-            <Text style={styles.label}>Fat (per 100{unit})</Text>
+            <Text style={styles.label}>Fat {unitLabel}</Text>
             <TextInput
               style={styles.input}
               placeholder="0"

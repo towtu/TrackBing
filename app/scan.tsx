@@ -128,6 +128,18 @@ export default function ScanPage() {
           style={StyleSheet.absoluteFillObject}
           facing="back"
           enableTorch={torch}
+          barcodeScannerSettings={{
+            barcodeTypes: [
+              "ean13",
+              "ean8",
+              "upc_a",
+              "upc_e",
+              "code128",
+              "code39",
+              "itf14",
+              "qr",
+            ],
+          }}
           onBarcodeScanned={
             scanned
               ? undefined

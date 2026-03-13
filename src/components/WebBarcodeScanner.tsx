@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Platform } from "react-native";
+import { getWebBarcodeFormats } from "@/src/constants/barcodeFormats";
 
 interface WebBarcodeScannerProps {
   onBarcodeScanned: (data: string) => void;
@@ -27,16 +28,7 @@ export default function WebBarcodeScanner({
       if (stopped) return;
 
       const hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-        BarcodeFormat.EAN_13,
-        BarcodeFormat.EAN_8,
-        BarcodeFormat.UPC_A,
-        BarcodeFormat.UPC_E,
-        BarcodeFormat.CODE_128,
-        BarcodeFormat.CODE_39,
-        BarcodeFormat.ITF,
-        BarcodeFormat.QR_CODE,
-      ]);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, getWebBarcodeFormats(BarcodeFormat));
       hints.set(DecodeHintType.TRY_HARDER, true);
 
       reader = new BrowserMultiFormatReader(hints, {

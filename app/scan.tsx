@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { Colors } from "@/src/styles/colors";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
+import { NATIVE_BARCODE_TYPES } from "@/src/constants/barcodeFormats";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -128,18 +129,7 @@ export default function ScanPage() {
           style={StyleSheet.absoluteFillObject}
           facing="back"
           enableTorch={torch}
-          barcodeScannerSettings={{
-            barcodeTypes: [
-              "ean13",
-              "ean8",
-              "upc_a",
-              "upc_e",
-              "code128",
-              "code39",
-              "itf14",
-              "qr",
-            ],
-          }}
+          barcodeScannerSettings={{ barcodeTypes: NATIVE_BARCODE_TYPES }}
           onBarcodeScanned={
             scanned
               ? undefined

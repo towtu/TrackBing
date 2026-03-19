@@ -58,13 +58,20 @@ export default function ScanPage() {
         const p = json.product;
         const n = p.nutriments || {};
 
-        // ✅ FIXED: Checks multiple variations of data keys
-        // Some products use 'energy-kcal', some use 'energy-kcal_100g', some 'calories'
         const calories =
           n["energy-kcal_100g"] || n["energy-kcal"] || n["energy_value"] || 0;
         const protein = n.proteins_100g || n.proteins || 0;
         const carbs = n.carbohydrates_100g || n.carbohydrates || 0;
         const fat = n.fat_100g || n.fat || 0;
+
+        const servingQty = p.serving_quantity || 100;
+
+        // ✅ NEW: Detect if the item is a liquid (like Coke)
+        const isLiquid =
+          p.product_quantity_unit === "ml" ||
+          p.product_quantity_unit === "cl" ||
+          p.product_quantity_unit === "l";
+        const initialUnit = isLiquid ? "ml" : "g";
 
         router.replace({
           pathname: "/(tabs)/add",
@@ -76,6 +83,8 @@ export default function ScanPage() {
             initialCarbs: carbs,
             initialFat: fat,
             brand: p.brands || "Packaged Item",
+            initialWeight: servingQty.toString(),
+            initialUnit: initialUnit, // ✅ Pass "ml" if it's a liquid!
           },
         });
       } else {

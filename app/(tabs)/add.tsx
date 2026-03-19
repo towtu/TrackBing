@@ -47,7 +47,7 @@ export default function AddFoodPage() {
 
   const [inputWeight, setInputWeight] = useState("100");
   const [selectedUnit, setSelectedUnit] = useState<
-    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "pc"
+    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving"
   >("g");
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function AddFoodPage() {
           product_name: f.name,
           brands: "Generic",
           default_unit: f.unit || "g",
-          piece_weight: f.piece_weight,
+          serving_weight: f.serving_weight,
           cup_weight: f.cup_weight,
           nutriments: {
             "energy-kcal_100g": f.c,
@@ -106,8 +106,8 @@ export default function AddFoodPage() {
       setSelectedFood({
         code: (params.code as string) || "scanned",
         product_name: params.initialName as string,
-        brands: "Scanned",
-        default_unit: "g",
+        brands: (params.brand as string) || "Scanned",
+        default_unit: (params.initialUnit as string) || "g",
         nutriments: {
           "energy-kcal_100g": parseFloat(params.initialCal as string) || 0,
           proteins_100g: parseFloat(params.initialProt as string) || 0,
@@ -115,9 +115,16 @@ export default function AddFoodPage() {
           fat_100g: parseFloat(params.initialFat as string) || 0,
         },
       });
-      setInputWeight("100");
-      setSelectedUnit("g");
-      router.setParams({ initialName: "" });
+
+      setInputWeight((params.initialWeight as string) || "100");
+      setSelectedUnit((params.initialUnit as any) || "g");
+
+      router.setParams({
+        initialName: "",
+        initialWeight: "",
+        brand: "",
+        initialUnit: "",
+      });
     }
   }, [params]);
 
@@ -219,7 +226,8 @@ export default function AddFoodPage() {
           code: item.code || Math.random().toString(),
           product_name: item.product_name || "Unknown Food",
           brands: item.brands || "Packaged",
-          default_unit: "g",
+          default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
+          serving_quantity: item.serving_quantity || 100,
           nutriments: {
             "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
             proteins_100g: item.nutriments?.proteins_100g || 0,
@@ -241,22 +249,22 @@ export default function AddFoodPage() {
     const inputAmount = parseFloat(inputWeight) || 0;
     let ratio = 1;
 
-    if (selectedUnit === "pc") {
-      ratio = selectedFood.piece_weight
-        ? (inputAmount * selectedFood.piece_weight) / 100
+    if (selectedUnit === "serving") {
+      ratio = selectedFood.serving_weight
+        ? (inputAmount * selectedFood.serving_weight) / 100
         : inputAmount;
     } else if (selectedUnit === "cup") {
       ratio = selectedFood.cup_weight
         ? (inputAmount * selectedFood.cup_weight) / 100
-        : inputAmount;
+        : (inputAmount * 236.588) / 100;
     } else if (selectedUnit === "tbsp") {
       ratio = selectedFood.cup_weight
         ? (inputAmount * (selectedFood.cup_weight / 16)) / 100
-        : inputAmount;
+        : (inputAmount * 14.7868) / 100;
     } else if (selectedUnit === "tsp") {
       ratio = selectedFood.cup_weight
         ? (inputAmount * (selectedFood.cup_weight / 48)) / 100
-        : inputAmount;
+        : (inputAmount * 4.92892) / 100;
     } else {
       let weightInGrams = inputAmount;
       if (selectedUnit === "oz") weightInGrams *= 28.3495;
@@ -272,6 +280,7 @@ export default function AddFoodPage() {
       f: Math.round((n?.fat_100g || 0) * ratio),
     };
   };
+
   const macros = calculateMacros();
 
   const adjustWeight = (amount: number) => {
@@ -316,6 +325,14 @@ export default function AddFoodPage() {
       : results.length > 0
         ? results
         : suggestions;
+
+  // ✅ ALWAYS SHOW ALL UNITS FOR GIST FOODS
+  const isCustomFood =
+    selectedFood?.code?.toString().startsWith("gist-") ||
+    selectedFood?.code?.toString().startsWith("personal-");
+  const unitsToDisplay = isCustomFood
+    ? ["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"]
+    : ["g", "ml", "oz", "serving"];
 
   return (
     <SafeAreaView
@@ -405,19 +422,35 @@ export default function AddFoodPage() {
                     setSelectedFood(item);
                     if (
                       item.default_unit &&
-                      ["g", "ml", "oz", "tsp", "tbsp", "cup", "pc"].includes(
-                        item.default_unit,
-                      )
+                      [
+                        "g",
+                        "ml",
+                        "oz",
+                        "tsp",
+                        "tbsp",
+                        "cup",
+                        "serving",
+                      ].includes(item.default_unit)
                     ) {
                       setSelectedUnit(item.default_unit as any);
-                      setInputWeight(
-                        item.default_unit === "g" || item.default_unit === "ml"
-                          ? "100"
-                          : "1",
-                      );
+
+                      if (item.serving_quantity) {
+                        setInputWeight(item.serving_quantity.toString());
+                      } else {
+                        setInputWeight(
+                          item.default_unit === "g" ||
+                            item.default_unit === "ml"
+                            ? "100"
+                            : "1",
+                        );
+                      }
                     } else {
                       setSelectedUnit("g");
-                      setInputWeight("100");
+                      setInputWeight(
+                        item.serving_quantity
+                          ? item.serving_quantity.toString()
+                          : "100",
+                      );
                     }
                   }}
                 >
@@ -513,13 +546,13 @@ export default function AddFoodPage() {
                     style={localStyles.weightInput}
                     keyboardType="numeric"
                     value={inputWeight}
-                    // ✅ FIXED: Strips out letters!
                     onChangeText={(t) =>
                       setInputWeight(t.replace(/[^0-9.]/g, ""))
                     }
                     selectTextOnFocus
                   />
 
+                  {/* ✅ THE BUTTONS ARE ALWAYS SHOWN FOR CUSTOM FOODS */}
                   <View
                     style={{
                       flexDirection: "row",
@@ -529,7 +562,7 @@ export default function AddFoodPage() {
                       justifyContent: "center",
                     }}
                   >
-                    {["g", "ml", "oz", "tsp", "tbsp", "cup", "pc"].map((u) => (
+                    {unitsToDisplay.map((u) => (
                       <TouchableOpacity
                         key={u}
                         onPress={() => setSelectedUnit(u as any)}

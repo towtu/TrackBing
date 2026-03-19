@@ -24,12 +24,11 @@ export default function CreateFoodPage() {
   const [fat, setFat] = useState("");
 
   const [unit, setUnit] = useState<
-    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "pc"
+    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving"
   >("g");
 
   const [submitting, setSubmitting] = useState(false);
 
-  // Auto-Calculate Calories
   useEffect(() => {
     const p = parseFloat(prot) || 0;
     const c = parseFloat(carbs) || 0;
@@ -81,7 +80,7 @@ export default function CreateFoodPage() {
   };
 
   const isPer100 = unit === "g" || unit === "ml";
-  const unitLabel = `(per ${isPer100 ? "100" : "1"}${unit === "pc" ? " pc" : unit})`;
+  const unitLabel = `(per ${isPer100 ? "100" : "1"}${unit === "serving" ? " serving" : unit})`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -121,7 +120,7 @@ export default function CreateFoodPage() {
             flexWrap: "wrap",
           }}
         >
-          {["g", "ml", "oz", "tsp", "tbsp", "cup", "pc"].map((u) => (
+          {["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"].map((u) => (
             <TouchableOpacity
               key={u}
               onPress={() => setUnit(u as any)}
@@ -155,7 +154,7 @@ export default function CreateFoodPage() {
               placeholderTextColor="#666"
               keyboardType="numeric"
               value={prot}
-              onChangeText={setProt}
+              onChangeText={(t) => setProt(t.replace(/[^0-9.]/g, ""))}
             />
           </View>
           <View style={styles.gridItem}>
@@ -166,7 +165,7 @@ export default function CreateFoodPage() {
               placeholderTextColor="#666"
               keyboardType="numeric"
               value={carbs}
-              onChangeText={setCarbs}
+              onChangeText={(t) => setCarbs(t.replace(/[^0-9.]/g, ""))}
             />
           </View>
         </View>
@@ -180,7 +179,7 @@ export default function CreateFoodPage() {
               placeholderTextColor="#666"
               keyboardType="numeric"
               value={fat}
-              onChangeText={setFat}
+              onChangeText={(t) => setFat(t.replace(/[^0-9.]/g, ""))}
             />
           </View>
 
@@ -199,7 +198,7 @@ export default function CreateFoodPage() {
               placeholderTextColor="#666"
               keyboardType="numeric"
               value={cal}
-              onChangeText={setCal}
+              onChangeText={(t) => setCal(t.replace(/[^0-9.]/g, ""))}
             />
           </View>
         </View>

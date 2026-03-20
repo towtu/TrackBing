@@ -1,5 +1,5 @@
-import { DashboardPage } from "../../src/pages/DashboardPage";
+import { DashboardScreen } from "@/src/screens/DashboardScreen";
 
 export default function IndexRoute() {
-  return <DashboardPage />;
+  return <DashboardScreen />;
 }

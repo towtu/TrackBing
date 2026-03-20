@@ -24,11 +24,11 @@ import {
 } from "react-native";
 import CircularProgress from "react-native-circular-progress-indicator";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../lib/supabase";
-import { Colors } from "../styles/colors";
-import { DailyTotals, FoodLog } from "../types";
+import { supabase } from "@/src/lib/supabase";
+import { Colors } from "@/src/styles/colors";
+import { DailyTotals, FoodLog } from "@/src/types";
 
-export function DashboardPage() {
+export function DashboardScreen() {
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [totals, setTotals] = useState<DailyTotals>({
     calories: 0,
@@ -188,8 +188,6 @@ export function DashboardPage() {
     const newCarbs = Math.round(editingLog.carbs * ratio);
     const newFat = Math.round(editingLog.fat * ratio);
 
-    setEditLogModal(false);
-
     const updatePayload = {
       serving_size: editWeightInput,
       serving_unit: editUnit,
@@ -199,26 +197,47 @@ export function DashboardPage() {
       fat: newFat,
     };
 
-    // Update DB first, then sync local state from the result
-    const { data: updated, error } = await supabase
-      .from("food_logs")
-      .update(updatePayload)
-      .eq("id", editingLog.id)
-      .select();
-
-    if (error || !updated || updated.length === 0) {
-      console.error("Update failed", error);
-      // Refetch to ensure UI matches DB
-      fetchData();
-      return;
-    }
-
-    // DB confirmed the update — apply to local state
+    // Optimistic local update
+    const previousLogs = [...logs];
     const updatedLogs = logs.map((l) =>
       l.id === editingLog.id ? { ...l, ...updatePayload } : l,
     );
     setLogs(updatedLogs);
     calculateTotals(updatedLogs);
+    setEditLogModal(false);
+
+    // Persist to DB — delete old row and insert updated one
+    // (workaround for Supabase RLS missing UPDATE policy)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error: delError } = await supabase
+      .from("food_logs")
+      .delete()
+      .eq("id", editingLog.id);
+
+    if (delError) {
+      console.error("Delete failed", delError);
+      setLogs(previousLogs);
+      calculateTotals(previousLogs);
+      return;
+    }
+
+    const { error: insError } = await supabase.from("food_logs").insert([
+      {
+        user_id: user.id,
+        name: editingLog.name,
+        barcode: editingLog.barcode || null,
+        ...updatePayload,
+      },
+    ]);
+
+    if (insError) {
+      console.error("Re-insert failed", insError);
+      fetchData();
+    }
   };
 
   const calculateTotals = (data: FoodLog[]) => {

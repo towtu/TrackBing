@@ -1,4 +1,3 @@
-// src/pages/AuthPage.tsx
 import React, { useState } from "react";
 import {
     ActivityIndicator,
@@ -12,11 +11,11 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { supabase } from "../lib/supabase";
-import { AuthStyles as styles } from "../styles/AuthStyles";
-import { Colors } from "../styles/colors";
+import { supabase } from "@/src/lib/supabase";
+import { AuthStyles as styles } from "@/src/styles/auth";
+import { Colors } from "@/src/styles/colors";
 
-export function AuthPage() {
+export function AuthScreen() {
   // --- STATE ---
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1); // 1=Stats, 2=Auth, 3=Verify

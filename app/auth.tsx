@@ -1,5 +1,5 @@
-import { AuthPage } from "../src/pages/AuthPage";
+import { AuthScreen } from "@/src/screens/AuthScreen";
 
 export default function AuthRoute() {
-  return <AuthPage />;
+  return <AuthScreen />;
 }

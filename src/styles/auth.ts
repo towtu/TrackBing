@@ -1,4 +1,4 @@
-// src/styles/AuthStyles.ts
+// src/styles/auth.ts
 import { StyleSheet } from "react-native";
 import { Colors } from "./colors";
 

@@ -12,8 +12,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../src/lib/supabase";
-import { Colors } from "../src/styles/colors";
+import { supabase } from "@/src/lib/supabase";
+import { Colors } from "@/src/styles/colors";
 
 export default function CreateFoodPage() {
   const router = useRouter();

@@ -24,8 +24,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../../src/lib/supabase";
-import { Colors } from "../../src/styles/colors";
+import { supabase } from "@/src/lib/supabase";
+import { Colors } from "@/src/styles/colors";
 
 const CUSTOM_DB_URL =
   "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";

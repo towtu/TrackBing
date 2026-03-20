@@ -9,14 +9,9 @@ export interface FoodLog {
   protein: number;
   carbs: number;
   fat: number;
-
-  // Optional fields
   barcode?: string;
-  image_url?: string;
-
-  // ✅ UPDATED: Stores "100" separate from "g"
   serving_size?: string;
-  serving_unit?: string; // NEW: "g", "ml", "oz"
+  serving_unit?: string;
 }
 
 export interface DailyTotals {

@@ -23,10 +23,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../lib/supabase";
-import { Colors } from "../styles/colors";
+import { supabase } from "@/src/lib/supabase";
+import { Colors } from "@/src/styles/colors";
 
-export function ProfilePage() {
+export function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const router = useRouter();

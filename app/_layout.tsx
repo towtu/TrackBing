@@ -4,8 +4,8 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../src/lib/supabase";
-import { Colors } from "../src/styles/colors";
+import { supabase } from "@/src/lib/supabase";
+import { Colors } from "@/src/styles/colors";
 import AuthRoute from "./auth";
 
 export default function RootLayout() {

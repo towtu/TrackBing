@@ -130,6 +130,7 @@ export default function ScanPage() {
           facing="back"
           enableTorch={torch}
           barcodeScannerSettings={{ barcodeTypes: NATIVE_BARCODE_TYPES }}
+          onMountError={(e) => console.warn("CameraView mount error:", e)}
           onBarcodeScanned={
             scanned
               ? undefined

@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { Keyboard, Lightning, MagnifyingGlass, X } from "phosphor-react-native";
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { Colors } from "@/src/styles/colors";
+import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -26,21 +27,26 @@ export default function ScanPage() {
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualCode, setManualCode] = useState("");
 
-  if (!permission) return <View />;
-  if (!permission.granted) {
-    return (
-      <View style={styles.permissionContainer}>
-        <Text style={styles.permissionText}>
-          Camera access needed to scan foods.
-        </Text>
-        <TouchableOpacity
-          onPress={requestPermission}
-          style={styles.permissionBtn}
-        >
-          <Text style={styles.btnText}>Enable Camera</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  const isWeb = Platform.OS === "web";
+
+  // On native, wait for camera permissions
+  if (!isWeb) {
+    if (!permission) return <View />;
+    if (!permission.granted) {
+      return (
+        <View style={styles.permissionContainer}>
+          <Text style={styles.permissionText}>
+            Camera access needed to scan foods.
+          </Text>
+          <TouchableOpacity
+            onPress={requestPermission}
+            style={styles.permissionBtn}
+          >
+            <Text style={styles.btnText}>Enable Camera</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
   }
 
   const processBarcode = async (code: string) => {
@@ -109,21 +115,38 @@ export default function ScanPage() {
     }
   };
 
+  const handleWebBarcode = useCallback(
+    (data: string) => {
+      if (!scanned && !loading) {
+        setScanned(true);
+        processBarcode(data);
+      }
+    },
+    [scanned, loading]
+  );
+
   return (
     <View style={styles.container}>
-      <CameraView
-        style={StyleSheet.absoluteFillObject}
-        facing="back"
-        enableTorch={torch}
-        onBarcodeScanned={
-          scanned
-            ? undefined
-            : ({ data }) => {
-                setScanned(true);
-                processBarcode(data);
-              }
-        }
-      />
+      {isWeb ? (
+        <WebBarcodeScanner
+          onBarcodeScanned={handleWebBarcode}
+          active={!scanned}
+        />
+      ) : (
+        <CameraView
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          enableTorch={torch}
+          onBarcodeScanned={
+            scanned
+              ? undefined
+              : ({ data }) => {
+                  setScanned(true);
+                  processBarcode(data);
+                }
+          }
+        />
+      )}
 
       <View style={styles.overlay}>
         <View style={styles.header}>
@@ -140,19 +163,21 @@ export default function ScanPage() {
             >
               <Keyboard size={24} color="white" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setTorch(!torch)}
-              style={[
-                styles.iconBtn,
-                torch && { backgroundColor: Colors.accent },
-              ]}
-            >
-              <Lightning
-                size={24}
-                color={torch ? "black" : "white"}
-                weight="fill"
-              />
-            </TouchableOpacity>
+            {!isWeb && (
+              <TouchableOpacity
+                onPress={() => setTorch(!torch)}
+                style={[
+                  styles.iconBtn,
+                  torch && { backgroundColor: Colors.accent },
+                ]}
+              >
+                <Lightning
+                  size={24}
+                  color={torch ? "black" : "white"}
+                  weight="fill"
+                />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 

@@ -10,58 +10,78 @@ export default function WebBarcodeScanner({
   onBarcodeScanned,
   active,
 }: WebBarcodeScannerProps) {
-  const scannerRef = useRef<any>(null);
-  const containerId = "web-barcode-scanner";
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const callbackRef = useRef(onBarcodeScanned);
   callbackRef.current = onBarcodeScanned;
 
   useEffect(() => {
     if (Platform.OS !== "web" || !active) return;
 
-    let html5QrCode: any = null;
     let stopped = false;
+    let stream: MediaStream | null = null;
+    let reader: any = null;
 
     const startScanner = async () => {
-      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import(
-        "html5-qrcode"
-      );
+      const { BrowserMultiFormatReader } = await import("@zxing/browser");
+      const { DecodeHintType, BarcodeFormat } = await import("@zxing/library");
 
       if (stopped) return;
 
-      html5QrCode = new Html5Qrcode(containerId, {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.QR_CODE,
-        ],
-        verbose: false,
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.ITF,
+        BarcodeFormat.QR_CODE,
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+
+      reader = new BrowserMultiFormatReader(hints, {
+        delayBetweenScanAttempts: 100,
       });
-      scannerRef.current = html5QrCode;
+
+      const videoElement = videoRef.current;
+      if (!videoElement || stopped) return;
 
       try {
-        await html5QrCode.start(
-          { facingMode: "environment" },
-          {
-            fps: 15,
-            // Use a responsive scan region instead of fixed pixels
-            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-              const w = Math.floor(viewfinderWidth * 0.85);
-              const h = Math.floor(viewfinderHeight * 0.4);
-              return { width: Math.max(w, 200), height: Math.max(h, 100) };
-            },
-            aspectRatio: 1.0,
-            disableFlip: false,
+        // Get the back camera stream manually for better control
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
-          (decodedText: string) => {
-            callbackRef.current(decodedText);
-          },
-          () => {}
-        );
+        });
+
+        if (stopped) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        videoElement.srcObject = stream;
+        await videoElement.play();
+
+        // Continuously decode from the video element
+        const decodeLoop = async () => {
+          while (!stopped) {
+            try {
+              const result = await reader.decodeOnce(videoElement);
+              if (result && !stopped) {
+                callbackRef.current(result.getText());
+                return; // stop after first successful scan
+              }
+            } catch {
+              // No barcode found in this frame, keep trying
+            }
+            await new Promise((r) => setTimeout(r, 150));
+          }
+        };
+
+        decodeLoop();
       } catch (err) {
         console.error("Failed to start web barcode scanner:", err);
       }
@@ -71,8 +91,8 @@ export default function WebBarcodeScanner({
 
     return () => {
       stopped = true;
-      if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().catch(() => {});
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
       }
     };
   }, [active]);
@@ -80,14 +100,17 @@ export default function WebBarcodeScanner({
   if (Platform.OS !== "web") return null;
 
   return (
-    <div
-      id={containerId}
+    <video
+      ref={videoRef as any}
+      playsInline
+      muted
       style={{
         width: "100%",
         height: "100%",
         position: "absolute",
         top: 0,
         left: 0,
+        objectFit: "cover",
       }}
     />
   );

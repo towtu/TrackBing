@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Keyboard, Lightning, MagnifyingGlass, X } from "phosphor-react-native";
 import React, { useState, useCallback } from "react";
 import {
@@ -30,6 +30,13 @@ export default function ScanPage() {
   const [notFoundMessage, setNotFoundMessage] = useState("");
 
   const isWeb = Platform.OS === "web";
+
+  useFocusEffect(
+    useCallback(() => {
+      setScanned(false);
+      setLoading(false);
+    }, [])
+  );
 
   // On native, wait for camera permissions
   if (!isWeb) {

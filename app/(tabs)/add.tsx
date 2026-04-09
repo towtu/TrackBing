@@ -31,7 +31,7 @@ import { Colors } from "@/src/styles/colors";
 const CUSTOM_DB_URL =
   "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";
 
-const USDA_API_KEY = "RYPgcUoidSNDTx2tInFnn51BAggQ64UkjAq4CHd1";
+const USDA_API_KEY = process.env.EXPO_PUBLIC_USDA_API_KEY!;
 const USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
 
 async function searchUSDA(query: string): Promise<any[]> {

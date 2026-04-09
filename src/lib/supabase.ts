@@ -3,10 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import "react-native-url-polyfill/auto";
 
-// You get these from your Supabase Dashboard -> Project Settings -> API
-const supabaseUrl = "https://dnplpaoxgpajbbunscdg.supabase.co";
-const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRucGxwYW94Z3BhamJidW5zY2RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NDM1NDQsImV4cCI6MjA4NTUxOTU0NH0.JCer7bZf8x5mb4COVaOPJm997EwtmfXORoqgDlsDZTM";
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Custom storage adapter to handle Web (SSR) vs Mobile
 const ExpoStorage = {

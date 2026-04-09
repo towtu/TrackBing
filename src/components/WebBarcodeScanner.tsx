@@ -18,7 +18,6 @@ export default function WebBarcodeScanner({
     if (Platform.OS !== "web" || !active) return;
 
     let stopped = false;
-    let stream: MediaStream | null = null;
     let reader: any = null;
 
     const startScanner = async () => {
@@ -41,47 +40,31 @@ export default function WebBarcodeScanner({
       hints.set(DecodeHintType.TRY_HARDER, true);
 
       reader = new BrowserMultiFormatReader(hints, {
-        delayBetweenScanAttempts: 100,
+        delayBetweenScanAttempts: 200,
       });
 
       const videoElement = videoRef.current;
       if (!videoElement || stopped) return;
 
       try {
-        // Get the back camera stream manually for better control
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+        // decodeFromConstraints handles camera access + continuous scanning loop
+        await reader.decodeFromConstraints(
+          {
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
           },
-        });
-
-        if (stopped) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        videoElement.srcObject = stream;
-        await videoElement.play();
-
-        // Continuously decode from the video element
-        const decodeLoop = async () => {
-          while (!stopped) {
-            try {
-              const result = await reader.decodeOnce(videoElement);
-              if (result && !stopped) {
-                callbackRef.current(result.getText());
-                return; // stop after first successful scan
-              }
-            } catch {
-              // No barcode found in this frame, keep trying
+          videoElement,
+          (result: any, err: any) => {
+            if (result && !stopped) {
+              stopped = true;
+              callbackRef.current(result.getText());
             }
-            await new Promise((r) => setTimeout(r, 150));
+            // err here is just "no barcode found this frame" — not a real error
           }
-        };
-
-        decodeLoop();
+        );
       } catch (err) {
         console.error("Failed to start web barcode scanner:", err);
       }
@@ -91,8 +74,10 @@ export default function WebBarcodeScanner({
 
     return () => {
       stopped = true;
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
+      if (reader) {
+        try {
+          reader.reset(); // stops camera stream + scanning loop
+        } catch {}
       }
     };
   }, [active]);

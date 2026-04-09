@@ -37,7 +37,7 @@ const USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
 async function searchUSDA(query: string): Promise<any[]> {
   try {
     const res = await fetch(
-      `${USDA_BASE_URL}/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=10&api_key=${USDA_API_KEY}`,
+      `${USDA_BASE_URL}/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=25&api_key=${USDA_API_KEY}`,
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -279,7 +279,10 @@ export default function AddFoodPage() {
       })(),
     ]);
 
-    setResults([...pResults, ...suggestions, ...usdaResults, ...offResults]);
+    const gistMatches = customFoods.filter((f) =>
+      f.product_name?.toLowerCase().includes(query.toLowerCase())
+    );
+    setResults([...pResults, ...gistMatches, ...usdaResults, ...offResults]);
     setLoading(false);
   };
 

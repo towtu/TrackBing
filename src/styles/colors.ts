@@ -1,19 +1,19 @@
 // src/styles/colors.ts
 export const Colors = {
-  primary: "#000000", // True Black background
-  secondary: "#18181b", // Dark Gray (Cards)
-  accent: "#FCD12A", // Bumblebee Yellow
+  primary: "#0C0A09",        // Deep warm black (background)
+  secondary: "#1C1917",      // Warm dark brown-gray (cards)
+  accent: "#FCD12A",         // Yellow (primary accent)
+  accentBlue: "#6E88B0",     // Muted steel blue (secondary accent)
 
-  text: "#ffffff", // White Text (for dark background)
-  textSecondary: "#a1a1aa", // Light Gray text
+  text: "#FAFAF9",           // Warm off-white text
+  textSecondary: "#A8A29E",  // Warm gray secondary text
 
-  inputBg: "#27272a", // Dark Input Background
-  border: "#3f3f46", // Dark Border
+  inputBg: "#292524",        // Dark warm input background
+  border: "#44403C",         // Warm dark border
 
-  error: "#ef4444", // Red for errors
-  white: "#ffffff", // <--- ADDED THIS
+  error: "#ef4444",
+  white: "#ffffff",
 
-  // Contrast Helpers
-  textOnAccent: "#000000", // Black text on Yellow buttons
-  textOnPrimary: "#ffffff", // <--- ADDED THIS
+  textOnAccent: "#1C1917",   // Dark text on yellow buttons
+  textOnPrimary: "#FAFAF9",
 };

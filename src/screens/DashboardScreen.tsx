@@ -327,11 +327,11 @@ export function DashboardScreen() {
               radius={50}
               maxValue={calorieGoal}
               showProgressValue={false}
-              activeStrokeColor={isOver ? "#ef4444" : Colors.accent}
-              inActiveStrokeColor={"#333"}
-              inActiveStrokeOpacity={0.5}
+              activeStrokeColor={isOver ? "#ef4444" : Colors.accentBlue}
+              inActiveStrokeColor={Colors.border}
+              inActiveStrokeOpacity={0.8}
               title={displayDiff.toString()}
-              titleColor={isOver ? "#ef4444" : "white"}
+              titleColor={isOver ? "#ef4444" : Colors.text}
               titleStyle={{ fontWeight: "bold", fontSize: 20 }}
               subtitle={isOver ? "Over" : "Left"}
               subtitleStyle={{
@@ -416,10 +416,10 @@ export function DashboardScreen() {
                   <Text style={styles.foodSub}>
                     {Math.round(item.calories)} kcal
                   </Text>
-                  <Text style={{ color: "#444" }}>|</Text>
+                  <Text style={{ color: Colors.border }}>|</Text>
                   <View
                     style={{
-                      backgroundColor: "#333",
+                      backgroundColor: Colors.secondary,
                       paddingHorizontal: 6,
                       paddingVertical: 2,
                       borderRadius: 4,
@@ -460,7 +460,7 @@ export function DashboardScreen() {
                 style={styles.menuButton}
                 onPress={() => router.push("/scan")}
               >
-                <Barcode size={24} color="black" />
+                <Barcode size={24} color={Colors.textOnAccent} />
               </TouchableOpacity>
             </View>
             <View style={styles.menuItem}>
@@ -469,7 +469,7 @@ export function DashboardScreen() {
                 style={styles.menuButton}
                 onPress={() => router.push("/create-food")}
               >
-                <Cookie size={24} color="black" />
+                <Cookie size={24} color={Colors.textOnAccent} />
               </TouchableOpacity>
             </View>
             <View style={styles.menuItem}>
@@ -478,7 +478,7 @@ export function DashboardScreen() {
                 style={styles.menuButton}
                 onPress={() => router.push("/(tabs)/add")}
               >
-                <MagnifyingGlass size={24} color="black" />
+                <MagnifyingGlass size={24} color={Colors.textOnAccent} />
               </TouchableOpacity>
             </View>
           </View>
@@ -488,15 +488,15 @@ export function DashboardScreen() {
           style={[
             styles.fab,
             menuOpen
-              ? { backgroundColor: "#444" }
+              ? { backgroundColor: Colors.secondary }
               : { backgroundColor: Colors.accent },
           ]}
           onPress={() => setMenuOpen(!menuOpen)}
         >
           {menuOpen ? (
-            <X size={32} color="white" />
+            <X size={32} color={Colors.text} />
           ) : (
-            <Plus size={32} color="black" weight="bold" />
+            <Plus size={32} color={Colors.textOnAccent} weight="bold" />
           )}
         </TouchableOpacity>
 
@@ -533,7 +533,7 @@ export function DashboardScreen() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Edit Amount</Text>
-              <Text style={{ color: "#888", marginBottom: 15 }}>
+              <Text style={{ color: Colors.textSecondary, marginBottom: 15 }}>
                 Update amount for "{editingLog?.name}"
               </Text>
 
@@ -573,7 +573,7 @@ export function DashboardScreen() {
                         onPress={() => setEditUnit(u as any)}
                         style={{
                           backgroundColor:
-                            editUnit === u ? Colors.accent : "#333",
+                            editUnit === u ? Colors.accent : Colors.inputBg,
                           paddingHorizontal: 12,
                           paddingVertical: 8,
                           borderRadius: 8,
@@ -583,7 +583,7 @@ export function DashboardScreen() {
                           style={{
                             fontSize: 12,
                             fontWeight: "bold",
-                            color: editUnit === u ? "black" : "#888",
+                            color: editUnit === u ? Colors.textOnAccent : Colors.textSecondary,
                           }}
                         >
                           {u}
@@ -625,9 +625,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  headerTitle: { color: "white", fontSize: 24, fontWeight: "bold" },
+  headerTitle: { color: Colors.text, fontSize: 24, fontWeight: "bold" },
   dateText: { color: Colors.textSecondary, fontSize: 12 },
-  profileButton: { backgroundColor: "#333", padding: 8, borderRadius: 20 },
+  profileButton: { backgroundColor: Colors.secondary, padding: 8, borderRadius: 20 },
   summaryCard: {
     backgroundColor: Colors.secondary,
     borderRadius: 20,
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
   },
   summaryValue: { color: Colors.accent, fontSize: 24, fontWeight: "bold" },
   summaryValueGoal: {
-    color: "white",
+    color: Colors.text,
     fontSize: 24,
     fontWeight: "bold",
     textDecorationLine: "underline",
@@ -661,15 +661,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     width: "100%",
     borderTopWidth: 1,
-    borderTopColor: "#333",
+    borderTopColor: Colors.border,
     paddingTop: 15,
   },
-  macroLabel: { color: "#999", fontSize: 12, fontWeight: "bold" },
-  macroText: { color: "white", fontSize: 10 },
+  macroLabel: { color: Colors.textSecondary, fontSize: 12, fontWeight: "bold" },
+  macroText: { color: Colors.text, fontSize: 10 },
   macroTrack: {
     width: "100%",
     height: 6,
-    backgroundColor: "#333",
+    backgroundColor: Colors.border,
     borderRadius: 3,
     overflow: "hidden",
   },
@@ -687,7 +687,7 @@ const styles = StyleSheet.create({
   foodName: { color: Colors.text, fontSize: 16, fontWeight: "600" },
   foodSub: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   deleteButton: { padding: 10 },
-  emptyText: { color: "#666", textAlign: "center", marginTop: 30 },
+  emptyText: { color: Colors.textSecondary, textAlign: "center", marginTop: 30 },
   fab: {
     position: "absolute",
     bottom: 30,
@@ -710,9 +710,9 @@ const styles = StyleSheet.create({
   },
   menuItem: { flexDirection: "row", alignItems: "center", gap: 10 },
   menuLabel: {
-    color: "white",
+    color: Colors.text,
     fontWeight: "bold",
-    backgroundColor: "#333",
+    backgroundColor: Colors.secondary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
@@ -733,23 +733,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalContent: {
-    backgroundColor: "#1A1A1A",
+    backgroundColor: Colors.secondary,
     padding: 25,
     borderRadius: 20,
     width: "85%",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: Colors.border,
   },
   modalTitle: {
-    color: "white",
+    color: Colors.text,
     fontSize: 18,
     fontWeight: "bold",
     marginBottom: 10,
   },
   goalInput: {
-    backgroundColor: "#333",
-    color: "white",
+    backgroundColor: Colors.inputBg,
+    color: Colors.text,
     fontSize: 32,
     fontWeight: "bold",
     padding: 10,
@@ -766,12 +766,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cancelBtn: {
-    backgroundColor: "#333",
+    backgroundColor: Colors.secondary,
     padding: 12,
     borderRadius: 10,
     flex: 1,
     alignItems: "center",
   },
-  btnTextWhite: { color: "white", fontWeight: "bold" },
-  btnTextBlack: { color: "black", fontWeight: "bold" },
+  btnTextWhite: { color: Colors.text, fontWeight: "bold" },
+  btnTextBlack: { color: Colors.textOnAccent, fontWeight: "bold" },
 });

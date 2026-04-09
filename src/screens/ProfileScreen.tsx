@@ -88,6 +88,25 @@ export function ProfileScreen() {
 
         if (data.calorie_target) {
           setCalories(data.calorie_target);
+
+          // Restore the goal offset pill by back-calculating TDEE vs saved target
+          const w = parseFloat(data.current_weight);
+          const h = parseFloat(data.height);
+          const a = parseFloat(data.age);
+          const gen = data.gender || "male";
+          const act = parseFloat(data.activity_level) || 1.2;
+          if (w && h && a) {
+            let bmr = 10 * w + 6.25 * h - 5 * a;
+            bmr += gen === "male" ? 5 : -161;
+            const tdee = bmr * act;
+            const derivedOffset = Math.round(data.calorie_target - tdee);
+            // Snap to the nearest goal option
+            const options = [-1000, -500, 0, 500, 1000];
+            const closest = options.reduce((prev, curr) =>
+              Math.abs(curr - derivedOffset) < Math.abs(prev - derivedOffset) ? curr : prev
+            );
+            setGoalOffset(closest);
+          }
         } else {
           recalculateCalories(
             data.current_weight,
@@ -130,11 +149,7 @@ export function ProfileScreen() {
     setCalories(target < 1200 ? 1200 : target);
   };
 
-  useEffect(() => {
-    if (!loading) {
-      recalculateCalories(weight, height, age, gender, activity, goalOffset);
-    }
-  }, [weight, height, age, gender, activity, goalOffset]);
+  // Calories are recalculated inline when user changes a stat (not on initial load)
 
   // ✅ CALCULATE MACRO GRAMS whenever calories or ratios change
   useEffect(() => {
@@ -299,11 +314,11 @@ export function ProfileScreen() {
               <Text style={styles.label}>CURRENT (KG)</Text>
               <TextInput
                 value={weight}
-                onChangeText={setWeight}
+                onChangeText={(val) => { setWeight(val); recalculateCalories(val, height, age, gender, activity, goalOffset); }}
                 keyboardType="numeric"
                 style={styles.input}
                 placeholder="0"
-                placeholderTextColor="#555"
+                placeholderTextColor="#A8C0D6"
               />
             </View>
             <View style={styles.inputContainer}>
@@ -314,7 +329,7 @@ export function ProfileScreen() {
                 keyboardType="numeric"
                 style={styles.input}
                 placeholder="0"
-                placeholderTextColor="#555"
+                placeholderTextColor="#A8C0D6"
               />
             </View>
           </View>
@@ -325,22 +340,22 @@ export function ProfileScreen() {
               <Text style={styles.label}>HEIGHT (CM)</Text>
               <TextInput
                 value={height}
-                onChangeText={setHeight}
+                onChangeText={(val) => { setHeight(val); recalculateCalories(weight, val, age, gender, activity, goalOffset); }}
                 keyboardType="numeric"
                 style={styles.input}
                 placeholder="0"
-                placeholderTextColor="#555"
+                placeholderTextColor="#A8C0D6"
               />
             </View>
             <View style={styles.inputContainer}>
               <Text style={styles.label}>AGE (YRS)</Text>
               <TextInput
                 value={age}
-                onChangeText={setAge}
+                onChangeText={(val) => { setAge(val); recalculateCalories(weight, height, val, gender, activity, goalOffset); }}
                 keyboardType="numeric"
                 style={styles.input}
                 placeholder="0"
-                placeholderTextColor="#555"
+                placeholderTextColor="#A8C0D6"
               />
             </View>
           </View>
@@ -354,12 +369,12 @@ export function ProfileScreen() {
                   styles.genderBtn,
                   gender === "male" && styles.genderBtnActive,
                 ]}
-                onPress={() => setGender("male")}
+                onPress={() => { setGender("male"); recalculateCalories(weight, height, age, "male", activity, goalOffset); }}
               >
                 <Text
                   style={[
                     styles.genderText,
-                    gender === "male" && { color: "black" },
+                    gender === "male" && { color: Colors.textOnAccent },
                   ]}
                 >
                   Male
@@ -370,12 +385,12 @@ export function ProfileScreen() {
                   styles.genderBtn,
                   gender === "female" && styles.genderBtnActive,
                 ]}
-                onPress={() => setGender("female")}
+                onPress={() => { setGender("female"); recalculateCalories(weight, height, age, "female", activity, goalOffset); }}
               >
                 <Text
                   style={[
                     styles.genderText,
-                    gender === "female" && { color: "black" },
+                    gender === "female" && { color: Colors.textOnAccent },
                   ]}
                 >
                   Female
@@ -404,18 +419,18 @@ export function ProfileScreen() {
                   styles.activityOption,
                   activity === item.v && styles.activityActive,
                 ]}
-                onPress={() => setActivity(item.v)}
+                onPress={() => { setActivity(item.v); recalculateCalories(weight, height, age, gender, item.v, goalOffset); }}
               >
                 <Text
                   style={{
-                    color: activity === item.v ? Colors.accent : "#888",
+                    color: activity === item.v ? Colors.accentBlue : Colors.textSecondary,
                     fontWeight: "600",
                   }}
                 >
                   {item.l}
                 </Text>
                 {activity === item.v && (
-                  <CheckCircle size={16} color={Colors.accent} weight="fill" />
+                  <CheckCircle size={16} color={Colors.accentBlue} weight="fill" />
                 )}
               </TouchableOpacity>
             ))}
@@ -435,25 +450,25 @@ export function ProfileScreen() {
             style={{ marginBottom: 20 }}
           >
             {[
-              { l: "-1 kg/wk", v: -750 },
+              { l: "-1 kg/wk", v: -1000 },
               { l: "-0.5 kg/wk", v: -500 },
               { l: "Maintain", v: 0 },
               { l: "+0.5 kg/wk", v: 500 },
-              { l: "+1 kg/wk", v: 750 },
+              { l: "+1 kg/wk", v: 1000 },
             ].map((item) => (
               <TouchableOpacity
                 key={item.v}
-                onPress={() => setGoalOffset(item.v)}
+                onPress={() => { setGoalOffset(item.v); recalculateCalories(weight, height, age, gender, activity, item.v); }}
                 style={[
                   styles.goalPill,
                   goalOffset === item.v
                     ? { backgroundColor: Colors.accent }
-                    : { backgroundColor: "#333" },
+                    : { backgroundColor: Colors.inputBg },
                 ]}
               >
                 <Text
                   style={{
-                    color: goalOffset === item.v ? "black" : "white",
+                    color: goalOffset === item.v ? Colors.textOnAccent : Colors.text,
                     fontWeight: "bold",
                     fontSize: 12,
                   }}
@@ -465,10 +480,10 @@ export function ProfileScreen() {
           </ScrollView>
 
           <View style={styles.caloriesBox}>
-            <Text style={{ color: "white", fontSize: 32, fontWeight: "bold" }}>
+            <Text style={{ color: Colors.accent, fontSize: 32, fontWeight: "bold" }}>
               {calories}
             </Text>
-            <Text style={{ color: "#888", fontSize: 14, fontWeight: "bold" }}>
+            <Text style={{ color: Colors.textSecondary, fontSize: 14, fontWeight: "bold" }}>
               kcal / day
             </Text>
           </View>
@@ -599,7 +614,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { flexDirection: "row", alignItems: "center" },
   backText: { color: Colors.accent, fontWeight: "bold", fontSize: 16 },
-  headerTitle: { color: "white", fontSize: 20, fontWeight: "bold" },
+  headerTitle: { color: Colors.text, fontSize: 20, fontWeight: "bold" },
 
   card: {
     backgroundColor: Colors.secondary,
@@ -609,7 +624,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 15 },
   cardTitle: {
-    color: "white",
+    color: Colors.text,
     fontWeight: "bold",
     fontSize: 18,
     marginLeft: 10,
@@ -625,8 +640,8 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   input: {
-    backgroundColor: "#27272a",
-    color: "white",
+    backgroundColor: Colors.inputBg,
+    color: Colors.text,
     padding: 12,
     borderRadius: 8,
     textAlign: "center",
@@ -639,29 +654,29 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 12,
     borderRadius: 8,
-    backgroundColor: "#27272a",
+    backgroundColor: Colors.inputBg,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: Colors.border,
   },
   genderBtnActive: {
     backgroundColor: Colors.accent,
     borderColor: Colors.accent,
   },
-  genderText: { color: "#888", fontWeight: "bold" },
+  genderText: { color: Colors.textSecondary, fontWeight: "bold" },
 
   activityOption: {
     flexDirection: "row",
     justifyContent: "space-between",
     padding: 12,
-    backgroundColor: "#27272a",
+    backgroundColor: Colors.inputBg,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: Colors.border,
   },
   activityActive: {
-    borderColor: Colors.accent,
-    backgroundColor: "rgba(255, 215, 0, 0.05)",
+    borderColor: Colors.accentBlue,
+    backgroundColor: "rgba(110, 136, 176, 0.08)",
   },
 
   goalPill: {
@@ -672,25 +687,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   caloriesBox: {
-    backgroundColor: "#222",
+    backgroundColor: Colors.inputBg,
     padding: 20,
     borderRadius: 10,
     alignItems: "center",
     borderLeftWidth: 4,
-    borderLeftColor: Colors.accent,
+    borderLeftColor: Colors.accentBlue,
     marginTop: 10,
   },
 
-  // ✅ GRAMS PREVIEW STYLES
   gramsPreview: {
-    backgroundColor: "#1a1a1a",
+    backgroundColor: Colors.inputBg,
     padding: 15,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: Colors.border,
   },
   gramsLabel: {
-    color: "#888",
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: "bold",
     marginBottom: 10,
@@ -709,7 +723,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   gramLabel: {
-    color: "#666",
+    color: Colors.textSecondary,
     fontSize: 10,
     textTransform: "uppercase",
   },
@@ -722,7 +736,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  saveBtnText: { color: "black", fontWeight: "bold", fontSize: 16 },
+  saveBtnText: { color: Colors.textOnAccent, fontWeight: "bold", fontSize: 16 },
 
   // Modal
   modalOverlay: {
@@ -741,7 +755,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.accent,
   },
   modalTitle: {
-    color: "white",
+    color: Colors.text,
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 10,
@@ -759,7 +773,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   modalButtonText: {
-    color: "black",
+    color: Colors.textOnAccent,
     fontWeight: "bold",
     textAlign: "center",
     fontSize: 16,

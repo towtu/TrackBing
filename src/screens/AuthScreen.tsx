@@ -301,13 +301,11 @@ export function AuthScreen() {
       <Text style={styles.label}>2. What is your goal?</Text>
       <View style={{ gap: 8, marginBottom: 20 }}>
         {[
-          { label: "Lose 1 lb / week", val: -750 },
-          { label: "Lose 0.5 lb / week", val: -500 },
-          { label: "Lose 0.25 lb / week", val: -250 },
+          { label: "Lose 1 kg / week", val: -1000 },
+          { label: "Lose 0.5 kg / week", val: -500 },
           { label: "Maintain Weight", val: 0 },
-          { label: "Gain 0.25 lb / week", val: 250 },
-          { label: "Gain 0.5 lb / week", val: 500 },
-          { label: "Gain 1 lb / week", val: 750 },
+          { label: "Gain 0.5 kg / week", val: 500 },
+          { label: "Gain 1 kg / week", val: 1000 },
         ].map((opt) => (
           <TouchableOpacity
             key={opt.val}
@@ -318,7 +316,7 @@ export function AuthScreen() {
                 marginBottom: 0,
                 padding: 12,
                 backgroundColor:
-                  goalOffset === opt.val ? "#333" : Colors.inputBg,
+                  goalOffset === opt.val ? Colors.secondary : Colors.inputBg,
                 borderColor:
                   goalOffset === opt.val ? Colors.accent : Colors.border,
               },

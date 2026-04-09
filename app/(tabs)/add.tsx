@@ -17,6 +17,7 @@ import {
   Keyboard,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet as RNStyleSheet,
   Text,
   TextInput,
@@ -29,6 +30,39 @@ import { Colors } from "@/src/styles/colors";
 
 const CUSTOM_DB_URL =
   "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";
+
+const USDA_API_KEY = "RYPgcUoidSNDTx2tInFnn51BAggQ64UkjAq4CHd1";
+const USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
+
+async function searchUSDA(query: string): Promise<any[]> {
+  try {
+    const res = await fetch(
+      `${USDA_BASE_URL}/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=10&api_key=${USDA_API_KEY}`,
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.foods || []).map((food: any) => {
+      const nutrients = food.foodNutrients || [];
+      const get = (id: number) =>
+        nutrients.find((n: any) => n.nutrientId === id)?.value || 0;
+      return {
+        code: "usda-" + food.fdcId,
+        product_name: food.description,
+        brands: "USDA",
+        default_unit: "g",
+        nutriments: {
+          "energy-kcal_100g": get(1008) || Math.round(get(1062) / 4.184),
+          proteins_100g: get(1003),
+          carbohydrates_100g: get(1005),
+          fat_100g: get(1004),
+        },
+      };
+    });
+  } catch (e) {
+    console.warn("USDA search failed", e);
+    return [];
+  }
+}
 
 export default function AddFoodPage() {
   const router = useRouter();
@@ -215,31 +249,37 @@ export default function AddFoodPage() {
         original_id: f.id,
       })) || [];
 
-    let offResults: any[] = [];
-    try {
-      const offRes = await fetch(
-        `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=10&lc=en`,
-      );
-      const offData = await offRes.json();
-      offResults =
-        offData.products?.map((item: any) => ({
-          code: item.code || Math.random().toString(),
-          product_name: item.product_name || "Unknown Food",
-          brands: item.brands || "Packaged",
-          default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
-          serving_quantity: item.serving_quantity || 100,
-          nutriments: {
-            "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
-            proteins_100g: item.nutriments?.proteins_100g || 0,
-            carbohydrates_100g: item.nutriments?.carbohydrates_100g || 0,
-            fat_100g: item.nutriments?.fat_100g || 0,
-          },
-        })) || [];
-    } catch (e) {
-      console.warn(e);
-    }
+    const [usdaResults, offResults] = await Promise.all([
+      searchUSDA(query),
+      (async () => {
+        try {
+          const offRes = await fetch(
+            `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=10&lc=en`,
+          );
+          const offData = await offRes.json();
+          return (
+            offData.products?.map((item: any) => ({
+              code: item.code || Math.random().toString(),
+              product_name: item.product_name || "Unknown Food",
+              brands: item.brands || "Packaged",
+              default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
+              serving_quantity: item.serving_quantity || 100,
+              nutriments: {
+                "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
+                proteins_100g: item.nutriments?.proteins_100g || 0,
+                carbohydrates_100g: item.nutriments?.carbohydrates_100g || 0,
+                fat_100g: item.nutriments?.fat_100g || 0,
+              },
+            })) || []
+          );
+        } catch (e) {
+          console.warn(e);
+          return [];
+        }
+      })(),
+    ]);
 
-    setResults([...pResults, ...suggestions, ...offResults]);
+    setResults([...pResults, ...suggestions, ...usdaResults, ...offResults]);
     setLoading(false);
   };
 
@@ -250,9 +290,8 @@ export default function AddFoodPage() {
     let ratio = 1;
 
     if (selectedUnit === "serving") {
-      ratio = selectedFood.serving_weight
-        ? (inputAmount * selectedFood.serving_weight) / 100
-        : inputAmount;
+      const sw = selectedFood.serving_weight || selectedFood.serving_quantity;
+      ratio = sw ? (inputAmount * sw) / 100 : inputAmount;
     } else if (selectedUnit === "cup") {
       ratio = selectedFood.cup_weight
         ? (inputAmount * selectedFood.cup_weight) / 100
@@ -320,19 +359,14 @@ export default function AddFoodPage() {
   };
 
   const displayList =
-    viewMode === "my_foods"
-      ? personalFoods
-      : results.length > 0
-        ? results
-        : suggestions;
+    viewMode === "my_foods" ? personalFoods : results;
 
-  // ✅ ALWAYS SHOW ALL UNITS FOR GIST FOODS
-  const isCustomFood =
-    selectedFood?.code?.toString().startsWith("gist-") ||
-    selectedFood?.code?.toString().startsWith("personal-");
-  const unitsToDisplay = isCustomFood
-    ? ["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"]
-    : ["g", "ml", "oz", "serving"];
+  const isLiquid = selectedFood?.default_unit === "ml";
+  const hasServing = !!(selectedFood?.serving_weight || selectedFood?.serving_quantity);
+  const baseUnits: string[] = isLiquid
+    ? ["ml", "tsp", "tbsp", "cup"]
+    : ["g", "oz", "tsp", "tbsp", "cup"];
+  const unitsToDisplay = hasServing ? [...baseUnits, "serving"] : baseUnits;
 
   return (
     <SafeAreaView
@@ -380,7 +414,7 @@ export default function AddFoodPage() {
         </View>
 
         <View style={localStyles.searchBox}>
-          <MagnifyingGlass size={20} color="#666" style={{ marginLeft: 15 }} />
+          <MagnifyingGlass size={20} color={Colors.textSecondary} style={{ marginLeft: 15 }} />
           <TextInput
             style={localStyles.input}
             placeholder={
@@ -388,7 +422,7 @@ export default function AddFoodPage() {
                 ? "Browsing your foods..."
                 : "Search food..."
             }
-            placeholderTextColor="#666"
+            placeholderTextColor={Colors.textSecondary}
             value={query}
             onChangeText={(t) => {
               setQuery(t);
@@ -401,10 +435,40 @@ export default function AddFoodPage() {
               onPress={() => setQuery("")}
               style={{ marginRight: 15 }}
             >
-              <X size={18} color="#666" weight="bold" />
+              <X size={18} color={Colors.textSecondary} weight="bold" />
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Gist suggestions preview + hint */}
+        {!loading && results.length === 0 && suggestions.length > 0 && viewMode === "search" && (
+          <View style={{ marginBottom: 12 }}>
+            {suggestions.map((item) => (
+              <TouchableOpacity
+                key={item.code}
+                style={[localStyles.itemCard, { marginRight: 0, marginBottom: 8 }]}
+                onPress={() => {
+                  setSelectedFood(item);
+                  setSelectedUnit(item.default_unit === "ml" ? "ml" : "g");
+                  setInputWeight(item.serving_quantity ? item.serving_quantity.toString() : "100");
+                }}
+              >
+                <View style={localStyles.iconCircle}>
+                  <Text style={{ fontSize: 18 }}>🥗</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={localStyles.itemName} numberOfLines={1}>{item.product_name}</Text>
+                  <Text style={localStyles.itemSub}>
+                    Generic • {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)} kcal
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+            <Text style={{ color: Colors.textSecondary, fontSize: 12, textAlign: "center", marginTop: 4, letterSpacing: 0.5 }}>
+              Press Enter to search all sources
+            </Text>
+          </View>
+        )}
 
         {loading ? (
           <ActivityIndicator color={Colors.accent} style={{ marginTop: 20 }} />
@@ -460,7 +524,9 @@ export default function AddFoodPage() {
                         ? "🍪"
                         : item.brands === "Generic"
                           ? "🥗"
-                          : "📦"}
+                          : item.brands === "USDA"
+                            ? "🥩"
+                            : "📦"}
                     </Text>
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
@@ -490,7 +556,7 @@ export default function AddFoodPage() {
             ListEmptyComponent={
               !loading && query.length > 2 && viewMode === "search" ? (
                 <View style={{ alignItems: "center", marginTop: 30 }}>
-                  <Text style={{ color: "#888", marginBottom: 15 }}>
+                  <Text style={{ color: Colors.textSecondary, marginBottom: 15 }}>
                     No results for "{query}"
                   </Text>
                   <TouchableOpacity
@@ -498,14 +564,14 @@ export default function AddFoodPage() {
                     onPress={() => router.push("/create-food")}
                   >
                     <Plus size={20} color={Colors.accent} />
-                    <Text style={{ color: "white", fontWeight: "bold" }}>
+                    <Text style={{ color: Colors.text, fontWeight: "bold" }}>
                       Create "{query}"
                     </Text>
                   </TouchableOpacity>
                 </View>
               ) : viewMode === "my_foods" ? (
                 <Text
-                  style={{ color: "#666", textAlign: "center", marginTop: 30 }}
+                  style={{ color: Colors.textSecondary, textAlign: "center", marginTop: 30 }}
                 >
                   You haven't created any foods yet.
                 </Text>
@@ -523,7 +589,7 @@ export default function AddFoodPage() {
                   <Text style={localStyles.modalFoodName}>
                     {selectedFood?.product_name}
                   </Text>
-                  <Text style={{ color: "#888" }}>{selectedFood?.brands}</Text>
+                  <Text style={{ color: Colors.textSecondary }}>{selectedFood?.brands}</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => setSelectedFood(null)}
@@ -552,40 +618,41 @@ export default function AddFoodPage() {
                     selectTextOnFocus
                   />
 
-                  {/* ✅ THE BUTTONS ARE ALWAYS SHOWN FOR CUSTOM FOODS */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 5,
-                      marginTop: 5,
-                      flexWrap: "wrap",
-                      justifyContent: "center",
-                    }}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={[{ marginTop: 8 }, localStyles.unitBar]}
+                    contentContainerStyle={{ paddingHorizontal: 4 }}
                   >
                     {unitsToDisplay.map((u) => (
                       <TouchableOpacity
                         key={u}
                         onPress={() => setSelectedUnit(u as any)}
                         style={{
-                          paddingHorizontal: 12,
-                          paddingVertical: 6,
-                          borderRadius: 10,
-                          backgroundColor:
-                            selectedUnit === u ? Colors.accent : "#333",
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          borderBottomWidth: 2,
+                          borderBottomColor:
+                            selectedUnit === u ? Colors.accent : "transparent",
                         }}
                       >
                         <Text
                           style={{
-                            color: selectedUnit === u ? "black" : "#888",
-                            fontWeight: "bold",
-                            fontSize: 14,
+                            color:
+                              selectedUnit === u
+                                ? Colors.accent
+                                : Colors.textSecondary,
+                            fontWeight: selectedUnit === u ? "700" : "500",
+                            fontSize: 12,
+                            textTransform: "uppercase",
+                            letterSpacing: 1,
                           }}
                         >
                           {u}
                         </Text>
                       </TouchableOpacity>
                     ))}
-                  </View>
+                  </ScrollView>
                 </View>
 
                 <TouchableOpacity
@@ -643,19 +710,19 @@ const localStyles = RNStyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 20,
   },
-  backButton: { padding: 8, backgroundColor: "#1A1A1A", borderRadius: 12 },
-  headerTitle: { color: "white", fontSize: 20, fontWeight: "bold" },
+  backButton: { padding: 8, backgroundColor: Colors.secondary, borderRadius: 12 },
+  headerTitle: { color: Colors.text, fontSize: 20, fontWeight: "bold" },
   searchBox: {
     flexDirection: "row",
-    backgroundColor: "#1A1A1A",
+    backgroundColor: Colors.secondary,
     borderRadius: 16,
     alignItems: "center",
     marginBottom: 20,
     height: 55,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: Colors.border,
   },
-  input: { flex: 1, color: "white", paddingHorizontal: 10, fontSize: 16 },
+  input: { flex: 1, color: Colors.text, paddingHorizontal: 10, fontSize: 16 },
   itemRowContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -663,51 +730,53 @@ const localStyles = RNStyleSheet.create({
   },
   itemCard: {
     flex: 1,
-    backgroundColor: "#1A1A1A",
+    backgroundColor: Colors.secondary,
     padding: 12,
     borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#262626",
+    borderColor: Colors.border,
     marginRight: 10,
   },
   iconCircle: {
     width: 45,
     height: 45,
     borderRadius: 22,
-    backgroundColor: "#262626",
+    backgroundColor: Colors.inputBg,
     alignItems: "center",
     justifyContent: "center",
   },
-  itemName: { color: "white", fontWeight: "700", fontSize: 16 },
-  itemSub: { color: "#666", fontSize: 12, marginTop: 2 },
+  itemName: { color: Colors.text, fontWeight: "700", fontSize: 16 },
+  itemSub: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   createBtn: {
     flexDirection: "row",
-    backgroundColor: "#333",
+    backgroundColor: Colors.secondary,
     padding: 15,
     borderRadius: 20,
     alignItems: "center",
     gap: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.9)",
+    backgroundColor: "rgba(0,0,0,0.92)",
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: "#121212",
+    backgroundColor: Colors.secondary,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     padding: 25,
     paddingBottom: 40,
     borderTopWidth: 1,
-    borderTopColor: "#333",
+    borderTopColor: Colors.border,
   },
   modalDragBar: {
     width: 40,
     height: 4,
-    backgroundColor: "#333",
+    backgroundColor: Colors.border,
     borderRadius: 2,
     alignSelf: "center",
     marginBottom: 20,
@@ -715,26 +784,26 @@ const localStyles = RNStyleSheet.create({
   modalHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 30,
+    marginBottom: 20,
   },
-  modalFoodName: { color: "white", fontSize: 22, fontWeight: "800" },
-  closeBtn: { backgroundColor: "#262626", padding: 10, borderRadius: 12 },
+  modalFoodName: { color: Colors.text, fontSize: 22, fontWeight: "800" },
+  closeBtn: { backgroundColor: Colors.inputBg, padding: 10, borderRadius: 12 },
   weightSection: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 20,
-    marginBottom: 35,
+    marginBottom: 25,
   },
   adjustBtn: {
     width: 45,
     height: 45,
     borderRadius: 15,
-    backgroundColor: "#1A1A1A",
+    backgroundColor: Colors.inputBg,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: Colors.border,
   },
   weightInputContainer: { alignItems: "center" },
   weightInput: {
@@ -743,48 +812,55 @@ const localStyles = RNStyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
   },
-  bentoContainer: { flexDirection: "row", gap: 12, marginBottom: 35 },
+  unitBar: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    marginBottom: 25,
+  },
+  bentoContainer: { flexDirection: "row", gap: 12, marginBottom: 25 },
   bentoMain: {
     flex: 1.2,
-    backgroundColor: "#1A1A1A",
+    backgroundColor: Colors.inputBg,
     borderRadius: 20,
     padding: 20,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#262626",
+    borderColor: Colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accentBlue,
   },
   bentoGrid: { flex: 1, gap: 8 },
   bentoSmall: {
     flex: 1,
-    backgroundColor: "#1A1A1A",
+    backgroundColor: Colors.inputBg,
     borderRadius: 12,
     paddingHorizontal: 15,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#262626",
+    borderColor: Colors.border,
   },
   bentoValue: { color: Colors.accent, fontSize: 32, fontWeight: "900" },
-  bentoLabel: { color: "#666", fontSize: 10, fontWeight: "bold" },
-  bentoValueSmall: { color: "white", fontSize: 16, fontWeight: "bold" },
-  bentoLabelSmall: { color: "#666", fontSize: 10, fontWeight: "bold" },
+  bentoLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: "bold" },
+  bentoValueSmall: { color: Colors.text, fontSize: 16, fontWeight: "bold" },
+  bentoLabelSmall: { color: Colors.textSecondary, fontSize: 10, fontWeight: "bold" },
   confirmBtn: {
     backgroundColor: Colors.accent,
     padding: 20,
     borderRadius: 20,
     alignItems: "center",
   },
-  confirmText: { color: "black", fontSize: 18, fontWeight: "900" },
+  confirmText: { color: Colors.textOnAccent, fontSize: 18, fontWeight: "900" },
   deleteBtn: {
-    backgroundColor: "#330000",
+    backgroundColor: "rgba(239,68,68,0.15)",
     padding: 14,
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#550000",
+    borderColor: "rgba(239,68,68,0.4)",
     minWidth: 50,
   },
 });

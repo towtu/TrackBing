@@ -6,6 +6,7 @@ import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
+import ErrorBoundary from "@/src/components/ErrorBoundary";
 import AuthRoute from "./auth";
 
 export default function RootLayout() {
@@ -55,26 +56,28 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <StatusBar style="light" />
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+          <StatusBar style="light" />
 
-        <View style={styles.content}>
-          {!session ? (
-            <AuthRoute />
-          ) : (
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                title: "TrackBing", // <--- THIS SETS THE BROWSER TAB NAME
-              }}
-            >
-              <Stack.Screen name="(tabs)" />
-            </Stack>
-          )}
-        </View>
-      </SafeAreaView>
-    </SafeAreaProvider>
+          <View style={styles.content}>
+            {!session ? (
+              <AuthRoute />
+            ) : (
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  title: "TrackBing", // <--- THIS SETS THE BROWSER TAB NAME
+                }}
+              >
+                <Stack.Screen name="(tabs)" />
+              </Stack>
+            )}
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

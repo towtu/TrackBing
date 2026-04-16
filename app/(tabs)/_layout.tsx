@@ -6,9 +6,9 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false, // Hides Top Header
+        headerShown: false,
         tabBarStyle: {
-          display: "none", // Hides Bottom Tab Bar
+          display: "none",
         },
       }}
     >

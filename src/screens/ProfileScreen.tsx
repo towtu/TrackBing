@@ -285,7 +285,7 @@ export function ProfileScreen() {
       style={{ flex: 1, backgroundColor: Colors.primary }}
       edges={["top", "left", "right"]}
     >
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 100, maxWidth: 520, alignSelf: "center", width: "100%" }}>
         {/* HEADER */}
         <View style={styles.headerRow}>
           <TouchableOpacity
@@ -581,23 +581,25 @@ export function ProfileScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <CheckCircle
-              size={64}
-              color={Colors.accent}
-              weight="fill"
-              style={{ marginBottom: 20 }}
-            />
-            <Text style={styles.modalTitle}>Success!</Text>
-            <Text style={styles.modalText}>
-              Your profile has been updated. Return to the dashboard to see your
-              new goals.
-            </Text>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={handleCloseModal}
-            >
-              <Text style={styles.modalButtonText}>OK</Text>
-            </TouchableOpacity>
+            <View style={{ height: 3, backgroundColor: Colors.accent, width: "100%" }} />
+            <View style={{ padding: 28, alignItems: "center", width: "100%" }}>
+              <CheckCircle
+                size={56}
+                color={Colors.accent}
+                weight="fill"
+                style={{ marginBottom: 16 }}
+              />
+              <Text style={styles.modalTitle}>Saved!</Text>
+              <Text style={styles.modalText}>
+                Your profile has been updated. Return to the dashboard to see your new goals.
+              </Text>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={handleCloseModal}
+              >
+                <Text style={styles.modalButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -610,50 +612,61 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  backBtn: { flexDirection: "row", alignItems: "center" },
-  backText: { color: Colors.accent, fontWeight: "bold", fontSize: 16 },
-  headerTitle: { color: Colors.text, fontSize: 20, fontWeight: "bold" },
+  backBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  backText: { color: Colors.accent, fontWeight: "700", fontSize: 15 },
+  headerTitle: {
+    color: Colors.text,
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
 
   card: {
     backgroundColor: Colors.secondary,
     padding: 20,
-    borderRadius: 15,
-    marginBottom: 20,
+    borderRadius: 20,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 15 },
+  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 18, gap: 10 },
   cardTitle: {
     color: Colors.text,
-    fontWeight: "bold",
-    fontSize: 18,
-    marginLeft: 10,
+    fontWeight: "700",
+    fontSize: 16,
+    letterSpacing: -0.1,
   },
 
-  inputRow: { flexDirection: "row", gap: 15, marginBottom: 15 },
+  inputRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
   inputContainer: { flex: 1 },
   label: {
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
     fontSize: 10,
-    marginBottom: 5,
+    marginBottom: 6,
     textTransform: "uppercase",
-    fontWeight: "bold",
+    fontWeight: "700",
+    letterSpacing: 1,
   },
   input: {
     backgroundColor: Colors.inputBg,
     color: Colors.text,
-    padding: 12,
-    borderRadius: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     textAlign: "center",
-    fontWeight: "bold",
-    fontSize: 18,
+    fontWeight: "700",
+    fontSize: 17,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
 
   genderRow: { flexDirection: "row", gap: 10 },
   genderBtn: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
     backgroundColor: Colors.inputBg,
     alignItems: "center",
     borderWidth: 1,
@@ -663,52 +676,59 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     borderColor: Colors.accent,
   },
-  genderText: { color: Colors.textSecondary, fontWeight: "bold" },
+  genderText: { color: Colors.textSecondary, fontWeight: "700", fontSize: 14 },
 
   activityOption: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: 12,
+    alignItems: "center",
+    paddingVertical: 13,
+    paddingHorizontal: 14,
     backgroundColor: Colors.inputBg,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   activityActive: {
     borderColor: Colors.accentBlue,
-    backgroundColor: "rgba(110, 136, 176, 0.08)",
+    backgroundColor: Colors.accentBlueDim,
   },
 
   goalPill: {
-    padding: 10,
-    borderRadius: 15,
-    marginRight: 10,
-    minWidth: 80,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginRight: 8,
+    minWidth: 88,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   caloriesBox: {
     backgroundColor: Colors.inputBg,
-    padding: 20,
-    borderRadius: 10,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     alignItems: "center",
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.accentBlue,
-    marginTop: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: 12,
   },
 
   gramsPreview: {
     backgroundColor: Colors.inputBg,
-    padding: 15,
-    borderRadius: 10,
+    padding: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   gramsLabel: {
-    color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: "bold",
-    marginBottom: 10,
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    marginBottom: 12,
     textTransform: "uppercase",
+    letterSpacing: 1,
   },
   gramsRow: {
     flexDirection: "row",
@@ -718,64 +738,72 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   gramValue: {
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "800",
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   gramLabel: {
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
     fontSize: 10,
     textTransform: "uppercase",
+    letterSpacing: 0.8,
+    fontWeight: "600",
   },
 
   saveBtn: {
     backgroundColor: Colors.accent,
-    padding: 18,
-    borderRadius: 15,
+    paddingVertical: 18,
+    borderRadius: 18,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    gap: 8,
   },
-  saveBtnText: { color: Colors.textOnAccent, fontWeight: "bold", fontSize: 16 },
+  saveBtnText: { color: Colors.textOnAccent, fontWeight: "800", fontSize: 16, letterSpacing: 0.2 },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
     alignItems: "center",
   },
   modalContent: {
-    width: "80%",
+    width: "82%",
+    maxWidth: 340,
     backgroundColor: Colors.secondary,
-    padding: 30,
-    borderRadius: 20,
+    borderRadius: 22,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: Colors.accent,
+    borderColor: Colors.border,
+    overflow: "hidden",
   },
   modalTitle: {
     color: Colors.text,
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 10,
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 8,
+    letterSpacing: -0.3,
   },
   modalText: {
     color: Colors.textSecondary,
     textAlign: "center",
-    marginBottom: 25,
+    marginBottom: 24,
+    lineHeight: 22,
+    fontSize: 14,
   },
   modalButton: {
     backgroundColor: Colors.accent,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 40,
-    borderRadius: 25,
+    borderRadius: 12,
     width: "100%",
   },
   modalButtonText: {
     color: Colors.textOnAccent,
-    fontWeight: "bold",
+    fontWeight: "800",
     textAlign: "center",
-    fontSize: 16,
+    fontSize: 15,
   },
 });

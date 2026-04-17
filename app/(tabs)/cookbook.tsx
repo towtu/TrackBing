@@ -1,17 +1,17 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
-  Barcode,
+  BookOpen,
   CaretLeft,
-  CheckCircle,
+  Cookie,
   MagnifyingGlass,
   Minus,
   Plus,
+  Trash,
   X,
 } from "phosphor-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   Keyboard,
   Modal,
@@ -27,168 +27,93 @@ import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import { Colors } from "@/src/styles/colors";
 
-const CUSTOM_DB_URL =
-  "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";
-
-const USDA_API_KEY = process.env.EXPO_PUBLIC_USDA_API_KEY!;
-const USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
-
-async function searchUSDA(query: string): Promise<any[]> {
-  try {
-    const res = await fetch(
-      `${USDA_BASE_URL}/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=25&api_key=${USDA_API_KEY}`,
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.foods || []).map((food: any) => {
-      const nutrients = food.foodNutrients || [];
-      const get = (id: number) =>
-        nutrients.find((n: any) => n.nutrientId === id)?.value || 0;
-      return {
-        code: "usda-" + food.fdcId,
-        product_name: food.description,
-        brands: "USDA",
-        default_unit: "g",
-        nutriments: {
-          "energy-kcal_100g": get(1008) || Math.round(get(1062) / 4.184),
-          proteins_100g: get(1003),
-          carbohydrates_100g: get(1005),
-          fat_100g: get(1004),
-        },
-      };
-    });
-  } catch (e) {
-    console.warn("USDA search failed", e);
-    return [];
-  }
-}
-
-export default function AddFoodPage() {
+export default function CookbookPage() {
   const router = useRouter();
-  const params = useLocalSearchParams();
 
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [personalFoods, setPersonalFoods] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterQuery, setFilterQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [customFoods, setCustomFoods] = useState<any[]>([]);
-
-  const [showToast, setShowToast] = useState(false);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-  const toastScale = useRef(new Animated.Value(0.8)).current;
-
+  // ── SELECTED FOOD MODAL STATE ──
   const [selectedFood, setSelectedFood] = useState<any | null>(null);
-
   const [inputWeight, setInputWeight] = useState("100");
   const [selectedUnit, setSelectedUnit] = useState<
     "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving"
   >("g");
 
-  useEffect(() => {
-    const fetchGist = async () => {
-      try {
-        const response = await fetch(CUSTOM_DB_URL);
-        const data = await response.json();
-        const formatted = data.map((f: any) => ({
-          code: "gist-" + f.name,
-          product_name: f.name,
-          brands: "Generic",
-          default_unit: f.unit || "g",
-          serving_weight: f.serving_weight,
-          cup_weight: f.cup_weight,
-          nutriments: {
-            "energy-kcal_100g": f.c,
-            proteins_100g: f.p,
-            carbohydrates_100g: f.cb,
-            fat_100g: f.f,
-          },
-        }));
-        setCustomFoods(formatted);
-      } catch (e) {
-        console.error("Gist failed", e);
-      }
-    };
-    fetchGist();
-  }, []);
+  // ── DELETE MODAL STATE ──
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [deletingFood, setDeletingFood] = useState<{
+    id: string;
+    name: string;
+    code: string;
+  } | null>(null);
 
-  useEffect(() => {
-    if (params.initialName) {
-      setSelectedFood({
-        code: (params.code as string) || "scanned",
-        product_name: params.initialName as string,
-        brands: (params.brand as string) || "Scanned",
-        default_unit: (params.initialUnit as string) || "g",
-        nutriments: {
-          "energy-kcal_100g": parseFloat(params.initialCal as string) || 0,
-          proteins_100g: parseFloat(params.initialProt as string) || 0,
-          carbohydrates_100g: parseFloat(params.initialCarbs as string) || 0,
-          fat_100g: parseFloat(params.initialFat as string) || 0,
-        },
-      });
-
-      setInputWeight((params.initialWeight as string) || "100");
-      setSelectedUnit((params.initialUnit as any) || "g");
-
-      router.setParams({
-        initialName: "",
-        initialWeight: "",
-        brand: "",
-        initialUnit: "",
-      });
-    }
-  }, [params]);
-
-  const suggestions = useMemo(() => {
-    if (query.length < 2) return [];
-    return customFoods
-      .filter((f) =>
-        f.product_name?.toLowerCase().includes(query.toLowerCase()),
-      )
-      .slice(0, 5);
-  }, [query, customFoods]);
-
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const fetchMyFoods = async () => {
     setLoading(true);
-
-    const [usdaResults, offResults] = await Promise.all([
-      searchUSDA(query),
-      (async () => {
-        try {
-          const offRes = await fetch(
-            `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=10&lc=en`,
-          );
-          const offData = await offRes.json();
-          return (
-            offData.products?.map((item: any) => ({
-              code: item.code || Math.random().toString(),
-              product_name: item.product_name || "Unknown Food",
-              brands: item.brands || "Packaged",
-              default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
-              serving_quantity: item.serving_quantity || 100,
-              nutriments: {
-                "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
-                proteins_100g: item.nutriments?.proteins_100g || 0,
-                carbohydrates_100g: item.nutriments?.carbohydrates_100g || 0,
-                fat_100g: item.nutriments?.fat_100g || 0,
-              },
-            })) || []
-          );
-        } catch (e) {
-          console.warn(e);
-          return [];
-        }
-      })(),
-    ]);
-
-    const gistMatches = customFoods.filter((f) =>
-      f.product_name?.toLowerCase().includes(query.toLowerCase())
-    );
-    setResults([...gistMatches, ...usdaResults, ...offResults]);
+    const { data } = await supabase
+      .from("personal_foods")
+      .select("*")
+      .order("created_at", { ascending: false });
+    const formatted =
+      data?.map((f) => ({
+        code: "personal-" + f.id,
+        product_name: f.name,
+        brands: "My Food",
+        default_unit: f.default_unit || "g",
+        nutriments: {
+          "energy-kcal_100g": f.calories,
+          proteins_100g: f.protein,
+          carbohydrates_100g: f.carbs,
+          fat_100g: f.fat,
+        },
+        original_id: f.id,
+      })) || [];
+    setPersonalFoods(formatted);
     setLoading(false);
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchMyFoods();
+    }, [])
+  );
+
+  const filteredFoods = filterQuery.length >= 2
+    ? personalFoods.filter((f) =>
+        f.product_name?.toLowerCase().includes(filterQuery.toLowerCase())
+      )
+    : personalFoods;
+
+  // ── DELETE ──
+  const handleDeletePress = (item: any) => {
+    setDeletingFood({
+      id: item.original_id,
+      name: item.product_name,
+      code: item.code,
+    });
+    setDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingFood) return;
+    const { error } = await supabase
+      .from("personal_foods")
+      .delete()
+      .eq("id", deletingFood.id);
+    if (error) {
+      alert("Error: " + error.message);
+    } else {
+      setPersonalFoods((prev) =>
+        prev.filter((f) => f.code !== deletingFood.code)
+      );
+    }
+    setDeleteModal(false);
+    setDeletingFood(null);
+  };
+
+  // ── MACRO CALCULATIONS ──
   const calculateMacros = () => {
     if (!selectedFood) return { c: 0, p: 0, cb: 0, f: 0 };
 
@@ -217,7 +142,6 @@ export default function AddFoodPage() {
     }
 
     const n = selectedFood.nutriments;
-
     return {
       c: Math.round((n?.["energy-kcal_100g"] || 0) * ratio),
       p: Math.round((n?.proteins_100g || 0) * ratio),
@@ -258,31 +182,16 @@ export default function AddFoodPage() {
         },
       ]);
       upsertDailySummary();
+      alert("Added to your log!");
       setSelectedFood(null);
-      setShowToast(true);
-      toastOpacity.setValue(0);
-      toastScale.setValue(0.8);
-      Animated.parallel([
-        Animated.spring(toastScale, { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }),
-        Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(toastOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
-          Animated.timing(toastScale, { toValue: 0.8, duration: 300, useNativeDriver: true }),
-        ]).start(() => {
-          setShowToast(false);
-          router.back();
-        });
-      }, 1200);
     }
     setSubmitting(false);
   };
 
-  const displayList = results;
-
   const isLiquid = selectedFood?.default_unit === "ml";
-  const hasServing = !!(selectedFood?.serving_weight || selectedFood?.serving_quantity);
+  const hasServing = !!(
+    selectedFood?.serving_weight || selectedFood?.serving_quantity
+  );
   const baseUnits: string[] = isLiquid
     ? ["ml", "tsp", "tbsp", "cup"]
     : ["g", "oz", "tsp", "tbsp", "cup"];
@@ -293,7 +202,16 @@ export default function AddFoodPage() {
       style={{ flex: 1, backgroundColor: Colors.primary }}
       edges={["top"]}
     >
-      <View style={{ padding: 18, flex: 1, maxWidth: 520, alignSelf: "center", width: "100%" }}>
+      <View
+        style={{
+          padding: 18,
+          flex: 1,
+          maxWidth: 520,
+          alignSelf: "center",
+          width: "100%",
+        }}
+      >
+        {/* ── HEADER ── */}
         <View style={localStyles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -301,7 +219,7 @@ export default function AddFoodPage() {
           >
             <CaretLeft size={24} color={Colors.accent} weight="bold" />
           </TouchableOpacity>
-          <Text style={localStyles.headerTitle}>Find Food</Text>
+          <Text style={localStyles.headerTitle}>My Cookbook</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
               onPress={() => router.push("/create-food")}
@@ -309,28 +227,26 @@ export default function AddFoodPage() {
             >
               <Plus size={24} color={Colors.accent} weight="bold" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push("/scan")}
-              style={localStyles.backButton}
-            >
-              <Barcode size={24} color={Colors.accent} />
-            </TouchableOpacity>
           </View>
         </View>
 
+        {/* ── SEARCH / FILTER BAR ── */}
         <View style={localStyles.searchBox}>
-          <MagnifyingGlass size={20} color={Colors.textSecondary} style={{ marginLeft: 15 }} />
+          <MagnifyingGlass
+            size={20}
+            color={Colors.textSecondary}
+            style={{ marginLeft: 15 }}
+          />
           <TextInput
             style={localStyles.input}
-            placeholder="Search food..."
+            placeholder="Filter your recipes..."
             placeholderTextColor={Colors.textSecondary}
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={handleSearch}
+            value={filterQuery}
+            onChangeText={setFilterQuery}
           />
-          {query.length > 0 && (
+          {filterQuery.length > 0 && (
             <TouchableOpacity
-              onPress={() => setQuery("")}
+              onPress={() => setFilterQuery("")}
               style={{ marginRight: 15 }}
             >
               <X size={18} color={Colors.textSecondary} weight="bold" />
@@ -338,41 +254,26 @@ export default function AddFoodPage() {
           )}
         </View>
 
-        {/* Gist suggestions preview + hint */}
-        {!loading && results.length === 0 && suggestions.length > 0 && (
-          <View style={{ marginBottom: 12 }}>
-            {suggestions.map((item) => (
-              <TouchableOpacity
-                key={item.code}
-                style={[localStyles.itemCard, { marginRight: 0, marginBottom: 8 }]}
-                onPress={() => {
-                  setSelectedFood(item);
-                  setSelectedUnit(item.default_unit === "ml" ? "ml" : "g");
-                  setInputWeight(item.serving_quantity ? item.serving_quantity.toString() : "100");
-                }}
-              >
-                <View style={localStyles.iconCircle}>
-                  <Text style={{ fontSize: 18 }}>🥗</Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={localStyles.itemName} numberOfLines={1}>{item.product_name}</Text>
-                  <Text style={localStyles.itemSub}>
-                    Generic • {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)} kcal
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-            <Text style={{ color: Colors.textSecondary, fontSize: 12, textAlign: "center", marginTop: 4, letterSpacing: 0.5 }}>
-              Press Enter to search all sources
+        {/* ── FOOD COUNT BADGE ── */}
+        <View style={localStyles.countRow}>
+          <View style={localStyles.countBadge}>
+            <Cookie size={14} color={Colors.accent} weight="fill" />
+            <Text style={localStyles.countText}>
+              {filteredFoods.length}{" "}
+              {filteredFoods.length === 1 ? "recipe" : "recipes"}
             </Text>
           </View>
-        )}
+        </View>
 
+        {/* ── FOOD LIST ── */}
         {loading ? (
-          <ActivityIndicator color={Colors.accent} style={{ marginTop: 20 }} />
+          <ActivityIndicator
+            color={Colors.accent}
+            style={{ marginTop: 40 }}
+          />
         ) : (
           <FlatList
-            data={displayList}
+            data={filteredFoods}
             keyboardShouldPersistTaps="handled"
             keyExtractor={(item) => item.code}
             renderItem={({ item }) => (
@@ -395,75 +296,93 @@ export default function AddFoodPage() {
                       ].includes(item.default_unit)
                     ) {
                       setSelectedUnit(item.default_unit as any);
-
-                      if (item.serving_quantity) {
-                        setInputWeight(item.serving_quantity.toString());
-                      } else {
-                        setInputWeight(
-                          item.default_unit === "g" ||
-                            item.default_unit === "ml"
-                            ? "100"
-                            : "1",
-                        );
-                      }
+                      setInputWeight(
+                        item.default_unit === "g" || item.default_unit === "ml"
+                          ? "100"
+                          : "1"
+                      );
                     } else {
                       setSelectedUnit("g");
-                      setInputWeight(
-                        item.serving_quantity
-                          ? item.serving_quantity.toString()
-                          : "100",
-                      );
+                      setInputWeight("100");
                     }
                   }}
                 >
                   <View style={localStyles.iconCircle}>
-                    <Text style={{ fontSize: 18 }}>
-                      {item.brands === "My Food"
-                        ? "🍪"
-                        : item.brands === "Generic"
-                          ? "🥗"
-                          : item.brands === "USDA"
-                            ? "🥩"
-                            : "📦"}
-                    </Text>
+                    <Text style={{ fontSize: 18 }}>🍪</Text>
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={localStyles.itemName} numberOfLines={1}>
                       {item.product_name}
                     </Text>
                     <Text style={localStyles.itemSub}>
-                      {item.brands} •{" "}
-                      {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)}{" "}
-                      kcal
+                      {Math.round(
+                        item.nutriments?.["energy-kcal_100g"] || 0
+                      )}{" "}
+                      kcal ·{" "}
+                      P:{Math.round(item.nutriments?.proteins_100g || 0)}g ·{" "}
+                      C:
+                      {Math.round(
+                        item.nutriments?.carbohydrates_100g || 0
+                      )}
+                      g · F:{Math.round(item.nutriments?.fat_100g || 0)}g
                     </Text>
                   </View>
-                  {true && (
-                    <Plus size={20} color={Colors.accent} weight="bold" />
-                  )}
+                  <View style={localStyles.unitBadge}>
+                    <Text style={localStyles.unitBadgeText}>
+                      {item.default_unit}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={localStyles.deleteBtn}
+                  onPress={() => handleDeletePress(item)}
+                >
+                  <Trash size={20} color="#FF4444" weight="bold" />
                 </TouchableOpacity>
               </View>
             )}
             ListEmptyComponent={
-              !loading && query.length > 2 ? (
-                <View style={{ alignItems: "center", marginTop: 30 }}>
-                  <Text style={{ color: Colors.textSecondary, marginBottom: 15 }}>
-                    No results for "{query}"
-                  </Text>
+              <View style={localStyles.emptyState}>
+                <View style={localStyles.emptyIconBox}>
+                  <BookOpen
+                    size={36}
+                    color={Colors.textSecondary}
+                    weight="duotone"
+                  />
+                </View>
+                <Text style={localStyles.emptyTitle}>
+                  {filterQuery.length >= 2
+                    ? `No recipes matching "${filterQuery}"`
+                    : "No saved recipes yet"}
+                </Text>
+                <Text style={localStyles.emptySubtext}>
+                  {filterQuery.length >= 2
+                    ? "Try a different search term"
+                    : "Create your first custom food to build your cookbook."}
+                </Text>
+                {filterQuery.length < 2 && (
                   <TouchableOpacity
-                    style={localStyles.createBtn}
+                    style={localStyles.emptyCreateBtn}
                     onPress={() => router.push("/create-food")}
                   >
                     <Plus size={20} color={Colors.accent} />
-                    <Text style={{ color: Colors.text, fontWeight: "bold" }}>
-                      Create "{query}"
+                    <Text
+                      style={{
+                        color: Colors.text,
+                        fontWeight: "bold",
+                        fontSize: 14,
+                      }}
+                    >
+                      Create Food
                     </Text>
                   </TouchableOpacity>
-                </View>
-              ) : null
+                )}
+              </View>
             }
           />
         )}
 
+        {/* ── LOG FOOD MODAL ── */}
         <Modal visible={!!selectedFood} transparent animationType="fade">
           <View style={localStyles.modalOverlay}>
             <View style={localStyles.modalContent}>
@@ -473,7 +392,9 @@ export default function AddFoodPage() {
                   <Text style={localStyles.modalFoodName}>
                     {selectedFood?.product_name}
                   </Text>
-                  <Text style={{ color: Colors.textSecondary }}>{selectedFood?.brands}</Text>
+                  <Text style={{ color: Colors.textSecondary }}>
+                    My Food
+                  </Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => setSelectedFood(null)}
@@ -505,7 +426,7 @@ export default function AddFoodPage() {
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    style={[{ marginTop: 8 }, localStyles.unitBar]}
+                    style={[{ marginTop: 8 }, localStyles.unitBarStyle]}
                     contentContainerStyle={{ paddingHorizontal: 4 }}
                   >
                     {unitsToDisplay.map((u) => (
@@ -554,7 +475,9 @@ export default function AddFoodPage() {
                 </View>
                 <View style={localStyles.bentoGrid}>
                   <View style={localStyles.bentoSmall}>
-                    <Text style={localStyles.bentoValueSmall}>{macros.p}g</Text>
+                    <Text style={localStyles.bentoValueSmall}>
+                      {macros.p}g
+                    </Text>
                     <Text style={localStyles.bentoLabelSmall}>PROT</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
@@ -564,7 +487,9 @@ export default function AddFoodPage() {
                     <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
-                    <Text style={localStyles.bentoValueSmall}>{macros.f}g</Text>
+                    <Text style={localStyles.bentoValueSmall}>
+                      {macros.f}g
+                    </Text>
                     <Text style={localStyles.bentoLabelSmall}>FAT</Text>
                   </View>
                 </View>
@@ -583,28 +508,48 @@ export default function AddFoodPage() {
           </View>
         </Modal>
 
-        {/* ── SUCCESS TOAST ── */}
-        {showToast && (
-          <Animated.View
-            style={[
-              localStyles.toastOverlay,
-              { opacity: toastOpacity },
-            ]}
-          >
-            <Animated.View
-              style={[
-                localStyles.toastCard,
-                { transform: [{ scale: toastScale }] },
-              ]}
-            >
-              <View style={localStyles.toastIconWrap}>
-                <CheckCircle size={40} color={Colors.success} weight="fill" />
+        {/* ── DELETE CONFIRMATION MODAL ── */}
+        <Modal visible={deleteModal} transparent animationType="fade">
+          <View style={localStyles.deleteOverlay}>
+            <TouchableOpacity
+              style={RNStyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => {
+                setDeleteModal(false);
+                setDeletingFood(null);
+              }}
+            />
+            <View style={localStyles.glassModal}>
+              <View style={localStyles.glassModalDrag} />
+              <View style={localStyles.deleteModalIcon}>
+                <Trash size={32} color={Colors.error} weight="fill" />
               </View>
-              <Text style={localStyles.toastTitle}>Logged!</Text>
-              <Text style={localStyles.toastSubtitle}>Added to your daily intake</Text>
-            </Animated.View>
-          </Animated.View>
-        )}
+              <Text style={localStyles.deleteModalTitle}>Remove Recipe</Text>
+              <Text style={localStyles.deleteModalSubtitle}>
+                Are you sure you want to delete "{deletingFood?.name}" from your
+                cookbook?
+              </Text>
+              <View style={localStyles.deleteModalBtnRow}>
+                <TouchableOpacity
+                  style={localStyles.btnKeep}
+                  onPress={() => {
+                    setDeleteModal(false);
+                    setDeletingFood(null);
+                  }}
+                >
+                  <Text style={localStyles.btnKeepText}>Keep it</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={localStyles.btnConfirmDelete}
+                  onPress={confirmDelete}
+                >
+                  <Trash size={18} color={Colors.white} weight="bold" />
+                  <Text style={localStyles.btnConfirmDeleteText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -635,7 +580,7 @@ const localStyles = RNStyleSheet.create({
     backgroundColor: Colors.secondary,
     borderRadius: 18,
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 12,
     height: 56,
     borderWidth: 1,
     borderColor: Colors.borderLight,
@@ -645,7 +590,32 @@ const localStyles = RNStyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  input: { flex: 1, color: Colors.text, paddingHorizontal: 12, fontSize: 16 },
+  input: {
+    flex: 1,
+    color: Colors.text,
+    paddingHorizontal: 12,
+    fontSize: 16,
+  },
+  countRow: {
+    flexDirection: "row",
+    marginBottom: 14,
+  },
+  countBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  countText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   itemRowContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -684,18 +654,82 @@ const localStyles = RNStyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.1,
   },
-  itemSub: { color: Colors.textSecondary, fontSize: 11, marginTop: 2 },
-  createBtn: {
+  itemSub: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  unitBadge: {
+    backgroundColor: Colors.accentDim,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.2)",
+  },
+  unitBadgeText: {
+    color: Colors.accent,
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  deleteBtn: {
+    backgroundColor: "rgba(239,68,68,0.12)",
+    padding: 13,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.3)",
+    minWidth: 48,
+  },
+  emptyState: {
+    backgroundColor: Colors.surface,
+    borderRadius: 24,
+    padding: 32,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: "dashed",
+    alignItems: "center",
+    marginTop: 32,
+  },
+  emptyIconBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  emptySubtext: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  emptyCreateBtn: {
     flexDirection: "row",
     backgroundColor: Colors.secondary,
     paddingVertical: 14,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     borderRadius: 16,
     alignItems: "center",
     gap: 10,
     borderWidth: 1,
     borderColor: Colors.border,
   },
+
+  // ── LOG MODAL ──
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.92)",
@@ -762,7 +796,7 @@ const localStyles = RNStyleSheet.create({
     textAlign: "center",
     letterSpacing: -2,
   },
-  unitBar: {
+  unitBarStyle: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     marginBottom: 22,
@@ -833,59 +867,89 @@ const localStyles = RNStyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.2,
   },
-  deleteBtn: {
-    backgroundColor: "rgba(239,68,68,0.12)",
-    padding: 13,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.3)",
-    minWidth: 48,
-  },
 
-  // ── SUCCESS TOAST ──
-  toastOverlay: {
-    ...RNStyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999,
+  // ── DELETE MODAL ──
+  deleteOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
-  toastCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 28,
-    padding: 32,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    shadowColor: Colors.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 12,
-    width: 200,
+  glassModal: {
+    width: "100%",
+    maxWidth: 480,
+    alignSelf: "center",
+    backgroundColor: "rgba(18, 18, 20, 0.8)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 48,
   },
-  toastIconWrap: {
+  glassModalDrag: {
+    width: 48,
+    height: 6,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 3,
+    alignSelf: "center",
+    marginBottom: 24,
+  },
+  deleteModalIcon: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "rgba(74, 222, 128, 0.12)",
+    backgroundColor: "rgba(239,68,68,0.15)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    alignSelf: "center",
+    marginBottom: 16,
   },
-  toastTitle: {
+  deleteModalTitle: {
     color: Colors.text,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  toastSubtitle: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 24,
+    fontWeight: "800",
     textAlign: "center",
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  deleteModalSubtitle: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  deleteModalBtnRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  btnKeep: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: "center",
+  },
+  btnKeepText: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  btnConfirmDelete: {
+    flex: 1,
+    backgroundColor: Colors.error,
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    elevation: 6,
+  },
+  btnConfirmDeleteText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: "800",
   },
 });

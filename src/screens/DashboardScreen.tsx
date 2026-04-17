@@ -1,9 +1,23 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   Barcode,
+  Basket,
+  BookOpen,
+  BowlFood,
+  CalendarBlank,
+  ChartBar,
   Cookie,
+  Drop,
+  Egg,
+  Fire,
+  Gear,
+  Grains,
+  House,
+  Leaf,
+  Lightning,
   MagnifyingGlass,
   PencilSimple,
+  PintGlass,
   Plus,
   Trash,
   User,
@@ -26,6 +40,7 @@ import {
 import CircularProgress from "react-native-circular-progress-indicator";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
+import { upsertDailySummary, getLocalDateStr } from "@/src/lib/dailySummary";
 import { Colors } from "@/src/styles/colors";
 import { DailyTotals, FoodLog } from "@/src/types";
 
@@ -42,6 +57,9 @@ export function DashboardScreen() {
   const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
   const [editWeightInput, setEditWeightInput] = useState("");
   const [editUnit, setEditUnit] = useState<"g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving">("g");
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [deletingLog, setDeletingLog] = useState<{ id: string; name: string } | null>(null);
+  const [streak, setStreak] = useState(0);
   const router = useRouter();
 
   // ── FAB ANIMATIONS ──
@@ -58,7 +76,6 @@ export function DashboardScreen() {
 
   // Sync FAB rotation + menu items when menuOpen changes
   useEffect(() => {
-    // Rotate FAB icon: 0 → 45deg when open (+ becomes ×)
     Animated.spring(fabRotate, {
       toValue: menuOpen ? 1 : 0,
       tension: 180,
@@ -88,12 +105,51 @@ export function DashboardScreen() {
   }, [menuOpen]);
 
   const handleFabPress = () => {
-    // Spring bounce on press
     Animated.sequence([
       Animated.timing(fabScale, { toValue: 0.82, duration: 65,  useNativeDriver: true }),
       Animated.spring(fabScale, { toValue: 1,    tension: 220,  friction: 7, useNativeDriver: true }),
     ]).start();
     setMenuOpen((prev) => !prev);
+  };
+
+  const calculateStreak = async (userId: string) => {
+    // Use daily_summaries for historical data + check today's food_logs
+    const { data: summaries } = await supabase
+      .from("daily_summaries")
+      .select("date")
+      .eq("user_id", userId)
+      .gt("meal_count", 0)
+      .order("date", { ascending: false });
+
+    // Also check if today has food_logs (might not be in daily_summaries yet)
+    const todayStr = getLocalDateStr();
+    const { data: todayLogs } = await supabase
+      .from("food_logs")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1);
+
+    const dates = new Set<string>();
+    if (summaries) summaries.forEach((s) => dates.add(s.date));
+    if (todayLogs && todayLogs.length > 0) dates.add(todayStr);
+
+    if (dates.size === 0) { setStreak(0); return; }
+
+    const sorted = Array.from(dates).sort().reverse();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = getLocalDateStr(yesterday);
+
+    if (sorted[0] !== todayStr && sorted[0] !== yesterdayStr) { setStreak(0); return; }
+
+    let count = 0;
+    const checkDate = new Date(sorted[0]);
+    for (let i = 0; i < sorted.length; i++) {
+      const expected = new Date(checkDate);
+      expected.setDate(expected.getDate() - i);
+      if (sorted[i] === getLocalDateStr(expected)) { count++; } else { break; }
+    }
+    setStreak(count);
   };
 
   const fetchData = async () => {
@@ -129,6 +185,9 @@ export function DashboardScreen() {
       setLogs(data as FoodLog[]);
       calculateTotals(data as FoodLog[]);
     }
+
+    await calculateStreak(user.id);
+    await upsertDailySummary();
     setLoading(false);
   };
 
@@ -221,6 +280,7 @@ export function DashboardScreen() {
       user_id: user.id, name: editingLog.name, barcode: editingLog.barcode || null, ...updatePayload,
     }]);
     if (insError) fetchData();
+    else upsertDailySummary();
   };
 
   const calculateTotals = (data: FoodLog[]) => {
@@ -236,14 +296,14 @@ export function DashboardScreen() {
   };
 
   const handleDeleteLog = (id: string, name: string) => {
-    if (Platform.OS === "web") {
-      if (confirm(`Remove "${name}"?`)) performDeleteLog(id);
-      return;
-    }
-    Alert.alert("Remove Entry", `Remove "${name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => performDeleteLog(id) },
-    ]);
+    setDeletingLog({ id, name });
+    setDeleteModal(true);
+  };
+
+  const confirmDeleteLog = () => {
+    if (deletingLog) performDeleteLog(deletingLog.id);
+    setDeleteModal(false);
+    setDeletingLog(null);
   };
 
   const performDeleteLog = async (id: string) => {
@@ -253,6 +313,7 @@ export function DashboardScreen() {
     calculateTotals(updatedLogs);
     const { error } = await supabase.from("food_logs").delete().eq("id", id);
     if (error) { setLogs(previousLogs); calculateTotals(previousLogs); }
+    else upsertDailySummary();
   };
 
   useFocusEffect(useCallback(() => { fetchData(); setMenuOpen(false); }, []));
@@ -263,322 +324,370 @@ export function DashboardScreen() {
   const displayDiff = Math.abs(Math.round(rawDiff));
 
   const today = new Date();
-  const dateStr = today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const dateStr = today.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
+  
+  // Format time for logs
+  const formatTime = (dateString?: string) => {
+    if (!dateString) return "12:00 PM";
+    const d = new Date(dateString);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   const macros = [
-    { l: "Protein", s: "Pro",  c: Colors.protein, v: totals.protein, g: goals.p },
-    { l: "Carbs",   s: "Carb", c: Colors.carbs,   v: totals.carbs,   g: goals.c },
-    { l: "Fat",     s: "Fat",  c: Colors.fat,      v: totals.fat,      g: goals.f },
+    { id: "protein", l: "Protein", c: Colors.protein, v: totals.protein, g: goals.p, icon: <Egg weight="fill" color={Colors.protein} size={18} /> },
+    { id: "carbs",   l: "Carbs",   c: Colors.carbs,   v: totals.carbs,   g: goals.c, icon: <Grains weight="fill" color={Colors.carbs} size={18} /> },
+    { id: "fat",     l: "Fat",     c: Colors.fat,     v: totals.fat,     g: goals.f, icon: <Drop weight="fill" color={Colors.fat} size={18} /> },
   ];
 
   const menuItems = [
-    { label: "Scan Barcode", icon: <Barcode size={22} color={Colors.text} weight="bold" />, route: "/scan" },
-    { label: "My Foods",     icon: <Cookie size={22} color={Colors.text} weight="bold" />, route: "/create-food" },
-    { label: "Search",       icon: <MagnifyingGlass size={22} color={Colors.text} weight="bold" />, route: "/(tabs)/add" },
+    { label: "Search Food", icon: <MagnifyingGlass size={20} weight="bold" color={Colors.accent} />, route: "/(tabs)/add" },
+    { label: "My Cookbook", icon: <BookOpen size={20} weight="bold" color={Colors.accent} />, route: "/(tabs)/cookbook" },
+    { label: "Scan Barcode", icon: <Barcode size={20} weight="bold" color={Colors.accent} />, route: "/scan" },
   ];
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <View style={styles.contentContainer}>
 
+
         {/* ── HEADER ── */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            {/* Avatar — tappable, navigates to profile */}
-            <TouchableOpacity
-              onPress={() => router.push("/(tabs)/profile")}
-              style={styles.avatarCircle}
-            >
-              <User size={18} color={Colors.accent} weight="bold" />
+            <TouchableOpacity onPress={() => router.push("/(tabs)/profile")} style={styles.avatarWrapper}>
+              <User size={24} color={Colors.textSecondary} weight="fill" />
+              <View style={styles.avatarDot} />
             </TouchableOpacity>
             <View>
-              <Text style={styles.headerLabel}>TODAY</Text>
-              <Text style={styles.headerDate}>{dateStr}</Text>
+              <Text style={styles.headerGreeting}>{(() => {
+                const h = new Date().getHours();
+                return h < 12 ? "Good Morning" : h < 17 ? "Good Afternoon" : "Good Evening";
+              })()}</Text>
+              <Text style={styles.headerTitle}>Ready to fuel up?</Text>
             </View>
           </View>
-          {/* No duplicate button — profile is accessed via avatar on the left */}
+          <TouchableOpacity style={styles.fireBtn}>
+            <Fire size={18} weight="fill" color="#FF6B35" />
+            <View style={styles.fireBadge}>
+              <Text style={styles.fireBadgeText}>{streak}</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         <FlatList
           data={logs}
           keyExtractor={(item) => item.id || Math.random().toString()}
-          refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={fetchData} tintColor={Colors.accent} />
-          }
-          contentContainerStyle={{ paddingBottom: 110 }}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} tintColor={Colors.accent} />}
+          contentContainerStyle={{ paddingBottom: 160 }}
           ListHeaderComponent={
             <>
-              {/* ── HERO SUMMARY CARD ── */}
-              <View style={styles.summaryCard}>
-                <View style={styles.summaryRow}>
-                  {/* Left: Stats */}
-                  <View style={styles.summaryLeft}>
-                    <View style={{ marginBottom: 18 }}>
-                      <Text style={styles.summarySmallLabel}>EATEN</Text>
-                      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
-                        <Text style={styles.summaryBigValue}>{Math.round(totals.calories)}</Text>
-                        <Text style={styles.summaryUnit}>kcal</Text>
+              {/* ── PREMIUM HERO CARD ── */}
+              <View style={styles.heroCard}>
+                <View style={styles.datePill}>
+                  <CalendarBlank size={14} color={Colors.accent} weight="fill" />
+                  <Text style={styles.datePillText}>
+                    <Text style={{ opacity: 0.8, fontWeight: "400" }}>Today, </Text>{dateStr}
+                  </Text>
+                </View>
+
+                <View style={styles.heroContent}>
+                  <View style={styles.heroLeft}>
+                    <View style={{ marginBottom: 24 }}>
+                      <Text style={styles.heroSmallLabel}>CONSUMED</Text>
+                      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 4 }}>
+                        <Text style={styles.heroBigValue}>{Math.round(totals.calories)}</Text>
+                        <Text style={styles.heroUnit}>kcal</Text>
                       </View>
                     </View>
 
-                    <TouchableOpacity
-                      onPress={() => { setNewGoalInput(calorieGoal.toString()); setEditGoalModal(true); }}
-                      style={{ opacity: 0.6 }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                        <Text style={styles.summarySmallLabel}>GOAL</Text>
-                        <PencilSimple size={10} color={Colors.textMuted} />
+                    <TouchableOpacity onPress={() => { setNewGoalInput(calorieGoal.toString()); setEditGoalModal(true); }} style={styles.goalButtonGroup}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
+                        <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
+                        <PencilSimple size={12} color={Colors.accent} weight="fill" />
                       </View>
-                      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
-                        <Text style={styles.summaryGoalValue}>{calorieGoal}</Text>
-                        <Text style={styles.summaryUnit}>kcal</Text>
+                      <View style={styles.goalValueRow}>
+                        <Text style={styles.goalValueText}>{calorieGoal}</Text>
+                        <Text style={styles.goalUnitText}>kcal</Text>
                       </View>
                     </TouchableOpacity>
                   </View>
 
-                  {/* Right: Ring */}
-                  <View style={styles.summaryRingWrap}>
-                    <CircularProgress
-                      value={totals.calories}
-                      radius={62}
-                      maxValue={calorieGoal}
-                      showProgressValue={false}
-                      activeStrokeColor={isOver ? Colors.error : Colors.accent}
-                      activeStrokeWidth={10}
-                      inActiveStrokeColor={Colors.border}
-                      inActiveStrokeWidth={10}
-                      inActiveStrokeOpacity={1}
-                      title={displayDiff.toString()}
-                      titleColor={isOver ? Colors.error : Colors.text}
-                      titleStyle={{ fontWeight: "bold", fontSize: 22 }}
-                      subtitle={isOver ? "over" : "left"}
-                      subtitleStyle={{ color: isOver ? Colors.error : Colors.textSecondary, fontSize: 10, letterSpacing: 0.5 }}
-                    />
+                  <View style={styles.heroRight}>
+                    <View style={styles.progressRingWrapper}>
+                      <CircularProgress
+                        value={totals.calories}
+                        radius={65}
+                        maxValue={calorieGoal}
+                        showProgressValue={false}
+                        activeStrokeColor={isOver ? Colors.error : Colors.accent}
+                        activeStrokeWidth={12}
+                        inActiveStrokeColor={Colors.border}
+                        inActiveStrokeWidth={12}
+                        inActiveStrokeOpacity={1}
+                        title={""}
+                      />
+                      <View style={styles.ringInner}>
+                        <Lightning size={24} color="#FFD700" weight="fill" />
+                        <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>
+                          {displayDiff}
+                        </Text>
+                        <Text style={styles.ringLabel}>{isOver ? "OVER" : "LEFT"}</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
               </View>
 
-              {/* ── MACRO BENTO CARDS ── */}
-              <View style={styles.macrosRow}>
-                {macros.map((m) => (
-                  <View key={m.l} style={styles.macroCard}>
-                    {/* Thin progress bar at very top */}
-                    <View style={styles.macroProgressBg}>
-                      <View
-                        style={[
-                          styles.macroProgressFill,
-                          {
-                            width: `${getProgress(m.v, m.g)}%` as any,
-                            backgroundColor: m.v > m.g ? Colors.error : m.c,
-                          },
-                        ]}
-                      />
-                    </View>
-
-                    {/* Card body */}
-                    <View style={styles.macroCardBody}>
-                      <View style={styles.macroCardTop}>
-                        <Text style={styles.macroCardLabel}>{m.s}</Text>
-                        <View style={[styles.macroDot, { backgroundColor: m.c }]} />
+              {/* ── DETAILED MACRO BENTO GRID ── */}
+              <View style={styles.bentoGrid}>
+                {macros.map((m) => {
+                  const percent = getProgress(m.v, m.g);
+                  return (
+                    <View key={m.id} style={styles.bentoCard}>
+                      <View style={[styles.bentoGlow, { backgroundColor: m.c }]} />
+                      
+                      <View style={styles.bentoTop}>
+                        <View style={[styles.macroIconWrap, { backgroundColor: `${m.c}33` }]}>
+                          {m.icon}
+                        </View>
+                        <Text style={styles.bentoLabel}>{m.l}</Text>
                       </View>
-                      <Text style={styles.macroCardValue}>
-                        {Math.round(m.v)}
-                        <Text style={styles.macroCardGoal}>/{m.g}g</Text>
-                      </Text>
+                      
+                      <View style={styles.bentoBottom}>
+                        <View style={styles.bentoValueRow}>
+                          <Text style={styles.bentoValue}>{Math.round(m.v)}</Text>
+                          <Text style={styles.bentoGoal}>/{m.g}g</Text>
+                        </View>
+                        <View style={styles.bentoTrack}>
+                          <View style={[styles.bentoFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
 
-              {/* ── SECTION HEADER ── */}
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Today's Meals</Text>
-                {logs.length > 0 && (
-                  <View style={styles.sectionBadge}>
-                    <Text style={styles.sectionBadgeText}>
-                      {logs.length} {logs.length === 1 ? "item" : "items"}
-                    </Text>
-                  </View>
-                )}
+              {/* ── TIMELINE HEADER ── */}
+              <View style={styles.timelineHeader}>
+                <Text style={styles.timelineTitle}>Today's Log</Text>
+                <View style={styles.itemCountBadge}>
+                  <Text style={styles.itemCountText}>{logs.length} items</Text>
+                </View>
               </View>
             </>
           }
-          renderItem={({ item }) => (
-            <View style={styles.logItem}>
-              {/* Icon box */}
-              <View style={styles.logItemIconBox}>
-                <Cookie size={22} color={Colors.accent} weight="duotone" />
+          renderItem={({ item, index }) => (
+            <View style={styles.timelineItemRow}>
+              {/* Timeline Connector */}
+              <View style={styles.timelineColumn}>
+                <Text style={styles.timelineTime}>{formatTime(item.created_at)}</Text>
+                <View style={styles.timelineDot} />
+                {index !== logs.length - 1 && <View style={styles.timelineLine} />}
               </View>
+              
+              {/* Log Card */}
+              <TouchableOpacity style={styles.logCard} onPress={() => handleEditLogStart(item)}>
+                <View style={[styles.logIconBox, { backgroundColor: `${Colors.accent}33` }]}>
+                  <BowlFood size={24} color={Colors.accent} weight="fill" />
+                </View>
+                
+                <View style={styles.logContent}>
+                  <Text style={styles.logName} numberOfLines={1}>{item.name}</Text>
+                  <View style={styles.logSubRow}>
+                    <View style={styles.servingBadge}>
+                      <Text style={styles.servingText}>{item.serving_size} {item.serving_unit || "g"}</Text>
+                    </View>
+                    <Text style={styles.logMacros}>
+                      <Text style={{ color: Colors.protein }}>P:{Math.round(item.protein)} </Text>
+                      <Text style={{ color: Colors.carbs }}>C:{Math.round(item.carbs)} </Text>
+                      <Text style={{ color: Colors.fat }}>F:{Math.round(item.fat)}</Text>
+                    </Text>
+                  </View>
+                </View>
 
-              {/* Content */}
-              <TouchableOpacity
-                style={styles.logItemContent}
-                onPress={() => handleEditLogStart(item)}
-              >
-                <Text style={styles.foodName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.foodMacros}>
-                  {item.serving_size}{item.serving_unit || "g"}
-                  {"  ·  "}P:{Math.round(item.protein)}  C:{Math.round(item.carbs)}  F:{Math.round(item.fat)}
-                </Text>
-              </TouchableOpacity>
+                <View style={styles.logCaloriesCol}>
+                  <Text style={styles.logCalories}>{Math.round(item.calories)}</Text>
+                  <Text style={styles.logKcal}>KCAL</Text>
+                </View>
 
-              {/* Calorie pill */}
-              <TouchableOpacity
-                style={styles.caloriesPill}
-                onPress={() => handleEditLogStart(item)}
-              >
-                <Text style={styles.caloriesPillValue}>{Math.round(item.calories)}</Text>
-                <Text style={styles.caloriesPillUnit}>kcal</Text>
-              </TouchableOpacity>
-
-              {/* Delete */}
-              <TouchableOpacity
-                onPress={() => handleDeleteLog(item.id!, item.name)}
-                style={styles.deleteButton}
-              >
-                <Trash size={17} color={Colors.error} />
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteLog(item.id!, item.name)}>
+                  <Trash size={16} color={Colors.error} weight="bold" />
+                </TouchableOpacity>
               </TouchableOpacity>
             </View>
           )}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}>
-                <Cookie size={28} color={Colors.accent} weight="duotone" />
+              <View style={styles.emptyIconBox}>
+                <Basket size={32} color={Colors.textSecondary} weight="duotone" />
               </View>
-              <Text style={styles.emptyTitle}>Nothing logged yet</Text>
-              <Text style={styles.emptySubtext}>Tap + to add your first meal</Text>
+              <Text style={styles.emptyTitle}>Plate is empty</Text>
+              <Text style={styles.emptySubtext}>Your logged meals will appear here in a timeline.</Text>
             </View>
           }
         />
 
-        {/* ── FAB MENU ── */}
+        {/* ── BOTTOM NAV BAR ── */}
+        <View style={styles.bottomBar}>
+          <View style={styles.bottomBarInner}>
+            <TouchableOpacity style={styles.navItem}>
+              <House size={24} color={Colors.accent} weight="fill" />
+              <Text style={[styles.navLabel, { color: Colors.accent }]}>Home</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/stats")}>
+              <ChartBar size={24} color={Colors.textSecondary} />
+              <Text style={styles.navLabel}>Stats</Text>
+            </TouchableOpacity>
+
+            {/* Spacer for FAB */}
+            <View style={{ width: 64 }} />
+
+            <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/cookbook")}>
+              <BookOpen size={24} color={Colors.textSecondary} />
+              <Text style={styles.navLabel}>Cookbook</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/profile")}>
+              <Gear size={24} color={Colors.textSecondary} />
+              <Text style={styles.navLabel}>Settings</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── FAB BACKDROP (covers screen but NOT menu) ── */}
         {menuOpen && (
-          <TouchableOpacity
-            style={styles.menuBackdrop}
-            onPress={() => setMenuOpen(false)}
-            activeOpacity={1}
-          />
+          <TouchableOpacity style={styles.fabBackdrop} onPress={() => setMenuOpen(false)} activeOpacity={1} />
         )}
+
+        {/* ── FAB POPUP MENU (highest z) ── */}
         <View style={styles.menuContainer} pointerEvents="box-none">
           {menuItems.map((item, i) => (
             <Animated.View
               key={item.label}
               style={{
-                opacity:   menuAnims[i].opacity,
-                transform: [
-                  { translateY: menuAnims[i].translateY },
-                  { scale:      menuAnims[i].scale },
-                ],
+                opacity: menuAnims[i].opacity,
+                transform: [{ translateY: menuAnims[i].translateY }, { scale: menuAnims[i].scale }],
               }}
               pointerEvents={menuOpen ? "auto" : "none"}
             >
-              <View style={styles.menuItem}>
-                <View style={styles.menuLabel}>
-                  <Text style={styles.menuLabelText}>{item.label}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.menuButton}
-                  onPress={() => { setMenuOpen(false); router.push(item.route as any); }}
-                >
-                  {item.icon}
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity style={styles.menuItemBtn} onPress={() => { setMenuOpen(false); router.push(item.route as any); }}>
+                <View style={styles.menuIconBg}>{item.icon}</View>
+                <Text style={styles.menuItemText}>{item.label}</Text>
+              </TouchableOpacity>
             </Animated.View>
           ))}
         </View>
 
-        {/* ── MAIN FAB (Rounded Square) ── */}
-        <Animated.View style={[styles.fab, { transform: [{ scale: fabScale }] }]}>
+        {/* ── CENTER FAB BUTTON ── */}
+        <Animated.View style={[styles.fabFixed, { transform: [{ scale: fabScale }] }]}>
           <TouchableOpacity
-            style={[
-              styles.fabInner,
-              menuOpen
-                ? { backgroundColor: Colors.secondary, borderWidth: 1, borderColor: Colors.border }
-                : { backgroundColor: Colors.accent },
-            ]}
+            style={[styles.mainFab, menuOpen && styles.mainFabActive]}
             onPress={handleFabPress}
             activeOpacity={1}
           >
-            <Animated.View style={{
-              transform: [{
-                rotate: fabRotate.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "45deg"] }),
-              }],
-            }}>
-              <Plus
-                size={28}
-                color={menuOpen ? Colors.text : Colors.textOnAccent}
-                weight="bold"
-              />
+            <Animated.View style={{ transform: [{ rotate: fabRotate.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "135deg"] }) }] }}>
+              <Plus size={28} color={menuOpen ? Colors.accent : "#000"} weight="bold" />
             </Animated.View>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* ── EDIT GOAL MODAL ── */}
-        <Modal visible={editGoalModal} transparent animationType="fade">
+        {/* ── DELETE CONFIRMATION MODAL ── */}
+        <Modal visible={deleteModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalAccentBar} />
-              <View style={styles.modalBody}>
-                <Text style={styles.modalTitle}>Daily Goal</Text>
-                <Text style={styles.modalSubtitle}>Set your calorie target</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  keyboardType="numeric"
-                  value={newGoalInput}
-                  onChangeText={(t) => setNewGoalInput(t.replace(/[^0-9]/g, ""))}
-                  autoFocus
-                />
-                <Text style={styles.modalInputUnit}>kcal / day</Text>
-                <View style={styles.modalBtnRow}>
-                  <TouchableOpacity style={styles.btnCancel} onPress={() => setEditGoalModal(false)}>
-                    <Text style={styles.btnCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.btnSave} onPress={handleSaveGoal}>
-                    <Text style={styles.btnSaveText}>Save</Text>
-                  </TouchableOpacity>
-                </View>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => { setDeleteModal(false); setDeletingLog(null); }} />
+            <View style={styles.glassModal}>
+              <View style={styles.modalDrag} />
+              <View style={styles.deleteModalIcon}>
+                <Trash size={32} color={Colors.error} weight="fill" />
+              </View>
+              <Text style={styles.modalTitle}>Remove Entry</Text>
+              <Text style={styles.modalSubtitle}>Are you sure you want to remove "{deletingLog?.name}"?</Text>
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity style={styles.btnCancel} onPress={() => { setDeleteModal(false); setDeletingLog(null); }}>
+                  <Text style={styles.btnCancelText}>Keep it</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnDelete} onPress={confirmDeleteLog}>
+                  <Trash size={18} color={Colors.white} weight="bold" />
+                  <Text style={styles.btnDeleteText}>Remove</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
         </Modal>
 
-        {/* ── EDIT LOG MODAL ── */}
+        {/* ── MODALS (Adapted to match glass-modal look) ── */}
+        <Modal visible={editGoalModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setEditGoalModal(false)} />
+            <View style={styles.glassModal}>
+              <View style={styles.modalDrag} />
+              <Text style={styles.modalTitle}>Set Daily Goal</Text>
+              <Text style={styles.modalSubtitle}>Adjust your calorie target for the day</Text>
+              
+              <View style={styles.modalInputWrap}>
+                <TextInput
+                  style={styles.modalInputBig}
+                  keyboardType="numeric"
+                  value={newGoalInput}
+                  onChangeText={(t) => setNewGoalInput(t.replace(/[^0-9]/g, ""))}
+                  autoFocus
+                />
+                <View style={styles.modalInputDivider}>
+                  <View style={styles.modalInputDividerActive} />
+                </View>
+                <Text style={styles.modalInputUnit}>KCAL</Text>
+              </View>
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity style={styles.btnCancel} onPress={() => setEditGoalModal(false)}>
+                  <Text style={styles.btnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnSave} onPress={handleSaveGoal}>
+                  <Text style={styles.btnSaveText}>Update Target</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         <Modal visible={editLogModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalAccentBar} />
-              <View style={styles.modalBody}>
-                <Text style={styles.modalTitle}>Edit Portion</Text>
-                <Text style={styles.modalSubtitle} numberOfLines={1}>{editingLog?.name}</Text>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setEditLogModal(false)} />
+            <View style={styles.glassModal}>
+              <View style={styles.modalDrag} />
+              <Text style={styles.modalTitle}>Edit Portion</Text>
+              <Text style={styles.modalAccentSubtitle} numberOfLines={1}>{editingLog?.name}</Text>
+              
+              <View style={styles.editInputWrapper}>
                 <TextInput
-                  style={styles.modalInput}
+                  style={styles.editInputBox}
                   keyboardType="numeric"
                   value={editWeightInput}
                   onChangeText={(t) => setEditWeightInput(t.replace(/[^0-9.]/g, ""))}
                   autoFocus
                   selectTextOnFocus
                 />
-                <View style={styles.unitGrid}>
-                  {["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"].map((u) => (
-                    <TouchableOpacity
-                      key={u}
-                      onPress={() => setEditUnit(u as any)}
-                      style={[styles.unitPill, editUnit === u && styles.unitPillActive]}
-                    >
-                      <Text style={[styles.unitPillText, editUnit === u && styles.unitPillTextActive]}>
-                        {u}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View style={styles.modalBtnRow}>
-                  <TouchableOpacity style={styles.btnCancel} onPress={() => setEditLogModal(false)}>
-                    <Text style={styles.btnCancelText}>Cancel</Text>
+              </View>
+
+              <View style={styles.unitGrid}>
+                {["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"].map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    onPress={() => setEditUnit(u as any)}
+                    style={[styles.unitPill, editUnit === u && styles.unitPillActive]}
+                  >
+                    <Text style={[styles.unitPillText, editUnit === u && styles.unitPillTextActive]}>{u}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.btnSave} onPress={handleSaveLogEdit}>
-                    <Text style={styles.btnSaveText}>Update</Text>
-                  </TouchableOpacity>
-                </View>
+                ))}
+              </View>
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity style={styles.btnCancel} onPress={() => setEditLogModal(false)}>
+                  <Text style={styles.btnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnSave} onPress={handleSaveLogEdit}>
+                  <Text style={styles.btnSaveText}>Save Changes</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -593,410 +702,232 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.primary },
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    maxWidth: 520,
+    paddingHorizontal: 20,
+    maxWidth: 480,
     alignSelf: "center",
     width: "100%",
   },
+  
+
 
   // ── HEADER ──
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingTop: 32,
     paddingBottom: 16,
-    marginBottom: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
+    zIndex: 10,
   },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.secondary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerLabel: {
-    color: Colors.accent,
-    fontSize: 9,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 2,
-    marginBottom: 2,
-  },
-  headerDate: {
-    color: Colors.text,
-    fontSize: 17,
-    fontWeight: "900",
-    letterSpacing: -0.4,
-  },
-  // ── HERO SUMMARY CARD ──
-  summaryCard: {
-    backgroundColor: Colors.secondary,
-    borderRadius: 28,
-    padding: 22,
-    marginTop: 18,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: "hidden",
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
+  avatarWrapper: {
+    width: 48, height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.surface,
+    borderWidth: 2, borderColor: Colors.surface,
+    alignItems: "center", justifyContent: "center",
     position: "relative",
   },
-  summaryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  avatarDot: {
+    position: "absolute", bottom: -2, right: -2,
+    width: 14, height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.accent,
+    borderWidth: 2, borderColor: Colors.secondary,
   },
-  summaryLeft: { flex: 1, justifyContent: "center" },
-  summarySmallLabel: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1.6,
-  },
-  summaryBigValue: {
-    color: Colors.text,
-    fontSize: 40,
-    fontWeight: "900",
-    letterSpacing: -1.5,
-  },
-  summaryGoalValue: {
-    color: Colors.textSecondary,
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.5,
-  },
-  summaryUnit: {
+  headerGreeting: {
     color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: "600",
-  },
-  summaryRingWrap: { marginRight: -6 },
-
-  // ── MACRO BENTO CARDS ──
-  macrosRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 22,
-  },
-  macroCard: {
-    flex: 1,
-    backgroundColor: Colors.secondary,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: "hidden",
-    position: "relative",
-  },
-  macroProgressBg: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    backgroundColor: Colors.border,
-  },
-  macroProgressFill: {
-    height: "100%",
-  },
-  macroCardBody: {
-    padding: 12,
-    paddingTop: 14,
-  },
-  macroCardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  macroCardLabel: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  macroDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    opacity: 0.85,
-  },
-  macroCardValue: {
-    color: Colors.text,
-    fontSize: 17,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  macroCardGoal: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: "400",
-  },
-
-  // ── SECTION HEADER ──
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-  },
-  sectionBadge: {
-    backgroundColor: Colors.secondary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  sectionBadgeText: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-
-  // ── LOG ITEMS ──
-  logItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 22,
-    padding: 8,
-    paddingRight: 10,
-    marginBottom: 10,
-  },
-  logItemIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: Colors.secondary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  logItemContent: {
-    flex: 1,
-    marginRight: 8,
-  },
-  foodName: {
-    color: Colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-    letterSpacing: -0.1,
-    marginBottom: 3,
-  },
-  foodMacros: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "500",
-    letterSpacing: 0.1,
-  },
-  caloriesPill: {
-    backgroundColor: Colors.primary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    alignItems: "center",
-    marginRight: 8,
-  },
-  caloriesPillValue: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: -0.3,
-  },
-  caloriesPillUnit: {
-    color: Colors.textSecondary,
-    fontSize: 9,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  deleteButton: {
-    padding: 8,
-    borderRadius: 10,
-  },
-
-  // ── EMPTY STATE ──
-  emptyState: { alignItems: "center", paddingTop: 48, paddingBottom: 32 },
-  emptyIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.secondary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  emptyTitle: { color: Colors.text, fontSize: 16, fontWeight: "700", marginBottom: 5 },
-  emptySubtext: { color: Colors.textSecondary, fontSize: 13, textAlign: "center" },
-
-  // ── FAB ──
-  menuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    zIndex: 9,
-  },
-  menuContainer: {
-    position: "absolute",
-    bottom: 100,
-    right: 18,
-    alignItems: "flex-end",
-    gap: 12,
-    zIndex: 10,
-  },
-  menuItem: { flexDirection: "row", alignItems: "center", gap: 12 },
-  menuLabel: {
-    backgroundColor: "rgba(28,25,23,0.92)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  menuLabelText: { color: Colors.text, fontWeight: "600", fontSize: 13 },
-  menuButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
-    backgroundColor: Colors.secondary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fab: {
-    position: "absolute",
-    bottom: 28,
-    right: 18,
-    width: 62,
-    height: 62,
-    borderRadius: 22,
-    zIndex: 10,
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    elevation: 12,
-  },
-  fabInner: {
-    width: 62,
-    height: 62,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // ── MODALS ──
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.85)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalCard: {
-    width: "85%",
-    maxWidth: 340,
-    backgroundColor: Colors.secondary,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: "hidden",
-  },
-  modalAccentBar: { height: 3, backgroundColor: Colors.accent },
-  modalBody: { padding: 24, alignItems: "center" },
-  modalTitle: {
-    color: Colors.text,
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 4,
-    letterSpacing: -0.2,
-  },
-  modalSubtitle: {
-    color: Colors.textSecondary,
-    fontSize: 13,
-    marginBottom: 18,
-    textAlign: "center",
-  },
-  modalInput: {
-    backgroundColor: Colors.inputBg,
-    color: Colors.accent,
-    fontSize: 38,
-    fontWeight: "900",
-    padding: 14,
-    borderRadius: 14,
-    textAlign: "center",
-    minWidth: 140,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    letterSpacing: -1,
-  },
-  modalInputUnit: {
-    color: Colors.textSecondary,
-    fontSize: 10,
     textTransform: "uppercase",
     letterSpacing: 1,
-    marginTop: 8,
-    marginBottom: 18,
+    marginBottom: 2,
   },
-  unitGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    justifyContent: "center",
-    marginTop: 14,
-    marginBottom: 18,
+  headerTitle: {
+    color: Colors.text,
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.5,
   },
-  unitPill: {
-    backgroundColor: Colors.inputBg,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  fireBtn: {
+    width: 40, height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.surface,
+    borderWidth: 1, borderColor: Colors.borderLight,
+    alignItems: "center", justifyContent: "center",
+    position: "relative",
   },
-  unitPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  unitPillText: { color: Colors.textSecondary, fontSize: 12, fontWeight: "600" },
-  unitPillTextActive: { color: Colors.textOnAccent },
-  modalBtnRow: { flexDirection: "row", gap: 10, width: "100%" },
-  btnSave: {
+  fireBadge: {
+    position: "absolute", top: -4, right: -4,
     backgroundColor: Colors.accent,
-    padding: 14,
-    borderRadius: 12,
-    flex: 1,
-    alignItems: "center",
+    width: 16, height: 16,
+    borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: Colors.accent, shadowOffset: { width:0, height:0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 4,
   },
-  btnSaveText: { color: Colors.textOnAccent, fontWeight: "700" },
-  btnCancel: {
-    backgroundColor: Colors.inputBg,
-    padding: 14,
-    borderRadius: 12,
-    flex: 1,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
+  fireBadgeText: { color: "#000", fontSize: 10, fontWeight: "900" },
+
+  // ── PREMIUM HERO CARD ──
+  heroCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 32,
+    padding: 24,
+    borderWidth: 1, borderColor: Colors.borderLight,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.6, shadowRadius: 30, elevation: 15,
+    marginTop: 16, marginBottom: 20,
+    position: "relative", overflow: "hidden",
   },
-  btnCancelText: { color: Colors.text, fontWeight: "700" },
+  datePill: {
+    position: "absolute", top: 16, left: 16,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.05)",
+    flexDirection: "row", alignItems: "center", gap: 6,
+  },
+  datePillText: { color: Colors.text, fontSize: 12, fontWeight: "600", letterSpacing: 0.5 },
+  heroContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 28 },
+  heroLeft: { flex: 1, justifyContent: "center" },
+  heroSmallLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 2 },
+  heroBigValue: { color: Colors.text, fontSize: 44, fontWeight: "900", letterSpacing: -2 },
+  heroUnit: { color: Colors.textSecondary, fontSize: 14, fontWeight: "600" },
+  goalButtonGroup: { width: '100%' },
+  goalValueRow: { borderBottomWidth: 1, borderStyle: "dashed", borderBottomColor: Colors.border, paddingBottom: 2, flexDirection: "row", alignItems: "baseline", gap: 4, alignSelf: "flex-start", marginTop: 2 },
+  goalValueText: { color: Colors.text, fontSize: 20, fontWeight: "800", letterSpacing: -0.5 },
+  goalUnitText: { color: Colors.textSecondary, fontSize: 13, fontWeight: "600" },
+  
+  heroRight: { width: 130, height: 130, alignItems: "center", justifyContent: "center", position: "relative" },
+  progressRingWrapper: { alignItems: "center", justifyContent: "center" },
+  ringInner: { position: "absolute", alignItems: "center", justifyContent: "center" },
+
+  ringValue: { fontSize: 24, fontWeight: "900", letterSpacing: -1 },
+  ringLabel: { fontSize: 10, fontWeight: "800", color: Colors.textSecondary, textTransform: "uppercase", letterSpacing: 2, marginTop: 2 },
+
+  // ── MACRO BENTO GRID ──
+  bentoGrid: { flexDirection: "row", gap: 12, marginBottom: 24 },
+  bentoCard: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1, borderColor: Colors.borderLight,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
+    height: 128, justifyContent: "space-between",
+    position: "relative", overflow: "hidden",
+  },
+  bentoGlow: {
+    position: "absolute", top: -20, right: -20,
+    width: 64, height: 64,
+    borderRadius: 32, opacity: 0.15,
+  },
+  bentoTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", zIndex: 2 },
+  macroIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  bentoLabel: { fontSize: 10, fontWeight: "800", textTransform: "uppercase", color: Colors.textSecondary, letterSpacing: 1 },
+  bentoBottom: { zIndex: 2 },
+  bentoValueRow: { flexDirection: "row", alignItems: "baseline", gap: 2, marginBottom: 8 },
+  bentoValue: { fontSize: 20, fontWeight: "800", color: Colors.text, letterSpacing: -0.5 },
+  bentoGoal: { fontSize: 12, color: Colors.textSecondary, fontWeight: "500" },
+  bentoTrack: { height: 6, backgroundColor: Colors.secondary, borderRadius: 3, overflow: "hidden" },
+  bentoFill: { height: "100%", borderRadius: 3 },
+
+  // ── TIMELINE ──
+  timelineHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
+  timelineTitle: { color: Colors.text, fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
+  itemCountBadge: { backgroundColor: Colors.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: Colors.borderLight },
+  itemCountText: { color: Colors.textSecondary, fontSize: 12, fontWeight: "700" },
+
+  timelineItemRow: { flexDirection: "row", width: "100%", marginBottom: 16 },
+  timelineColumn: { width: 56, alignItems: "center", paddingTop: 8, position: "relative" },
+  timelineTime: { fontSize: 10, fontWeight: "800", color: Colors.textSecondary, marginBottom: 8 },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.accent, borderWidth: 2, borderColor: Colors.surface, shadowColor: Colors.accent, shadowOffset: {width:0,height:0}, shadowOpacity: 0.6, shadowRadius: 8, elevation: 4 },
+  timelineLine: { position: "absolute", top: 40, bottom: -20, left: "50%", width: 2, marginLeft: -1, backgroundColor: Colors.border },
+  
+  logCard: {
+    flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.borderLight, borderRadius: 24,
+    padding: 14, paddingRight: 16, flexDirection: "row", alignItems: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 6,
+    position: "relative",
+  },
+  logIconBox: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", marginRight: 12 },
+  logContent: { flex: 1, marginRight: 12 },
+  logName: { color: Colors.text, fontSize: 15, fontWeight: "800", letterSpacing: -0.2, marginBottom: 4 },
+  logSubRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  servingBadge: { backgroundColor: Colors.secondary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  servingText: { color: Colors.textSecondary, fontSize: 10, fontWeight: "600" },
+  logMacros: { fontSize: 10, fontWeight: "700" },
+  
+  logCaloriesCol: { alignItems: "flex-end", borderLeftWidth: 1, borderLeftColor: Colors.borderLight, paddingLeft: 16 },
+  logCalories: { fontSize: 18, fontWeight: "900", color: Colors.text, letterSpacing: -0.5, lineHeight: 20 },
+  logKcal: { fontSize: 9, fontWeight: "800", color: Colors.textSecondary, textTransform: "uppercase", letterSpacing: 2, marginTop: 4 },
+
+  deleteBtn: { padding: 8, borderRadius: 10, marginLeft: 4 },
+  
+  emptyState: { backgroundColor: Colors.surface, borderRadius: 24, padding: 32, borderWidth: 1, borderColor: Colors.border, borderStyle: "dashed", alignItems: "center", marginTop: 16 },
+  emptyIconBox: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.secondary, alignItems: "center", justifyContent: "center", marginBottom: 16 },
+  emptyTitle: { color: Colors.text, fontSize: 16, fontWeight: "800", marginBottom: 4 },
+  emptySubtext: { color: Colors.textSecondary, fontSize: 12, textAlign: "center" },
+
+  // ── BOTTOM NAV ──
+  bottomBar: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    zIndex: 30,
+  },
+  bottomBarInner: {
+    backgroundColor: "rgba(18, 18, 20, 0.95)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 28,
+    paddingHorizontal: 16,
+  },
+  navItem: { flex: 1, alignItems: "center", gap: 4 },
+  navLabel: { fontSize: 10, fontWeight: "700", color: Colors.textSecondary },
+
+  // ── FAB & MENU ──
+  fabBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 40 },
+  menuContainer: { position: "absolute", bottom: 130, alignSelf: "center", width: 200, gap: 12, zIndex: 60 },
+  menuItemBtn: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.surface, padding: 10, borderRadius: 20, borderWidth: 1, borderColor: Colors.border, elevation: 8 },
+  menuIconBg: { width: 40, height: 40, borderRadius: 14, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center", marginRight: 12 },
+  menuItemText: { color: Colors.text, fontSize: 14, fontWeight: "700", letterSpacing: 0.2 },
+  fabFixed: { position: "absolute", bottom: 48, alignSelf: "center", width: 62, height: 62, borderRadius: 31, zIndex: 50 },
+  mainFab: { width: 62, height: 62, borderRadius: 31, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center", elevation: 10, borderWidth: 4, borderColor: "rgba(18, 18, 20, 0.95)" },
+  mainFabActive: { backgroundColor: Colors.surface, borderColor: Colors.border },
+
+  // ── MODALS (Glassmorphism look) ──
+  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" },
+  glassModal: { width: "100%", maxWidth: 480, alignSelf: "center", backgroundColor: "rgba(18, 18, 20, 0.8)", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 48 },
+  modalDrag: { width: 48, height: 6, backgroundColor: "rgba(255,255,255,0.2)", borderRadius: 3, alignSelf: "center", marginBottom: 24 },
+  modalTitle: { color: Colors.text, fontSize: 24, fontWeight: "800", textAlign: "center", marginBottom: 4, letterSpacing: -0.5 },
+  modalSubtitle: { color: Colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 32 },
+  modalAccentSubtitle: { color: Colors.accent, fontSize: 14, fontWeight: "700", textAlign: "center", marginBottom: 24 },
+
+  modalInputWrap: { alignItems: "center", marginBottom: 40 },
+  modalInputBig: { color: Colors.accent, fontSize: 56, fontWeight: "900", textAlign: "center", letterSpacing: -2, width: 200, padding: 0 },
+  modalInputDivider: { height: 2, backgroundColor: Colors.border, width: "100%", maxWidth: 200, borderRadius: 1 },
+  modalInputDividerActive: { height: "100%", width: "50%", backgroundColor: Colors.accent, alignSelf: "center" },
+  modalInputUnit: { color: Colors.textSecondary, fontSize: 11, fontWeight: "800", letterSpacing: 2, marginTop: 12 },
+
+  editInputWrapper: { alignItems: "center", marginBottom: 32 },
+  editInputBox: { backgroundColor: "rgba(24,24,27,0.5)", color: Colors.text, fontSize: 36, fontWeight: "900", padding: 16, borderRadius: 24, textAlign: "center", width: 140, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
+  
+  unitGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginBottom: 32 },
+  unitPill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", backgroundColor: "rgba(24,24,27,0.5)" },
+  unitPillActive: { backgroundColor: Colors.accentGlow, borderColor: Colors.accent },
+  unitPillText: { fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1, color: Colors.textSecondary },
+  unitPillTextActive: { color: Colors.accent },
+
+  modalBtnRow: { flexDirection: "row", gap: 12 },
+  btnCancel: { flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", paddingVertical: 18, borderRadius: 20, alignItems: "center" },
+  btnCancelText: { color: Colors.text, fontSize: 16, fontWeight: "800" },
+  btnSave: { flex: 1, backgroundColor: Colors.accent, paddingVertical: 18, borderRadius: 20, alignItems: "center", shadowColor: Colors.accent, shadowOffset:{width:0,height:0}, shadowOpacity:0.4, shadowRadius:12, elevation:6 },
+  btnSaveText: { color: "#000", fontSize: 16, fontWeight: "800" },
+  
+  deleteModalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(239,68,68,0.15)", alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 16 },
+  btnDelete: { flex: 1, backgroundColor: Colors.error, paddingVertical: 18, borderRadius: 20, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, elevation: 6 },
+  btnDeleteText: { color: Colors.white, fontSize: 16, fontWeight: "800" },
 });

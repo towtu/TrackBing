@@ -14,6 +14,8 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="add" />
+      <Tabs.Screen name="cookbook" />
+      <Tabs.Screen name="stats" />
       <Tabs.Screen name="profile" />
     </Tabs>
   );

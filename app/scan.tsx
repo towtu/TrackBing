@@ -60,7 +60,7 @@ export default function ScanPage() {
       );
       const json = await response.json();
 
-      if (json.status === 1) {
+      if (json.status === 1 && json.product) {
         const p = json.product;
         const n = p.nutriments || {};
 
@@ -94,22 +94,38 @@ export default function ScanPage() {
           },
         });
       } else {
-        Alert.alert("Not Found", "We couldn't find this item.", [
-          {
-            text: "Scan Again",
-            onPress: () => {
-              setScanned(false);
-              setLoading(false);
+        if (Platform.OS === "web") {
+          const createManually = window.confirm(
+            "Product not found.\n\nOK = Scan Again  |  Cancel = Create Manually"
+          );
+          if (!createManually) {
+            router.replace("/create-food");
+          } else {
+            setScanned(false);
+            setLoading(false);
+          }
+        } else {
+          Alert.alert("Not Found", "We couldn't find this item.", [
+            {
+              text: "Scan Again",
+              onPress: () => {
+                setScanned(false);
+                setLoading(false);
+              },
             },
-          },
-          {
-            text: "Create Manually",
-            onPress: () => router.replace("/create-food"),
-          },
-        ]);
+            {
+              text: "Create Manually",
+              onPress: () => router.replace("/create-food"),
+            },
+          ]);
+        }
       }
     } catch (error) {
-      Alert.alert("Error", "Check internet connection.");
+      if (Platform.OS === "web") {
+        window.alert("Could not reach server. Check your connection.");
+      } else {
+        Alert.alert("Error", "Check internet connection.");
+      }
       setScanned(false);
       setLoading(false);
     }

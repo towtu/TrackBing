@@ -4,7 +4,6 @@ import { Keyboard, Lightning, MagnifyingGlass, X } from "phosphor-react-native";
 import React, { useState, useCallback } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -26,6 +25,8 @@ export default function ScanPage() {
 
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualCode, setManualCode] = useState("");
+  const [notFoundModalVisible, setNotFoundModalVisible] = useState(false);
+  const [notFoundMessage, setNotFoundMessage] = useState("");
 
   const isWeb = Platform.OS === "web";
 
@@ -94,39 +95,13 @@ export default function ScanPage() {
           },
         });
       } else {
-        if (Platform.OS === "web") {
-          const createManually = window.confirm(
-            "Product not found.\n\nOK = Scan Again  |  Cancel = Create Manually"
-          );
-          if (!createManually) {
-            router.replace("/create-food");
-          } else {
-            setScanned(false);
-            setLoading(false);
-          }
-        } else {
-          Alert.alert("Not Found", "We couldn't find this item.", [
-            {
-              text: "Scan Again",
-              onPress: () => {
-                setScanned(false);
-                setLoading(false);
-              },
-            },
-            {
-              text: "Create Manually",
-              onPress: () => router.replace("/create-food"),
-            },
-          ]);
-        }
+        setNotFoundMessage("We couldn't find this barcode in our database.");
+        setNotFoundModalVisible(true);
+        setLoading(false);
       }
     } catch (error) {
-      if (Platform.OS === "web") {
-        window.alert("Could not reach server. Check your connection.");
-      } else {
-        Alert.alert("Error", "Check internet connection.");
-      }
-      setScanned(false);
+      setNotFoundMessage("Could not reach server. Check your connection.");
+      setNotFoundModalVisible(true);
       setLoading(false);
     }
   };
@@ -256,6 +231,47 @@ export default function ScanPage() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={notFoundModalVisible} transparent animationType="fade">
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => {
+              setNotFoundModalVisible(false);
+              setScanned(false);
+            }}
+          />
+          <View style={styles.glassSheet}>
+            <View style={styles.sheetDrag} />
+            <View style={styles.sheetIcon}>
+              <MagnifyingGlass size={32} color={Colors.accent} weight="fill" />
+            </View>
+            <Text style={styles.sheetTitle}>Product Not Found</Text>
+            <Text style={styles.sheetSubtitle}>{notFoundMessage}</Text>
+            <View style={styles.sheetBtnRow}>
+              <TouchableOpacity
+                style={styles.btnSecondary}
+                onPress={() => {
+                  setNotFoundModalVisible(false);
+                  setScanned(false);
+                }}
+              >
+                <Text style={styles.btnSecondaryText}>Scan Again</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.btnPrimary}
+                onPress={() => {
+                  setNotFoundModalVisible(false);
+                  router.replace("/create-food");
+                }}
+              >
+                <Text style={styles.btnPrimaryText}>Create Manually</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -364,4 +380,84 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   btnText: { fontWeight: "bold" },
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  glassSheet: {
+    width: "100%",
+    maxWidth: 480,
+    alignSelf: "center",
+    backgroundColor: "rgba(18, 18, 20, 0.8)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 48,
+  },
+  sheetDrag: {
+    width: 48,
+    height: 6,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 3,
+    alignSelf: "center",
+    marginBottom: 24,
+  },
+  sheetIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.accentGlow,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    color: Colors.text,
+    fontSize: 24,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  sheetSubtitle: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  sheetBtnRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  btnSecondary: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: "center",
+  },
+  btnSecondaryText: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  btnPrimary: {
+    flex: 1,
+    backgroundColor: Colors.accent,
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: "center",
+    elevation: 6,
+  },
+  btnPrimaryText: {
+    color: Colors.textOnAccent,
+    fontSize: 16,
+    fontWeight: "800",
+  },
 });

@@ -340,11 +340,11 @@ export default function AddFoodPage() {
 
         {/* Gist suggestions preview + hint */}
         {!loading && results.length === 0 && suggestions.length > 0 && (
-          <View style={{ marginBottom: 12 }}>
+          <View style={{ marginBottom: 12, width: "100%" }}>
             {suggestions.map((item) => (
               <TouchableOpacity
                 key={item.code}
-                style={[localStyles.itemCard, { marginRight: 0, marginBottom: 8 }]}
+                style={[localStyles.itemCard, { flex: 0, alignSelf: "stretch", marginRight: 0, marginBottom: 8 }]}
                 onPress={() => {
                   setSelectedFood(item);
                   setSelectedUnit(item.default_unit === "ml" ? "ml" : "g");
@@ -354,7 +354,7 @@ export default function AddFoodPage() {
                 <View style={localStyles.iconCircle}>
                   <Text style={{ fontSize: 18 }}>🥗</Text>
                 </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flex: 1, flexShrink: 1, marginLeft: 12, minWidth: 0 }}>
                   <Text style={localStyles.itemName} numberOfLines={1}>{item.product_name}</Text>
                   <Text style={localStyles.itemSub}>
                     Generic • {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)} kcal
@@ -427,7 +427,7 @@ export default function AddFoodPage() {
                             : "📦"}
                     </Text>
                   </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flex: 1, flexShrink: 1, marginLeft: 12, minWidth: 0 }}>
                     <Text style={localStyles.itemName} numberOfLines={1}>
                       {item.product_name}
                     </Text>

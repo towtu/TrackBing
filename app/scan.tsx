@@ -16,6 +16,7 @@ import {
 import { Colors } from "@/src/styles/colors";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import { NATIVE_BARCODE_TYPES } from "@/src/constants/barcodeFormats";
+import NotFoundSheet from "@/src/components/scan/NotFoundSheet";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -242,46 +243,18 @@ export default function ScanPage() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={notFoundModalVisible} transparent animationType="fade">
-        <View style={styles.sheetOverlay}>
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => {
-              setNotFoundModalVisible(false);
-              setScanned(false);
-            }}
-          />
-          <View style={styles.glassSheet}>
-            <View style={styles.sheetDrag} />
-            <View style={styles.sheetIcon}>
-              <MagnifyingGlass size={32} color={Colors.accent} weight="fill" />
-            </View>
-            <Text style={styles.sheetTitle}>Product Not Found</Text>
-            <Text style={styles.sheetSubtitle}>{notFoundMessage}</Text>
-            <View style={styles.sheetBtnRow}>
-              <TouchableOpacity
-                style={styles.btnSecondary}
-                onPress={() => {
-                  setNotFoundModalVisible(false);
-                  setScanned(false);
-                }}
-              >
-                <Text style={styles.btnSecondaryText}>Scan Again</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.btnPrimary}
-                onPress={() => {
-                  setNotFoundModalVisible(false);
-                  router.replace("/create-food");
-                }}
-              >
-                <Text style={styles.btnPrimaryText}>Create Manually</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <NotFoundSheet
+        visible={notFoundModalVisible}
+        message={notFoundMessage}
+        onScanAgain={() => {
+          setNotFoundModalVisible(false);
+          setScanned(false);
+        }}
+        onCreateManually={() => {
+          setNotFoundModalVisible(false);
+          router.replace("/create-food");
+        }}
+      />
     </View>
   );
 }
@@ -390,84 +363,4 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   btnText: { fontWeight: "bold" },
-  sheetOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  glassSheet: {
-    width: "100%",
-    maxWidth: 480,
-    alignSelf: "center",
-    backgroundColor: "rgba(18, 18, 20, 0.8)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    paddingBottom: 48,
-  },
-  sheetDrag: {
-    width: 48,
-    height: 6,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 3,
-    alignSelf: "center",
-    marginBottom: 24,
-  },
-  sheetIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.accentGlow,
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  sheetTitle: {
-    color: Colors.text,
-    fontSize: 24,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  sheetSubtitle: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 32,
-  },
-  sheetBtnRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  btnSecondary: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    paddingVertical: 18,
-    borderRadius: 20,
-    alignItems: "center",
-  },
-  btnSecondaryText: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  btnPrimary: {
-    flex: 1,
-    backgroundColor: Colors.accent,
-    paddingVertical: 18,
-    borderRadius: 20,
-    alignItems: "center",
-    elevation: 6,
-  },
-  btnPrimaryText: {
-    color: Colors.textOnAccent,
-    fontSize: 16,
-    fontWeight: "800",
-  },
 });

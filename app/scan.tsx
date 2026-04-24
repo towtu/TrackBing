@@ -1,15 +1,12 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Keyboard, Lightning, MagnifyingGlass, X } from "phosphor-react-native";
+import { Keyboard, Lightning, X } from "phosphor-react-native";
 import React, { useState, useCallback } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
   Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -17,6 +14,7 @@ import { Colors } from "@/src/styles/colors";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import { NATIVE_BARCODE_TYPES } from "@/src/constants/barcodeFormats";
 import NotFoundSheet from "@/src/components/scan/NotFoundSheet";
+import ManualEntrySheet from "@/src/components/scan/ManualEntrySheet";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -200,48 +198,13 @@ export default function ScanPage() {
         </View>
       </View>
 
-      <Modal
+      <ManualEntrySheet
         visible={manualModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setManualModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalContent}>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                marginBottom: 20,
-              }}
-            >
-              <Text style={styles.modalTitle}>Enter Barcode</Text>
-              <TouchableOpacity onPress={() => setManualModalVisible(false)}>
-                <X size={24} color="white" />
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 4800016..."
-              placeholderTextColor="#666"
-              keyboardType="numeric"
-              value={manualCode}
-              onChangeText={setManualCode}
-              autoFocus
-            />
-            <TouchableOpacity
-              style={styles.searchBtn}
-              onPress={() => processBarcode(manualCode)}
-            >
-              <MagnifyingGlass size={20} color="black" weight="bold" />
-              <Text style={styles.searchBtnText}>Search Product</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        value={manualCode}
+        onChange={setManualCode}
+        onClose={() => setManualModalVisible(false)}
+        onSubmit={() => processBarcode(manualCode)}
+      />
 
       <NotFoundSheet
         visible={notFoundModalVisible}
@@ -318,39 +281,6 @@ const styles = StyleSheet.create({
     borderRightWidth: 4,
     borderBottomRightRadius: 20,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: "#1A1A1A",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 25,
-    paddingBottom: 50,
-  },
-  modalTitle: { color: "white", fontSize: 18, fontWeight: "bold" },
-  input: {
-    backgroundColor: "#333",
-    color: "white",
-    padding: 15,
-    borderRadius: 12,
-    fontSize: 18,
-    marginVertical: 20,
-    borderWidth: 1,
-    borderColor: "#444",
-  },
-  searchBtn: {
-    backgroundColor: Colors.accent,
-    padding: 15,
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
-  },
-  searchBtnText: { color: "black", fontWeight: "bold", fontSize: 16 },
   permissionContainer: {
     flex: 1,
     justifyContent: "center",

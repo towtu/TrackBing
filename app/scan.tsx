@@ -37,26 +37,6 @@ export default function ScanPage() {
     }, [])
   );
 
-  // On native, wait for camera permissions
-  if (!isWeb) {
-    if (!permission) return <View />;
-    if (!permission.granted) {
-      return (
-        <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText}>
-            Camera access needed to scan foods.
-          </Text>
-          <TouchableOpacity
-            onPress={requestPermission}
-            style={styles.permissionBtn}
-          >
-            <Text style={styles.btnText}>Enable Camera</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-  }
-
   const processBarcode = async (code: string) => {
     if (loading) return;
     setLoading(true);
@@ -80,7 +60,6 @@ export default function ScanPage() {
 
         const servingQty = p.serving_quantity || 100;
 
-        // ✅ NEW: Detect if the item is a liquid (like Coke)
         const isLiquid =
           p.product_quantity_unit === "ml" ||
           p.product_quantity_unit === "cl" ||
@@ -98,7 +77,7 @@ export default function ScanPage() {
             initialFat: fat,
             brand: p.brands || "Packaged Item",
             initialWeight: servingQty.toString(),
-            initialUnit: initialUnit, // ✅ Pass "ml" if it's a liquid!
+            initialUnit: initialUnit,
           },
         });
       } else {
@@ -122,6 +101,26 @@ export default function ScanPage() {
     },
     [scanned, loading]
   );
+
+  // On native, wait for camera permissions
+  if (!isWeb) {
+    if (!permission) return <View />;
+    if (!permission.granted) {
+      return (
+        <View style={styles.permissionContainer}>
+          <Text style={styles.permissionText}>
+            Camera access needed to scan foods.
+          </Text>
+          <TouchableOpacity
+            onPress={requestPermission}
+            style={styles.permissionBtn}
+          >
+            <Text style={styles.btnText}>Enable Camera</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+  }
 
   return (
     <View style={styles.container}>

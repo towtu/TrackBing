@@ -1,6 +1,5 @@
-import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Keyboard, Lightning, X } from "phosphor-react-native";
+import { Keyboard, X } from "phosphor-react-native";
 import React, { useState, useCallback } from "react";
 import {
   ActivityIndicator,
@@ -12,17 +11,14 @@ import {
 } from "react-native";
 import { Colors } from "@/src/styles/colors";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
-import { NATIVE_BARCODE_TYPES } from "@/src/constants/barcodeFormats";
+import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
 import NotFoundSheet from "@/src/components/scan/NotFoundSheet";
 import ManualEntrySheet from "@/src/components/scan/ManualEntrySheet";
 
 export default function ScanPage() {
   const router = useRouter();
-  const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [torch, setTorch] = useState(false);
-
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [notFoundModalVisible, setNotFoundModalVisible] = useState(false);
@@ -92,7 +88,7 @@ export default function ScanPage() {
     }
   };
 
-  const handleWebBarcode = useCallback(
+  const handleBarcode = useCallback(
     (data: string) => {
       if (!scanned && !loading) {
         setScanned(true);
@@ -102,49 +98,12 @@ export default function ScanPage() {
     [scanned, loading]
   );
 
-  // On native, wait for camera permissions
-  if (!isWeb) {
-    if (!permission) return <View />;
-    if (!permission.granted) {
-      return (
-        <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText}>
-            Camera access needed to scan foods.
-          </Text>
-          <TouchableOpacity
-            onPress={requestPermission}
-            style={styles.permissionBtn}
-          >
-            <Text style={styles.btnText}>Enable Camera</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-  }
-
   return (
     <View style={styles.container}>
       {isWeb ? (
-        <WebBarcodeScanner
-          onBarcodeScanned={handleWebBarcode}
-          active={!scanned}
-        />
+        <WebBarcodeScanner onBarcodeScanned={handleBarcode} active={!scanned} />
       ) : (
-        <CameraView
-          style={StyleSheet.absoluteFillObject}
-          facing="back"
-          enableTorch={torch}
-          barcodeScannerSettings={{ barcodeTypes: NATIVE_BARCODE_TYPES }}
-          onMountError={(e) => console.warn("CameraView mount error:", e)}
-          onBarcodeScanned={
-            scanned
-              ? undefined
-              : ({ data }) => {
-                  setScanned(true);
-                  processBarcode(data);
-                }
-          }
-        />
+        <AndroidBarcodeScanner onBarcodeScanned={handleBarcode} active={!scanned} />
       )}
 
       <View style={styles.overlay}>
@@ -155,29 +114,12 @@ export default function ScanPage() {
           >
             <X size={24} color="white" />
           </TouchableOpacity>
-          <View style={{ flexDirection: "row", gap: 15 }}>
-            <TouchableOpacity
-              onPress={() => setManualModalVisible(true)}
-              style={styles.iconBtn}
-            >
-              <Keyboard size={24} color="white" />
-            </TouchableOpacity>
-            {!isWeb && (
-              <TouchableOpacity
-                onPress={() => setTorch(!torch)}
-                style={[
-                  styles.iconBtn,
-                  torch && { backgroundColor: Colors.accent },
-                ]}
-              >
-                <Lightning
-                  size={24}
-                  color={torch ? "black" : "white"}
-                  weight="fill"
-                />
-              </TouchableOpacity>
-            )}
-          </View>
+          <TouchableOpacity
+            onPress={() => setManualModalVisible(true)}
+            style={styles.iconBtn}
+          >
+            <Keyboard size={24} color="white" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.scanArea}>
@@ -280,16 +222,4 @@ const styles = StyleSheet.create({
     borderRightWidth: 4,
     borderBottomRightRadius: 20,
   },
-  permissionContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  permissionText: { color: "white", marginBottom: 20 },
-  permissionBtn: {
-    backgroundColor: Colors.accent,
-    padding: 10,
-    borderRadius: 10,
-  },
-  btnText: { fontWeight: "bold" },
 });

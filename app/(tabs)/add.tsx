@@ -25,43 +25,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
+import { searchUSDA } from "@/src/lib/usda";
 import { Colors } from "@/src/styles/colors";
 
 const CUSTOM_DB_URL =
   "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";
-
-const USDA_API_KEY = process.env.EXPO_PUBLIC_USDA_API_KEY!;
-const USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
-
-async function searchUSDA(query: string): Promise<any[]> {
-  try {
-    const res = await fetch(
-      `${USDA_BASE_URL}/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=25&api_key=${USDA_API_KEY}`,
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.foods || []).map((food: any) => {
-      const nutrients = food.foodNutrients || [];
-      const get = (id: number) =>
-        nutrients.find((n: any) => n.nutrientId === id)?.value || 0;
-      return {
-        code: "usda-" + food.fdcId,
-        product_name: food.description,
-        brands: "USDA",
-        default_unit: "g",
-        nutriments: {
-          "energy-kcal_100g": get(1008) || Math.round(get(1062) / 4.184),
-          proteins_100g: get(1003),
-          carbohydrates_100g: get(1005),
-          fat_100g: get(1004),
-        },
-      };
-    });
-  } catch (e) {
-    console.warn("USDA search failed", e);
-    return [];
-  }
-}
 
 export default function AddFoodPage() {
   const router = useRouter();

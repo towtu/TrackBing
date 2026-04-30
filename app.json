@@ -11,7 +11,10 @@
     "newArchEnabled": true,
 
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "TrackBing needs camera access to scan food barcodes."
+      }
     },
 
     "android": {
@@ -21,7 +24,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.kobinggg.TrackBing"
+      "package": "com.kobinggg.TrackBing",
+      "permissions": ["CAMERA"]
     },
 
     "web": {
@@ -39,12 +43,6 @@
 
     "plugins": [
       "expo-router",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "TrackBing needs camera access to scan food barcodes."
-        }
-      ],
       [
         "expo-splash-screen",
         {

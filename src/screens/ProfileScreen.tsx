@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
   },
   activityActive: {
     borderColor: Colors.accentBlue,
-    backgroundColor: Colors.accentBlueDim,
+    backgroundColor: Colors.accentBlue + "33",
   },
 
   goalPill: {

@@ -14,11 +14,9 @@ import {
 import { supabase } from "@/src/lib/supabase";
 import { AuthStyles as styles } from "@/src/styles/auth";
 import { Colors } from "@/src/styles/colors";
-import { useRouter } from "expo-router";
+import { router } from "expo-router";
 
 export function AuthScreen() {
-  const router = useRouter();
-
   // --- STATE ---
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1); // 1=Stats, 2=Auth, 3=Verify
@@ -122,7 +120,7 @@ export function AuthScreen() {
       if (error) {
         showAlert("Login Failed", error.message);
       } else {
-        router.replace("/(tabs)");
+        router.replace("/");
       }
     } else {
       // SIGN UP -> Trigger Email
@@ -393,163 +391,124 @@ export function AuthScreen() {
   );
 
   const renderAuthForm = () => (
-    <View style={styles.formContainer}>
+    <View style={[styles.formContainer, { paddingHorizontal: 24, paddingTop: 40 }]}>
       {!isLogin && (
         <TouchableOpacity
-          style={{ position: "absolute", top: 20, left: 20, zIndex: 20 }}
+          style={{ position: "absolute", top: 20, left: 24, zIndex: 20, flexDirection: "row", alignItems: "center" }}
           onPress={() => setStep(1)}
         >
-          <Text
-            style={{ color: Colors.accent, fontWeight: "bold", fontSize: 16 }}
-          >
-            ← Back
+          <Text style={{ color: Colors.accent, fontWeight: "bold", fontSize: 24, marginRight: 4 }}>
+            ‹
+          </Text>
+          <Text style={{ color: Colors.accent, fontWeight: "600", fontSize: 16 }}>
+            Back
           </Text>
         </TouchableOpacity>
       )}
 
-      <View
-        style={{
-          alignItems: "center",
-          marginBottom: 10,
-          marginTop: -20,
-          zIndex: 10,
-        }}
-      >
-        <Image
-          source={require("../../assets/images/TrackBingLogo.png")}
-          style={{ width: 100, height: 100 }}
-          resizeMode="contain"
-        />
-      </View>
-
-      <View style={{ alignItems: "center", marginBottom: 30 }}>
-        <Text style={{ color: "white", fontSize: 26, fontWeight: "900", letterSpacing: 0.5 }}>
+      <View style={{ alignItems: "center", marginBottom: 32, marginTop: isLogin ? 20 : 10 }}>
+        <View style={{
+          width: 120, height: 120, borderRadius: 60,
+          backgroundColor: "rgba(255,255,255,0.03)",
+          alignItems: "center", justifyContent: "center",
+          marginBottom: 24,
+          borderWidth: 1, borderColor: "rgba(255,255,255,0.1)"
+        }}>
+          <Image
+            source={require("../../assets/images/TrackBingLogo.png")}
+            style={{ width: 80, height: 80 }}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={{ color: Colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.5 }}>
           {isLogin ? "Welcome Back" : "Create Account"}
         </Text>
-        <Text style={{ color: Colors.textMuted, fontSize: 14, marginTop: 6 }}>
-          {isLogin ? "Sign in to access your dashboard" : "Sign up to track your progress"}
+        <Text style={{ color: Colors.textMuted, fontSize: 14, marginTop: 8 }}>
+          {isLogin ? "Sign in to continue to your dashboard" : "Sign up to track your progress"}
         </Text>
       </View>
 
       {!isLogin && calculatedCalories > 0 && (
-        <View
-          style={{
-            backgroundColor: Colors.inputBg,
-            padding: 16,
-            borderRadius: 20,
-            marginBottom: 24,
-            alignItems: "center",
-            borderWidth: 1,
-            borderColor: Colors.border,
-            shadowColor: Colors.accent,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.1,
-            shadowRadius: 10,
-            elevation: 5,
-          }}
-        >
-          <Text
-            style={{
-              color: Colors.textMuted,
-              fontSize: 10,
-              textTransform: "uppercase",
-              letterSpacing: 1.5,
-              fontWeight: "700",
-              marginBottom: 4,
-            }}
-          >
+        <View style={{
+          backgroundColor: Colors.inputBg, padding: 20, borderRadius: 24,
+          marginBottom: 32, alignItems: "center", borderWidth: 1, borderColor: Colors.border,
+          shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12
+        }}>
+          <Text style={{ color: Colors.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: "800", marginBottom: 8 }}>
             Your Daily Target
           </Text>
-          <Text
-            style={{
-              color: Colors.accent,
-              fontSize: 34,
-              fontWeight: "900",
-              letterSpacing: -1,
-            }}
-          >
+          <Text style={{ color: Colors.accent, fontSize: 48, fontWeight: "900", letterSpacing: -1.5 }}>
             {calculatedCalories}
           </Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8 }}>
+          <Text style={{ color: Colors.textMuted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginTop: 4, fontWeight: "600" }}>
             kcal / day
           </Text>
         </View>
       )}
 
-      <View style={{ gap: 16, marginBottom: 24 }}>
-        {/* Email */}
+      <View style={{ gap: 16, marginBottom: 32 }}>
         <View style={{
-          flexDirection: "row", alignItems: "center",
-          backgroundColor: "#1A1A1A", borderWidth: 1,
-          borderColor: Colors.border, borderRadius: 16,
-          paddingHorizontal: 16,
-          height: 60,
+          flexDirection: "row", alignItems: "center", backgroundColor: Colors.inputBg,
+          borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", borderRadius: 20, overflow: "hidden"
         }}>
-          <Text style={{ fontSize: 18, opacity: 0.6, marginRight: 12 }}>✉</Text>
+          <View style={{ width: 50, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ fontSize: 20, opacity: 0.7 }}>✉</Text>
+          </View>
           <TextInput
             onChangeText={setEmail}
             value={email}
             placeholder="Email Address"
-            placeholderTextColor="#666"
+            placeholderTextColor={Colors.textMuted}
             autoCapitalize="none"
             keyboardType="email-address"
             style={{
-              flex: 1, color: "white", fontSize: 16, fontWeight: "500",
+              flex: 1, color: Colors.text, paddingVertical: 18,
+              paddingRight: 16, fontSize: 16, fontWeight: "500",
             }}
           />
         </View>
 
-        {/* Password */}
         <View style={{
-          flexDirection: "row", alignItems: "center",
-          backgroundColor: "#1A1A1A", borderWidth: 1,
-          borderColor: Colors.border, borderRadius: 16,
-          paddingHorizontal: 16,
-          height: 60,
+          flexDirection: "row", alignItems: "center", backgroundColor: Colors.inputBg,
+          borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", borderRadius: 20, overflow: "hidden"
         }}>
-          <Text style={{ fontSize: 18, opacity: 0.6, marginRight: 12 }}>🔑</Text>
+          <View style={{ width: 50, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ fontSize: 20, opacity: 0.7 }}>🔑</Text>
+          </View>
           <TextInput
             onChangeText={setPassword}
             value={password}
             secureTextEntry
             placeholder="Password"
-            placeholderTextColor="#666"
+            placeholderTextColor={Colors.textMuted}
             autoCapitalize="none"
             style={{
-              flex: 1, color: "white", fontSize: 16, fontWeight: "500",
+              flex: 1, color: Colors.text, paddingVertical: 18,
+              paddingRight: 16, fontSize: 16, fontWeight: "500",
             }}
           />
         </View>
       </View>
 
-      <View style={styles.buttonContainer}>
+      <View style={{ marginBottom: 24 }}>
         {loading ? (
-          <ActivityIndicator size="large" color={Colors.accent} />
+          <View style={{ paddingVertical: 16 }}>
+            <ActivityIndicator size="large" color={Colors.accent} />
+          </View>
         ) : (
           <TouchableOpacity 
-            style={[
-              styles.primaryBtn, 
-              { 
-                height: 56, 
-                borderRadius: 16,
-                shadowColor: Colors.accent,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 6
-              }
-            ]} 
+            style={[styles.primaryBtn, { borderRadius: 20, paddingVertical: 18, shadowColor: Colors.accent, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 }]} 
             onPress={handleAuth}
           >
-            <Text style={[styles.primaryBtnText, { fontSize: 16, fontWeight: "800", letterSpacing: 1 }]}>
-              {isLogin ? "Unlock Dashboard →" : "Create Account →"}
+            <Text style={[styles.primaryBtnText, { fontSize: 16, fontWeight: "800", letterSpacing: 0.5 }]}>
+              {isLogin ? "Sign In" : "Create Account"}
             </Text>
           </TouchableOpacity>
         )}
       </View>
 
       <TouchableOpacity
-        style={[styles.toggleContainer, { marginTop: 20 }]}
+        style={{ paddingVertical: 12, alignItems: "center" }}
         onPress={() => {
           if (isLogin) {
             setIsLogin(false);
@@ -559,9 +518,9 @@ export function AuthScreen() {
           }
         }}
       >
-        <Text style={[styles.toggleText, { fontSize: 14 }]}>
-          {isLogin ? "Don't have an account? " : "Already have an account? "}{" "}
-          <Text style={[styles.toggleTextBold, { color: Colors.accent, textDecorationLine: "underline" }]}>
+        <Text style={{ color: Colors.textMuted, fontSize: 14, fontWeight: "500" }}>
+          {isLogin ? "New to TrackBing? " : "Already have an account? "}
+          <Text style={{ color: Colors.accent, fontWeight: "800" }}>
             {isLogin ? "Sign Up" : "Log In"}
           </Text>
         </Text>

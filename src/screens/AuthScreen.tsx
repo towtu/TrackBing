@@ -14,8 +14,11 @@ import {
 import { supabase } from "@/src/lib/supabase";
 import { AuthStyles as styles } from "@/src/styles/auth";
 import { Colors } from "@/src/styles/colors";
+import { useRouter } from "expo-router";
 
 export function AuthScreen() {
+  const router = useRouter();
+
   // --- STATE ---
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1); // 1=Stats, 2=Auth, 3=Verify
@@ -116,7 +119,11 @@ export function AuthScreen() {
         email,
         password,
       });
-      if (error) showAlert("Login Failed", error.message);
+      if (error) {
+        showAlert("Login Failed", error.message);
+      } else {
+        router.replace("/(tabs)");
+      }
     } else {
       // SIGN UP -> Trigger Email
       const { data, error } = await supabase.auth.signUp({ email, password });
@@ -403,29 +410,42 @@ export function AuthScreen() {
       <View
         style={{
           alignItems: "center",
-          marginBottom: -80,
-          marginTop: -50,
+          marginBottom: 10,
+          marginTop: -20,
           zIndex: 10,
         }}
       >
         <Image
           source={require("../../assets/images/TrackBingLogo.png")}
-          style={{ width: 150, height: 150 }}
+          style={{ width: 100, height: 100 }}
           resizeMode="contain"
         />
+      </View>
+
+      <View style={{ alignItems: "center", marginBottom: 30 }}>
+        <Text style={{ color: "white", fontSize: 26, fontWeight: "900", letterSpacing: 0.5 }}>
+          {isLogin ? "Welcome Back" : "Create Account"}
+        </Text>
+        <Text style={{ color: Colors.textMuted, fontSize: 14, marginTop: 6 }}>
+          {isLogin ? "Sign in to access your dashboard" : "Sign up to track your progress"}
+        </Text>
       </View>
 
       {!isLogin && calculatedCalories > 0 && (
         <View
           style={{
             backgroundColor: Colors.inputBg,
-            padding: 18,
-            borderRadius: 16,
-            marginBottom: 20,
-            marginTop: 70,
+            padding: 16,
+            borderRadius: 20,
+            marginBottom: 24,
             alignItems: "center",
             borderWidth: 1,
             borderColor: Colors.border,
+            shadowColor: Colors.accent,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.1,
+            shadowRadius: 10,
+            elevation: 5,
           }}
         >
           <Text
@@ -435,7 +455,7 @@ export function AuthScreen() {
               textTransform: "uppercase",
               letterSpacing: 1.5,
               fontWeight: "700",
-              marginBottom: 6,
+              marginBottom: 4,
             }}
           >
             Your Daily Target
@@ -443,37 +463,38 @@ export function AuthScreen() {
           <Text
             style={{
               color: Colors.accent,
-              fontSize: 38,
+              fontSize: 34,
               fontWeight: "900",
               letterSpacing: -1,
             }}
           >
             {calculatedCalories}
           </Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, marginTop: 2 }}>
+          <Text style={{ color: Colors.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8 }}>
             kcal / day
           </Text>
         </View>
       )}
 
-      <View style={{ marginTop: isLogin ? 80 : 0, gap: 12, marginBottom: 12 }}>
+      <View style={{ gap: 16, marginBottom: 24 }}>
         {/* Email */}
         <View style={{
           flexDirection: "row", alignItems: "center",
-          backgroundColor: Colors.inputBg, borderWidth: 1,
+          backgroundColor: "#1A1A1A", borderWidth: 1,
           borderColor: Colors.border, borderRadius: 16,
+          paddingHorizontal: 16,
+          height: 60,
         }}>
-          <Text style={{ paddingLeft: 16, fontSize: 18, opacity: 0.5 }}>✉</Text>
+          <Text style={{ fontSize: 18, opacity: 0.6, marginRight: 12 }}>✉</Text>
           <TextInput
             onChangeText={setEmail}
             value={email}
-            placeholder="name@example.com"
-            placeholderTextColor={Colors.border}
+            placeholder="Email Address"
+            placeholderTextColor="#666"
             autoCapitalize="none"
             keyboardType="email-address"
             style={{
-              flex: 1, color: Colors.text, paddingVertical: 16,
-              paddingHorizontal: 12, fontSize: 15, fontWeight: "600",
+              flex: 1, color: "white", fontSize: 16, fontWeight: "500",
             }}
           />
         </View>
@@ -481,20 +502,21 @@ export function AuthScreen() {
         {/* Password */}
         <View style={{
           flexDirection: "row", alignItems: "center",
-          backgroundColor: Colors.inputBg, borderWidth: 1,
+          backgroundColor: "#1A1A1A", borderWidth: 1,
           borderColor: Colors.border, borderRadius: 16,
+          paddingHorizontal: 16,
+          height: 60,
         }}>
-          <Text style={{ paddingLeft: 16, fontSize: 18, opacity: 0.5 }}>🔑</Text>
+          <Text style={{ fontSize: 18, opacity: 0.6, marginRight: 12 }}>🔑</Text>
           <TextInput
             onChangeText={setPassword}
             value={password}
             secureTextEntry
-            placeholder="••••••••"
-            placeholderTextColor={Colors.border}
+            placeholder="Password"
+            placeholderTextColor="#666"
             autoCapitalize="none"
             style={{
-              flex: 1, color: Colors.text, paddingVertical: 16,
-              paddingHorizontal: 12, fontSize: 15, fontWeight: "600",
+              flex: 1, color: "white", fontSize: 16, fontWeight: "500",
             }}
           />
         </View>
@@ -504,8 +526,22 @@ export function AuthScreen() {
         {loading ? (
           <ActivityIndicator size="large" color={Colors.accent} />
         ) : (
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleAuth}>
-            <Text style={styles.primaryBtnText}>
+          <TouchableOpacity 
+            style={[
+              styles.primaryBtn, 
+              { 
+                height: 56, 
+                borderRadius: 16,
+                shadowColor: Colors.accent,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 6
+              }
+            ]} 
+            onPress={handleAuth}
+          >
+            <Text style={[styles.primaryBtnText, { fontSize: 16, fontWeight: "800", letterSpacing: 1 }]}>
               {isLogin ? "Unlock Dashboard →" : "Create Account →"}
             </Text>
           </TouchableOpacity>
@@ -513,7 +549,7 @@ export function AuthScreen() {
       </View>
 
       <TouchableOpacity
-        style={styles.toggleContainer}
+        style={[styles.toggleContainer, { marginTop: 20 }]}
         onPress={() => {
           if (isLogin) {
             setIsLogin(false);
@@ -523,9 +559,9 @@ export function AuthScreen() {
           }
         }}
       >
-        <Text style={styles.toggleText}>
+        <Text style={[styles.toggleText, { fontSize: 14 }]}>
           {isLogin ? "Don't have an account? " : "Already have an account? "}{" "}
-          <Text style={styles.toggleTextBold}>
+          <Text style={[styles.toggleTextBold, { color: Colors.accent, textDecorationLine: "underline" }]}>
             {isLogin ? "Sign Up" : "Log In"}
           </Text>
         </Text>

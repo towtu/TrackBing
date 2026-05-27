@@ -10,16 +10,16 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 const ExpoStorage = {
   getItem: (key: string) => {
     if (Platform.OS === "web") {
-      if (typeof localStorage === "undefined") {
-        return null;
+      if (typeof localStorage !== "undefined" && localStorage && typeof localStorage.getItem === "function") {
+        return localStorage.getItem(key);
       }
-      return localStorage.getItem(key);
+      return null;
     }
     return AsyncStorage.getItem(key);
   },
   setItem: (key: string, value: string) => {
     if (Platform.OS === "web") {
-      if (typeof localStorage !== "undefined") {
+      if (typeof localStorage !== "undefined" && localStorage && typeof localStorage.setItem === "function") {
         localStorage.setItem(key, value);
       }
     } else {
@@ -28,7 +28,7 @@ const ExpoStorage = {
   },
   removeItem: (key: string) => {
     if (Platform.OS === "web") {
-      if (typeof localStorage !== "undefined") {
+      if (typeof localStorage !== "undefined" && localStorage && typeof localStorage.removeItem === "function") {
         localStorage.removeItem(key);
       }
     } else {

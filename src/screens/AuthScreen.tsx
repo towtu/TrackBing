@@ -11,12 +11,16 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { EnvelopeSimple, LockKey } from "phosphor-react-native";
 import { supabase } from "@/src/lib/supabase";
 import { AuthStyles as styles } from "@/src/styles/auth";
 import { Colors } from "@/src/styles/colors";
 import { router } from "expo-router";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 export function AuthScreen() {
+  const { isDesktop } = useResponsive();
+
   // --- STATE ---
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1); // 1=Stats, 2=Auth, 3=Verify
@@ -169,14 +173,14 @@ export function AuthScreen() {
 
   // --- VIEWS ---
   const renderStatsForm = () => (
-    <View style={styles.formContainer}>
+    <View style={[styles.formContainer, isDesktop && styles.webStatsContainer]}>
       {/* Title */}
       <View style={{ alignItems: "center", marginBottom: 24 }}>
         <Text style={{ color: Colors.text, fontSize: 26, fontWeight: "900", letterSpacing: -0.5, marginBottom: 4 }}>
           Set Targets
         </Text>
         <Text style={{ color: Colors.textMuted, fontSize: 13 }}>
-          We'll dial in your daily numbers
+          We&apos;ll dial in your daily numbers
         </Text>
       </View>
 
@@ -224,16 +228,16 @@ export function AuthScreen() {
           <Text style={{ color: Colors.textMuted, fontSize: 9, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>
             Age
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+          <View style={styles.statValueRow}>
             <TextInput
               placeholder="25"
               keyboardType="numeric"
               value={age}
               onChangeText={setAge}
               placeholderTextColor={Colors.border}
-              style={{ flex: 1, color: Colors.text, fontSize: 28, fontWeight: "900", padding: 0 }}
+              style={styles.statValueInput}
             />
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontWeight: "700", marginBottom: 4 }}>yr</Text>
+            <Text style={styles.statUnitText}>yr</Text>
           </View>
         </View>
 
@@ -245,16 +249,16 @@ export function AuthScreen() {
           <Text style={{ color: Colors.textMuted, fontSize: 9, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>
             Weight
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+          <View style={styles.statValueRow}>
             <TextInput
               placeholder="70"
               keyboardType="numeric"
               value={weight}
               onChangeText={setWeight}
               placeholderTextColor={Colors.border}
-              style={{ flex: 1, color: Colors.text, fontSize: 28, fontWeight: "900", padding: 0 }}
+              style={styles.statValueInput}
             />
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontWeight: "700", marginBottom: 4 }}>kg</Text>
+            <Text style={styles.statUnitText}>kg</Text>
           </View>
         </View>
       </View>
@@ -267,16 +271,16 @@ export function AuthScreen() {
         <Text style={{ color: Colors.textMuted, fontSize: 9, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>
           Height
         </Text>
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+        <View style={styles.statValueRow}>
           <TextInput
             placeholder="175"
             keyboardType="numeric"
             value={height}
             onChangeText={setHeight}
             placeholderTextColor={Colors.border}
-            style={{ flex: 1, color: Colors.text, fontSize: 28, fontWeight: "900", padding: 0 }}
+            style={styles.statValueInput}
           />
-          <Text style={{ color: Colors.textMuted, fontSize: 12, fontWeight: "700", marginBottom: 4 }}>cm</Text>
+          <Text style={styles.statUnitText}>cm</Text>
         </View>
       </View>
 
@@ -287,7 +291,7 @@ export function AuthScreen() {
         </View>
         <Text style={{ color: Colors.text, fontSize: 14, fontWeight: "700" }}>Activity Level</Text>
       </View>
-      <View style={{ gap: 8, marginBottom: 20 }}>
+      <View style={[{ gap: 8, marginBottom: 20 }, isDesktop && styles.webActivityGrid]}>
         {[
           { label: "Sedentary", sub: "Office / Desk Job", val: 1.2 },
           { label: "Light Active", sub: "1–3 days / week", val: 1.375 },
@@ -299,16 +303,19 @@ export function AuthScreen() {
             <TouchableOpacity
               key={opt.val}
               onPress={() => setActivity(opt.val)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: active ? Colors.accentDim : Colors.inputBg,
-                borderWidth: 1,
-                borderColor: active ? Colors.accent : Colors.border,
-                borderRadius: 16,
-                padding: 10,
-                gap: 12,
-              }}
+              style={[
+                {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: active ? Colors.accentDim : Colors.inputBg,
+                  borderWidth: 1,
+                  borderColor: active ? Colors.accent : Colors.border,
+                  borderRadius: 16,
+                  padding: 10,
+                  gap: 12,
+                },
+                isDesktop && styles.webActivityOption,
+              ]}
             >
               <View style={{
                 width: 40, height: 40, borderRadius: 12,
@@ -354,16 +361,19 @@ export function AuthScreen() {
             <TouchableOpacity
               key={opt.val}
               onPress={() => setGoalOffset(opt.val)}
-              style={{
-                flexBasis: "47%", flexGrow: 1,
-                backgroundColor: active ? Colors.accentDim : Colors.inputBg,
-                borderWidth: 1,
-                borderColor: active ? Colors.accent : Colors.border,
-                borderRadius: 18,
-                padding: 14,
-                alignItems: "center",
-                gap: 6,
-              }}
+              style={[
+                {
+                  flexBasis: "47%", flexGrow: 1,
+                  backgroundColor: active ? Colors.accentDim : Colors.inputBg,
+                  borderWidth: 1,
+                  borderColor: active ? Colors.accent : Colors.border,
+                  borderRadius: 18,
+                  padding: 14,
+                  alignItems: "center",
+                  gap: 6,
+                },
+                isDesktop && styles.webGoalOption,
+              ]}
             >
               <Text style={{ fontSize: 22 }}>{opt.emoji}</Text>
               <Text style={{ color: active ? Colors.accent : Colors.text, fontWeight: "700", fontSize: 13 }}>
@@ -391,7 +401,7 @@ export function AuthScreen() {
   );
 
   const renderAuthForm = () => (
-    <View style={[styles.formContainer, { paddingHorizontal: 24, paddingTop: 40 }]}>
+    <View style={[styles.formContainer, styles.authFormContainer, isDesktop && styles.webAuthFormContainer]}>
       {!isLogin && (
         <TouchableOpacity
           style={{ position: "absolute", top: 20, left: 24, zIndex: 20, flexDirection: "row", alignItems: "center" }}
@@ -406,20 +416,22 @@ export function AuthScreen() {
         </TouchableOpacity>
       )}
 
-      <View style={{ alignItems: "center", marginBottom: 32, marginTop: isLogin ? 20 : 10 }}>
-        <View style={{
-          width: 120, height: 120, borderRadius: 60,
-          backgroundColor: "rgba(255,255,255,0.03)",
-          alignItems: "center", justifyContent: "center",
-          marginBottom: 24,
-          borderWidth: 1, borderColor: "rgba(255,255,255,0.1)"
-        }}>
-          <Image
-            source={require("../../assets/images/TrackBingLogo.png")}
-            style={{ width: 80, height: 80 }}
-            resizeMode="contain"
-          />
-        </View>
+      <View style={{ alignItems: "center", marginBottom: 32, marginTop: isDesktop ? 0 : isLogin ? 20 : 10 }}>
+        {!isDesktop && (
+          <View style={{
+            width: 120, height: 120, borderRadius: 60,
+            backgroundColor: "rgba(255,255,255,0.03)",
+            alignItems: "center", justifyContent: "center",
+            marginBottom: 24,
+            borderWidth: 1, borderColor: "rgba(255,255,255,0.1)"
+          }}>
+            <Image
+              source={require("../../assets/images/TrackBingLogo.png")}
+              style={{ width: 80, height: 80 }}
+              resizeMode="contain"
+            />
+          </View>
+        )}
         <Text style={{ color: Colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.5 }}>
           {isLogin ? "Welcome Back" : "Create Account"}
         </Text>
@@ -451,8 +463,8 @@ export function AuthScreen() {
           flexDirection: "row", alignItems: "center", backgroundColor: Colors.inputBg,
           borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", borderRadius: 20, overflow: "hidden"
         }}>
-          <View style={{ width: 50, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontSize: 20, opacity: 0.7 }}>✉</Text>
+          <View style={styles.authInputIcon}>
+            <EnvelopeSimple size={21} color={Colors.accent} weight="bold" />
           </View>
           <TextInput
             onChangeText={setEmail}
@@ -472,8 +484,8 @@ export function AuthScreen() {
           flexDirection: "row", alignItems: "center", backgroundColor: Colors.inputBg,
           borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", borderRadius: 20, overflow: "hidden"
         }}>
-          <View style={{ width: 50, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontSize: 20, opacity: 0.7 }}>🔑</Text>
+          <View style={styles.authInputIcon}>
+            <LockKey size={21} color={Colors.accent} weight="bold" />
           </View>
           <TextInput
             onChangeText={setPassword}
@@ -591,24 +603,54 @@ export function AuthScreen() {
     </View>
   );
 
+  const activeForm =
+    step === 3
+      ? renderVerificationForm()
+      : isLogin || step === 2
+        ? renderAuthForm()
+        : renderStatsForm();
+
+  const showWebAuthShell = isDesktop && step !== 3 && (isLogin || step === 2);
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
+        contentContainerStyle={[styles.scrollContent, isDesktop && styles.webScrollContent]}
         style={{ width: "100%" }}
       >
-        {step === 3
-          ? renderVerificationForm()
-          : isLogin || step === 2
-            ? renderAuthForm()
-            : renderStatsForm()}
+        {showWebAuthShell ? (
+          <View style={styles.webAuthShell}>
+            <View style={styles.webBrandPanel}>
+              <View style={styles.webBrandMark}>
+                <Image
+                  source={require("../../assets/images/TrackBingLogo.png")}
+                  style={styles.webBrandLogo}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.webBrandTitle}>TrackBing</Text>
+              <Text style={styles.webBrandCopy}>
+                Keep calories and macros easy to scan before you start logging.
+              </Text>
+              <View style={styles.webBrandStats}>
+                <View style={styles.webBrandStat}>
+                  <Text style={styles.webBrandStatValue}>Daily</Text>
+                  <Text style={styles.webBrandStatLabel}>Targets</Text>
+                </View>
+                <View style={styles.webBrandStat}>
+                  <Text style={styles.webBrandStatValue}>Macro</Text>
+                  <Text style={styles.webBrandStatLabel}>Tracking</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.webFormSlot}>{activeForm}</View>
+          </View>
+        ) : (
+          activeForm
+        )}
       </ScrollView>
 
       <Modal

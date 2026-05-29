@@ -31,6 +31,7 @@ import {
   Modal,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -43,8 +44,10 @@ import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary, getLocalDateStr } from "@/src/lib/dailySummary";
 import { Colors } from "@/src/styles/colors";
 import { DailyTotals, FoodLog } from "@/src/types";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 export function DashboardScreen() {
+  const { isDesktop } = useResponsive();
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [totals, setTotals] = useState<DailyTotals>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
   const [calorieGoal, setCalorieGoal] = useState(2000);
@@ -346,8 +349,8 @@ export function DashboardScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <View style={styles.contentContainer}>
+    <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
+      <View style={[styles.contentContainer, isDesktop && { maxWidth: 1200 }]}>
 
 
         {/* ── HEADER ── */}
@@ -373,223 +376,390 @@ export function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        <FlatList
-          data={logs}
-          keyExtractor={(item) => item.id || Math.random().toString()}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} tintColor={Colors.accent} />}
-          contentContainerStyle={{ paddingBottom: 160 }}
-          ListHeaderComponent={
-            <>
-              {/* ── PREMIUM HERO CARD ── */}
-              <View style={styles.heroCard}>
-                <View style={styles.datePill}>
-                  <CalendarBlank size={14} color={Colors.accent} weight="fill" />
-                  <Text style={styles.datePillText}>
-                    <Text style={{ opacity: 0.8, fontWeight: "400" }}>Today, </Text>{dateStr}
-                  </Text>
-                </View>
-
-                <View style={styles.heroContent}>
-                  <View style={styles.heroLeft}>
-                    <View style={{ marginBottom: 24 }}>
-                      <Text style={styles.heroSmallLabel}>CONSUMED</Text>
-                      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 4 }}>
-                        <Text style={styles.heroBigValue}>{Math.round(totals.calories)}</Text>
-                        <Text style={styles.heroUnit}>kcal</Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity onPress={() => { setNewGoalInput(calorieGoal.toString()); setEditGoalModal(true); }} style={styles.goalButtonGroup}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
-                        <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
-                        <PencilSimple size={12} color={Colors.accent} weight="fill" />
-                      </View>
-                      <View style={styles.goalValueRow}>
-                        <Text style={styles.goalValueText}>{calorieGoal}</Text>
-                        <Text style={styles.goalUnitText}>kcal</Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.heroRight}>
-                    <View style={styles.progressRingWrapper}>
-                      <CircularProgress
-                        value={totals.calories}
-                        radius={65}
-                        maxValue={calorieGoal}
-                        showProgressValue={false}
-                        activeStrokeColor={isOver ? Colors.error : Colors.accent}
-                        activeStrokeWidth={12}
-                        inActiveStrokeColor={Colors.border}
-                        inActiveStrokeWidth={12}
-                        inActiveStrokeOpacity={1}
-                        title={""}
-                      />
-                      <View style={styles.ringInner}>
-                        <Lightning size={24} color="#FFD700" weight="fill" />
-                        <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>
-                          {displayDiff}
-                        </Text>
-                        <Text style={styles.ringLabel}>{isOver ? "OVER" : "LEFT"}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* ── DETAILED MACRO BENTO GRID ── */}
-              <View style={styles.bentoGrid}>
-                {macros.map((m) => {
-                  const percent = getProgress(m.v, m.g);
-                  return (
-                    <View key={m.id} style={styles.bentoCard}>
-                      <View style={[styles.bentoGlow, { backgroundColor: m.c }]} />
-                      
-                      <View style={styles.bentoTop}>
-                        <View style={[styles.macroIconWrap, { backgroundColor: `${m.c}33` }]}>
-                          {m.icon}
-                        </View>
-                        <Text style={styles.bentoLabel}>{m.l}</Text>
-                      </View>
-                      
-                      <View style={styles.bentoBottom}>
-                        <View style={styles.bentoValueRow}>
-                          <Text style={styles.bentoValue}>{Math.round(m.v)}</Text>
-                          <Text style={styles.bentoGoal}>/{m.g}g</Text>
-                        </View>
-                        <View style={styles.bentoTrack}>
-                          <View style={[styles.bentoFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-
-              {/* ── TIMELINE HEADER ── */}
-              <View style={styles.timelineHeader}>
-                <Text style={styles.timelineTitle}>Today's Log</Text>
-                <View style={styles.itemCountBadge}>
-                  <Text style={styles.itemCountText}>{logs.length} items</Text>
-                </View>
-              </View>
-            </>
-          }
-          renderItem={({ item, index }) => (
-            <View style={styles.timelineItemRow}>
-              {/* Timeline Connector */}
-              <View style={styles.timelineColumn}>
-                <Text style={styles.timelineTime}>{formatTime(item.created_at)}</Text>
-                <View style={styles.timelineDot} />
-                {index !== logs.length - 1 && <View style={styles.timelineLine} />}
-              </View>
-              
-              {/* Log Card */}
-              <TouchableOpacity style={styles.logCard} onPress={() => handleEditLogStart(item)}>
-                <View style={[styles.logIconBox, { backgroundColor: `${Colors.accent}33` }]}>
-                  <BowlFood size={24} color={Colors.accent} weight="fill" />
-                </View>
-                
-                <View style={styles.logContent}>
-                  <Text style={styles.logName} numberOfLines={1}>{item.name}</Text>
-                  <View style={styles.logSubRow}>
-                    <View style={styles.servingBadge}>
-                      <Text style={styles.servingText}>{item.serving_size} {item.serving_unit || "g"}</Text>
-                    </View>
-                    <Text style={styles.logMacros}>
-                      <Text style={{ color: Colors.protein }}>P:{Math.round(item.protein)} </Text>
-                      <Text style={{ color: Colors.carbs }}>C:{Math.round(item.carbs)} </Text>
-                      <Text style={{ color: Colors.fat }}>F:{Math.round(item.fat)}</Text>
+        {isDesktop ? (
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} tintColor={Colors.accent} />}
+          >
+            <View style={{ flexDirection: "row", gap: 32, marginTop: 16 }}>
+              {/* Left Column: Stats & Goals */}
+              <View style={{ flex: 3 }}>
+                {/* ── PREMIUM HERO CARD ── */}
+                <View style={styles.heroCard}>
+                  <View style={styles.datePill}>
+                    <CalendarBlank size={14} color={Colors.accent} weight="fill" />
+                    <Text style={styles.datePillText}>
+                      <Text style={{ opacity: 0.8, fontWeight: "400" }}>Today, </Text>{dateStr}
                     </Text>
                   </View>
+
+                  <View style={styles.heroContent}>
+                    <View style={styles.heroLeft}>
+                      <View style={{ marginBottom: 24 }}>
+                        <Text style={styles.heroSmallLabel}>CONSUMED</Text>
+                        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 4 }}>
+                          <Text style={styles.heroBigValue}>{Math.round(totals.calories)}</Text>
+                          <Text style={styles.heroUnit}>kcal</Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity onPress={() => { setNewGoalInput(calorieGoal.toString()); setEditGoalModal(true); }} style={styles.goalButtonGroup}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
+                          <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
+                          <PencilSimple size={12} color={Colors.accent} weight="fill" />
+                        </View>
+                        <View style={styles.goalValueRow}>
+                          <Text style={styles.goalValueText}>{calorieGoal}</Text>
+                          <Text style={styles.goalUnitText}>kcal</Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.heroRight}>
+                      <View style={styles.progressRingWrapper}>
+                        <CircularProgress
+                          value={totals.calories}
+                          radius={65}
+                          maxValue={calorieGoal}
+                          showProgressValue={false}
+                          activeStrokeColor={isOver ? Colors.error : Colors.accent}
+                          activeStrokeWidth={12}
+                          inActiveStrokeColor={Colors.border}
+                          inActiveStrokeWidth={12}
+                          inActiveStrokeOpacity={1}
+                          title={""}
+                        />
+                        <View style={styles.ringInner}>
+                          <Lightning size={24} color="#FFD700" weight="fill" />
+                          <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>
+                            {displayDiff}
+                          </Text>
+                          <Text style={styles.ringLabel}>{isOver ? "OVER" : "LEFT"}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
                 </View>
 
-                <View style={styles.logCaloriesCol}>
-                  <Text style={styles.logCalories}>{Math.round(item.calories)}</Text>
-                  <Text style={styles.logKcal}>KCAL</Text>
+                {/* ── DETAILED MACRO BENTO GRID ── */}
+                <View style={styles.bentoGrid}>
+                  {macros.map((m) => {
+                    const percent = getProgress(m.v, m.g);
+                    return (
+                      <View key={m.id} style={styles.bentoCard}>
+                        <View style={[styles.bentoGlow, { backgroundColor: m.c }]} />
+                        
+                        <View style={styles.bentoTop}>
+                          <View style={[styles.macroIconWrap, { backgroundColor: `${m.c}33` }]}>
+                            {m.icon}
+                          </View>
+                          <Text style={styles.bentoLabel}>{m.l}</Text>
+                        </View>
+                        
+                        <View style={styles.bentoBottom}>
+                          <View style={styles.bentoValueRow}>
+                            <Text style={styles.bentoValue}>{Math.round(m.v)}</Text>
+                            <Text style={styles.bentoGoal}>/{m.g}g</Text>
+                          </View>
+                          <View style={styles.bentoTrack}>
+                            <View style={[styles.bentoFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
-
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteLog(item.id!, item.name)}>
-                  <Trash size={16} color={Colors.error} weight="bold" />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            </View>
-          )}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconBox}>
-                <Basket size={32} color={Colors.textSecondary} weight="duotone" />
               </View>
-              <Text style={styles.emptyTitle}>Plate is empty</Text>
-              <Text style={styles.emptySubtext}>Your logged meals will appear here in a timeline.</Text>
+
+              {/* Right Column: Timeline / Logs list */}
+              <View style={{ flex: 2 }}>
+                {/* ── TIMELINE HEADER ── */}
+                <View style={styles.timelineHeader}>
+                  <Text style={styles.timelineTitle}>Today&apos;s Log</Text>
+                  <View style={styles.itemCountBadge}>
+                    <Text style={styles.itemCountText}>{logs.length} items</Text>
+                  </View>
+                </View>
+
+                {logs.length > 0 ? (
+                  logs.map((item, index) => (
+                    <View key={item.id || index} style={styles.timelineItemRow}>
+                      {/* Timeline Connector */}
+                      <View style={styles.timelineColumn}>
+                        <Text style={styles.timelineTime}>{formatTime(item.created_at)}</Text>
+                        <View style={styles.timelineDot} />
+                        {index !== logs.length - 1 && <View style={styles.timelineLine} />}
+                      </View>
+                      
+                      {/* Log Card */}
+                      <TouchableOpacity style={styles.logCard} onPress={() => handleEditLogStart(item)}>
+                        <View style={[styles.logIconBox, { backgroundColor: `${Colors.accent}33` }]}>
+                          <BowlFood size={24} color={Colors.accent} weight="fill" />
+                        </View>
+                        
+                        <View style={styles.logContent}>
+                          <Text style={styles.logName} numberOfLines={2}>{item.name}</Text>
+                          <View style={styles.logSubRow}>
+                            <View style={styles.servingBadge}>
+                              <Text style={styles.servingText}>{item.serving_size} {item.serving_unit || "g"}</Text>
+                            </View>
+                            <Text style={styles.logMacros}>
+                              <Text style={{ color: Colors.protein }}>P:{Math.round(item.protein)} </Text>
+                              <Text style={{ color: Colors.carbs }}>C:{Math.round(item.carbs)} </Text>
+                              <Text style={{ color: Colors.fat }}>F:{Math.round(item.fat)}</Text>
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.logCaloriesCol}>
+                          <Text style={styles.logCalories}>{Math.round(item.calories)}</Text>
+                          <Text style={styles.logKcal}>KCAL</Text>
+                        </View>
+
+                        <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteLog(item.id!, item.name)}>
+                          <Trash size={16} color={Colors.error} weight="bold" />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyIconBox}>
+                      <Basket size={32} color={Colors.textSecondary} weight="duotone" />
+                    </View>
+                    <Text style={styles.emptyTitle}>Plate is empty</Text>
+                    <Text style={styles.emptySubtext}>Your logged meals will appear here in a timeline.</Text>
+                  </View>
+                )}
+              </View>
             </View>
-          }
-        />
+          </ScrollView>
+        ) : (
+          <FlatList
+            data={logs}
+            keyExtractor={(item) => item.id || Math.random().toString()}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} tintColor={Colors.accent} />}
+            contentContainerStyle={{ paddingBottom: 160 }}
+            ListHeaderComponent={
+              <>
+                {/* ── PREMIUM HERO CARD ── */}
+                <View style={styles.heroCard}>
+                  <View style={styles.datePill}>
+                    <CalendarBlank size={14} color={Colors.accent} weight="fill" />
+                    <Text style={styles.datePillText}>
+                      <Text style={{ opacity: 0.8, fontWeight: "400" }}>Today, </Text>{dateStr}
+                    </Text>
+                  </View>
+
+                  <View style={styles.heroContent}>
+                    <View style={styles.heroLeft}>
+                      <View style={{ marginBottom: 24 }}>
+                        <Text style={styles.heroSmallLabel}>CONSUMED</Text>
+                        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 4 }}>
+                          <Text style={styles.heroBigValue}>{Math.round(totals.calories)}</Text>
+                          <Text style={styles.heroUnit}>kcal</Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity onPress={() => { setNewGoalInput(calorieGoal.toString()); setEditGoalModal(true); }} style={styles.goalButtonGroup}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
+                          <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
+                          <PencilSimple size={12} color={Colors.accent} weight="fill" />
+                        </View>
+                        <View style={styles.goalValueRow}>
+                          <Text style={styles.goalValueText}>{calorieGoal}</Text>
+                          <Text style={styles.goalUnitText}>kcal</Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.heroRight}>
+                      <View style={styles.progressRingWrapper}>
+                        <CircularProgress
+                          value={totals.calories}
+                          radius={65}
+                          maxValue={calorieGoal}
+                          showProgressValue={false}
+                          activeStrokeColor={isOver ? Colors.error : Colors.accent}
+                          activeStrokeWidth={12}
+                          inActiveStrokeColor={Colors.border}
+                          inActiveStrokeWidth={12}
+                          inActiveStrokeOpacity={1}
+                          title={""}
+                        />
+                        <View style={styles.ringInner}>
+                          <Lightning size={24} color="#FFD700" weight="fill" />
+                          <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>
+                            {displayDiff}
+                          </Text>
+                          <Text style={styles.ringLabel}>{isOver ? "OVER" : "LEFT"}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* ── DETAILED MACRO BENTO GRID ── */}
+                <View style={styles.bentoGrid}>
+                  {macros.map((m) => {
+                    const percent = getProgress(m.v, m.g);
+                    return (
+                      <View key={m.id} style={styles.bentoCard}>
+                        <View style={[styles.bentoGlow, { backgroundColor: m.c }]} />
+                        
+                        <View style={styles.bentoTop}>
+                          <View style={[styles.macroIconWrap, { backgroundColor: `${m.c}33` }]}>
+                            {m.icon}
+                          </View>
+                          <Text style={styles.bentoLabel}>{m.l}</Text>
+                        </View>
+                        
+                        <View style={styles.bentoBottom}>
+                          <View style={styles.bentoValueRow}>
+                            <Text style={styles.bentoValue}>{Math.round(m.v)}</Text>
+                            <Text style={styles.bentoGoal}>/{m.g}g</Text>
+                          </View>
+                          <View style={styles.bentoTrack}>
+                            <View style={[styles.bentoFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                {/* ── TIMELINE HEADER ── */}
+                <View style={styles.timelineHeader}>
+                  <Text style={styles.timelineTitle}>Today&apos;s Log</Text>
+                  <View style={styles.itemCountBadge}>
+                    <Text style={styles.itemCountText}>{logs.length} items</Text>
+                  </View>
+                </View>
+              </>
+            }
+            renderItem={({ item, index }) => (
+              <View style={styles.timelineItemRow}>
+                {/* Timeline Connector */}
+                <View style={styles.timelineColumn}>
+                  <Text style={styles.timelineTime}>{formatTime(item.created_at)}</Text>
+                  <View style={styles.timelineDot} />
+                  {index !== logs.length - 1 && <View style={styles.timelineLine} />}
+                </View>
+                
+                {/* Log Card */}
+                <TouchableOpacity style={styles.logCard} onPress={() => handleEditLogStart(item)}>
+                  <View style={[styles.logIconBox, { backgroundColor: `${Colors.accent}33` }]}>
+                    <BowlFood size={24} color={Colors.accent} weight="fill" />
+                  </View>
+                  
+                  <View style={styles.logContent}>
+                    <Text style={styles.logName} numberOfLines={2}>{item.name}</Text>
+                    <View style={styles.logSubRow}>
+                      <View style={styles.servingBadge}>
+                        <Text style={styles.servingText}>{item.serving_size} {item.serving_unit || "g"}</Text>
+                      </View>
+                      <Text style={styles.logMacros}>
+                        <Text style={{ color: Colors.protein }}>P:{Math.round(item.protein)} </Text>
+                        <Text style={{ color: Colors.carbs }}>C:{Math.round(item.carbs)} </Text>
+                        <Text style={{ color: Colors.fat }}>F:{Math.round(item.fat)}</Text>
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.logCaloriesCol}>
+                    <Text style={styles.logCalories}>{Math.round(item.calories)}</Text>
+                    <Text style={styles.logKcal}>KCAL</Text>
+                  </View>
+
+                  <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteLog(item.id!, item.name)}>
+                    <Trash size={16} color={Colors.error} weight="bold" />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              </View>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconBox}>
+                  <Basket size={32} color={Colors.textSecondary} weight="duotone" />
+                </View>
+                <Text style={styles.emptyTitle}>Plate is empty</Text>
+                <Text style={styles.emptySubtext}>Your logged meals will appear here in a timeline.</Text>
+              </View>
+            }
+          />
+        )}
 
         {/* ── BOTTOM NAV BAR ── */}
-        <View style={styles.bottomBar}>
-          <View style={styles.bottomBarInner}>
-            <TouchableOpacity style={styles.navItem}>
-              <House size={24} color={Colors.accent} weight="fill" />
-              <Text style={[styles.navLabel, { color: Colors.accent }]}>Home</Text>
-            </TouchableOpacity>
+        {!isDesktop && (
+          <View style={styles.bottomBar}>
+            <View style={styles.bottomBarInner}>
+              <TouchableOpacity style={styles.navItem}>
+                <House size={24} color={Colors.accent} weight="fill" />
+                <Text style={[styles.navLabel, { color: Colors.accent }]}>Home</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/stats")}>
-              <ChartBar size={24} color={Colors.textSecondary} />
-              <Text style={styles.navLabel}>Stats</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/stats")}>
+                <ChartBar size={24} color={Colors.textSecondary} />
+                <Text style={styles.navLabel}>Stats</Text>
+              </TouchableOpacity>
 
-            {/* Spacer for FAB */}
-            <View style={{ width: 64 }} />
+              {/* Spacer for FAB */}
+              <View style={{ width: 64 }} />
 
-            <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/cookbook")}>
-              <BookOpen size={24} color={Colors.textSecondary} />
-              <Text style={styles.navLabel}>Cookbook</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/cookbook")}>
+                <BookOpen size={24} color={Colors.textSecondary} />
+                <Text style={styles.navLabel}>Cookbook</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/profile")}>
-              <Gear size={24} color={Colors.textSecondary} />
-              <Text style={styles.navLabel}>Settings</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.navItem} onPress={() => router.push("/(tabs)/profile")}>
+                <Gear size={24} color={Colors.textSecondary} />
+                <Text style={styles.navLabel}>Settings</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ── FAB BACKDROP (covers screen but NOT menu) ── */}
-        {menuOpen && (
+        {!isDesktop && menuOpen && (
           <TouchableOpacity style={styles.fabBackdrop} onPress={() => setMenuOpen(false)} activeOpacity={1} />
         )}
 
         {/* ── FAB POPUP MENU (highest z) ── */}
-        <View style={styles.menuContainer} pointerEvents="box-none">
-          {menuItems.map((item, i) => (
-            <Animated.View
-              key={item.label}
-              style={{
-                opacity: menuAnims[i].opacity,
-                transform: [{ translateY: menuAnims[i].translateY }, { scale: menuAnims[i].scale }],
-              }}
-              pointerEvents={menuOpen ? "auto" : "none"}
-            >
-              <TouchableOpacity style={styles.menuItemBtn} onPress={() => { setMenuOpen(false); router.push(item.route as any); }}>
-                <View style={styles.menuIconBg}>{item.icon}</View>
-                <Text style={styles.menuItemText}>{item.label}</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          ))}
-        </View>
+        {!isDesktop && (
+          <View style={styles.menuContainer} pointerEvents="box-none">
+            {menuItems.map((item, i) => (
+              <Animated.View
+                key={item.label}
+                style={{
+                  opacity: menuAnims[i].opacity,
+                  transform: [{ translateY: menuAnims[i].translateY }, { scale: menuAnims[i].scale }],
+                }}
+                pointerEvents={menuOpen ? "auto" : "none"}
+              >
+                <TouchableOpacity style={styles.menuItemBtn} onPress={() => { setMenuOpen(false); router.push(item.route as any); }}>
+                  <View style={styles.menuIconBg}>{item.icon}</View>
+                  <Text style={styles.menuItemText}>{item.label}</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ))}
+          </View>
+        )}
 
         {/* ── CENTER FAB BUTTON ── */}
-        <Animated.View style={[styles.fabFixed, { transform: [{ scale: fabScale }] }]}>
-          <TouchableOpacity
-            style={[styles.mainFab, menuOpen && styles.mainFabActive]}
-            onPress={handleFabPress}
-            activeOpacity={1}
-          >
-            <Animated.View style={{ transform: [{ rotate: fabRotate.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "135deg"] }) }] }}>
-              <Plus size={28} color={menuOpen ? Colors.accent : "#000"} weight="bold" />
-            </Animated.View>
-          </TouchableOpacity>
-        </Animated.View>
+        {!isDesktop && (
+          <Animated.View style={[styles.fabFixed, { transform: [{ scale: fabScale }] }]}>
+            <TouchableOpacity
+              style={[styles.mainFab, menuOpen && styles.mainFabActive]}
+              onPress={handleFabPress}
+              activeOpacity={1}
+            >
+              <Animated.View style={{ transform: [{ rotate: fabRotate.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "135deg"] }) }] }}>
+                <Plus size={28} color={menuOpen ? Colors.accent : "#000"} weight="bold" />
+              </Animated.View>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
 
         {/* ── DELETE CONFIRMATION MODAL ── */}
         <Modal visible={deleteModal} transparent animationType="fade">
@@ -601,7 +771,7 @@ export function DashboardScreen() {
                 <Trash size={32} color={Colors.error} weight="fill" />
               </View>
               <Text style={styles.modalTitle}>Remove Entry</Text>
-              <Text style={styles.modalSubtitle}>Are you sure you want to remove "{deletingLog?.name}"?</Text>
+              <Text style={styles.modalSubtitle}>Are you sure you want to remove &quot;{deletingLog?.name}&quot;?</Text>
               <View style={styles.modalBtnRow}>
                 <TouchableOpacity style={styles.btnCancel} onPress={() => { setDeleteModal(false); setDeletingLog(null); }}>
                   <Text style={styles.btnCancelText}>Keep it</Text>

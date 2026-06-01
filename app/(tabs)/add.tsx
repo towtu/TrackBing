@@ -27,6 +27,7 @@ import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import { searchUSDA } from "@/src/lib/usda";
 import { Colors } from "@/src/styles/colors";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 const CUSTOM_DB_URL =
   "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";
@@ -34,6 +35,7 @@ const CUSTOM_DB_URL =
 export default function AddFoodPage() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { isDesktop } = useResponsive();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -261,14 +263,16 @@ export default function AddFoodPage() {
       style={{ flex: 1, backgroundColor: Colors.primary }}
       edges={["top"]}
     >
-      <View style={{ padding: 18, flex: 1, maxWidth: 520, alignSelf: "center", width: "100%" }}>
+      <View style={[{ padding: 18, flex: 1, width: "100%" }, isDesktop ? { maxWidth: 1200, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }]}>
         <View style={localStyles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={localStyles.backButton}
-          >
-            <CaretLeft size={24} color={Colors.accent} weight="bold" />
-          </TouchableOpacity>
+          {!isDesktop && (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={localStyles.backButton}
+            >
+              <CaretLeft size={24} color={Colors.accent} weight="bold" />
+            </TouchableOpacity>
+          )}
           <Text style={localStyles.headerTitle}>Find Food</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
@@ -286,153 +290,286 @@ export default function AddFoodPage() {
           </View>
         </View>
 
-        <View style={localStyles.searchBox}>
-          <MagnifyingGlass size={20} color={Colors.textSecondary} style={{ marginLeft: 15 }} />
-          <TextInput
-            style={localStyles.input}
-            placeholder="Search food..."
-            placeholderTextColor={Colors.textSecondary}
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={handleSearch}
-          />
-          {query.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setQuery("")}
-              style={{ marginRight: 15 }}
-            >
-              <X size={18} color={Colors.textSecondary} weight="bold" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Gist suggestions preview + hint */}
-        {!loading && results.length === 0 && suggestions.length > 0 && (
-          <View style={{ marginBottom: 12, width: "100%" }}>
-            {suggestions.map((item) => (
-              <TouchableOpacity
-                key={item.code}
-                style={[localStyles.itemCard, { flex: 0, alignSelf: "stretch", marginRight: 0, marginBottom: 8 }]}
-                onPress={() => {
-                  setSelectedFood(item);
-                  setSelectedUnit(item.default_unit === "ml" ? "ml" : "g");
-                  setInputWeight(item.serving_quantity ? item.serving_quantity.toString() : "100");
-                }}
-              >
-                <View style={localStyles.iconCircle}>
-                  <Text style={{ fontSize: 18 }}>🥗</Text>
-                </View>
-                <View style={{ flex: 1, flexShrink: 1, marginLeft: 12, minWidth: 0 }}>
-                  <Text style={localStyles.itemName} numberOfLines={1}>{item.product_name}</Text>
-                  <Text style={localStyles.itemSub}>
-                    Generic • {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)} kcal
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-            <Text style={{ color: Colors.textSecondary, fontSize: 12, textAlign: "center", marginTop: 4, letterSpacing: 0.5 }}>
-              Press Enter to search all sources
-            </Text>
-          </View>
-        )}
-
-        {loading ? (
-          <ActivityIndicator color={Colors.accent} style={{ marginTop: 20 }} />
-        ) : (
-          <FlatList
-            data={displayList}
-            keyboardShouldPersistTaps="handled"
-            keyExtractor={(item) => item.code}
-            renderItem={({ item }) => (
-              <View style={localStyles.itemRowContainer}>
+        <View style={isDesktop ? { flexDirection: "row", flex: 1, gap: 32, marginTop: 16 } : { flex: 1 }}>
+          <View style={isDesktop ? { flex: 1.2 } : { flex: 1 }}>
+            <View style={localStyles.searchBox}>
+              <MagnifyingGlass size={20} color={Colors.textSecondary} style={{ marginLeft: 15 }} />
+              <TextInput
+                style={localStyles.input}
+                placeholder="Search food..."
+                placeholderTextColor={Colors.textSecondary}
+                value={query}
+                onChangeText={setQuery}
+                onSubmitEditing={handleSearch}
+              />
+              {query.length > 0 && (
                 <TouchableOpacity
-                  style={localStyles.itemCard}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setSelectedFood(item);
-                    if (
-                      item.default_unit &&
-                      [
-                        "g",
-                        "ml",
-                        "oz",
-                        "tsp",
-                        "tbsp",
-                        "cup",
-                        "serving",
-                      ].includes(item.default_unit)
-                    ) {
-                      setSelectedUnit(item.default_unit as any);
-
-                      if (item.serving_quantity) {
-                        setInputWeight(item.serving_quantity.toString());
-                      } else {
-                        setInputWeight(
-                          item.default_unit === "g" ||
-                            item.default_unit === "ml"
-                            ? "100"
-                            : "1",
-                        );
-                      }
-                    } else {
-                      setSelectedUnit("g");
-                      setInputWeight(
-                        item.serving_quantity
-                          ? item.serving_quantity.toString()
-                          : "100",
-                      );
-                    }
-                  }}
+                  onPress={() => setQuery("")}
+                  style={{ marginRight: 15 }}
                 >
-                  <View style={localStyles.iconCircle}>
-                    <Text style={{ fontSize: 18 }}>
-                      {item.brands === "My Food"
-                        ? "🍪"
-                        : item.brands === "Generic"
-                          ? "🥗"
-                          : item.brands === "USDA"
-                            ? "🥩"
-                            : "📦"}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, flexShrink: 1, marginLeft: 12, minWidth: 0 }}>
-                    <Text style={localStyles.itemName} numberOfLines={1}>
-                      {item.product_name}
-                    </Text>
-                    <Text style={localStyles.itemSub}>
-                      {item.brands} •{" "}
-                      {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)}{" "}
-                      kcal
-                    </Text>
-                  </View>
-                  {true && (
-                    <Plus size={20} color={Colors.accent} weight="bold" />
-                  )}
+                  <X size={18} color={Colors.textSecondary} weight="bold" />
                 </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Gist suggestions preview + hint */}
+            {!loading && results.length === 0 && suggestions.length > 0 && (
+              <View style={{ marginBottom: 12, width: "100%" }}>
+                {suggestions.map((item) => (
+                  <TouchableOpacity
+                    key={item.code}
+                    style={[localStyles.itemCard, localStyles.suggestionItemCard]}
+                    onPress={() => {
+                      setSelectedFood(item);
+                      setSelectedUnit(item.default_unit === "ml" ? "ml" : "g");
+                      setInputWeight(item.serving_quantity ? item.serving_quantity.toString() : "100");
+                    }}
+                  >
+                    <View style={localStyles.iconCircle}>
+                      <Text style={{ fontSize: 18 }}>🥗</Text>
+                    </View>
+                    <View style={{ flex: 1, flexShrink: 1, marginLeft: 12 }}>
+                      <Text style={localStyles.itemName} numberOfLines={2}>{item.product_name}</Text>
+                      <Text style={localStyles.itemSub} numberOfLines={1} ellipsizeMode="tail">
+                        Generic • {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)} kcal
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                <Text style={{ color: Colors.textSecondary, fontSize: 12, textAlign: "center", marginTop: 4, letterSpacing: 0.5 }}>
+                  Press Enter to search all sources
+                </Text>
               </View>
             )}
-            ListEmptyComponent={
-              !loading && query.length > 2 ? (
-                <View style={{ alignItems: "center", marginTop: 30 }}>
-                  <Text style={{ color: Colors.textSecondary, marginBottom: 15 }}>
-                    No results for "{query}"
-                  </Text>
+
+            {loading ? (
+              <ActivityIndicator color={Colors.accent} style={{ marginTop: 20 }} />
+            ) : (
+              <FlatList
+                data={displayList}
+                keyboardShouldPersistTaps="handled"
+                keyExtractor={(item) => item.code}
+                renderItem={({ item }) => (
+                  <View style={localStyles.itemRowContainer}>
+                    <TouchableOpacity
+                      style={[
+                        localStyles.itemCard,
+                        selectedFood?.code === item.code && isDesktop && { borderColor: Colors.accent, borderWidth: 1 }
+                      ]}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setSelectedFood(item);
+                        if (
+                          item.default_unit &&
+                          [
+                            "g",
+                            "ml",
+                            "oz",
+                            "tsp",
+                            "tbsp",
+                            "cup",
+                            "serving",
+                          ].includes(item.default_unit)
+                        ) {
+                          setSelectedUnit(item.default_unit as any);
+
+                          if (item.serving_quantity) {
+                            setInputWeight(item.serving_quantity.toString());
+                          } else {
+                            setInputWeight(
+                              item.default_unit === "g" ||
+                                item.default_unit === "ml"
+                                ? "100"
+                                : "1",
+                            );
+                          }
+                        } else {
+                          setSelectedUnit("g");
+                          setInputWeight(
+                            item.serving_quantity
+                              ? item.serving_quantity.toString()
+                              : "100",
+                          );
+                        }
+                      }}
+                    >
+                      <View style={localStyles.iconCircle}>
+                        <Text style={{ fontSize: 18 }}>
+                          {item.brands === "My Food"
+                            ? "🍪"
+                            : item.brands === "Generic"
+                              ? "🥗"
+                              : item.brands === "USDA"
+                                ? "🥩"
+                                : "📦"}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, flexShrink: 1, marginLeft: 12 }}>
+                        <Text style={localStyles.itemName} numberOfLines={2}>
+                          {item.product_name}
+                        </Text>
+                        <Text style={localStyles.itemSub} numberOfLines={1} ellipsizeMode="tail">
+                          {item.brands} •{" "}
+                          {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)}{" "}
+                          kcal
+                        </Text>
+                      </View>
+                      <View style={{ flexShrink: 0 }}>
+                        <Plus size={20} color={Colors.accent} weight="bold" />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  !loading && query.length > 2 ? (
+                    <View style={{ alignItems: "center", marginTop: 30 }}>
+                      <Text style={{ color: Colors.textSecondary, marginBottom: 15 }}>
+                        No results for &quot;{query}&quot;
+                      </Text>
+                      <TouchableOpacity
+                        style={localStyles.createBtn}
+                        onPress={() => router.push("/create-food")}
+                      >
+                        <Plus size={20} color={Colors.accent} />
+                        <Text style={{ color: Colors.text, fontWeight: "bold" }}>
+                          Create &quot;{query}&quot;
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null
+                }
+              />
+            )}
+          </View>
+
+          {isDesktop && (
+            <View style={{ flex: 1, backgroundColor: Colors.secondary, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: Colors.border, minHeight: 450 }}>
+              {selectedFood ? (
+                <View>
+                  <View style={localStyles.modalHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={localStyles.modalFoodName}>
+                        {selectedFood.product_name}
+                      </Text>
+                      <Text style={{ color: Colors.textSecondary }}>{selectedFood.brands}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedFood(null)}
+                      style={localStyles.closeBtn}
+                    >
+                      <X size={24} color="white" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={localStyles.weightSection}>
+                    <TouchableOpacity
+                      onPress={() => adjustWeight(-10)}
+                      style={localStyles.adjustBtn}
+                    >
+                      <Minus size={20} color="white" weight="bold" />
+                    </TouchableOpacity>
+
+                    <View style={localStyles.weightInputContainer}>
+                      <TextInput
+                        style={localStyles.weightInput}
+                        keyboardType="numeric"
+                        value={inputWeight}
+                        onChangeText={(t) =>
+                          setInputWeight(t.replace(/[^0-9.]/g, ""))
+                        }
+                        selectTextOnFocus
+                      />
+
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={[{ marginTop: 8 }, localStyles.unitBar]}
+                        contentContainerStyle={{ paddingHorizontal: 4 }}
+                      >
+                        {unitsToDisplay.map((u) => (
+                          <TouchableOpacity
+                            key={u}
+                            onPress={() => setSelectedUnit(u as any)}
+                            style={{
+                              paddingHorizontal: 16,
+                              paddingVertical: 10,
+                              borderBottomWidth: 2,
+                              borderBottomColor:
+                                selectedUnit === u ? Colors.accent : "transparent",
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  selectedUnit === u
+                                    ? Colors.accent
+                                    : Colors.textSecondary,
+                                fontWeight: selectedUnit === u ? "700" : "500",
+                                fontSize: 12,
+                                textTransform: "uppercase",
+                                letterSpacing: 1,
+                              }}
+                            >
+                              {u}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => adjustWeight(10)}
+                      style={localStyles.adjustBtn}
+                    >
+                      <Plus size={20} color="white" weight="bold" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={localStyles.bentoContainer}>
+                    <View style={localStyles.bentoMain}>
+                      <Text style={localStyles.bentoValue}>{macros.c}</Text>
+                      <Text style={localStyles.bentoLabel}>CALORIES</Text>
+                    </View>
+                    <View style={localStyles.bentoGrid}>
+                      <View style={localStyles.bentoSmall}>
+                        <Text style={localStyles.bentoValueSmall}>{macros.p}g</Text>
+                        <Text style={localStyles.bentoLabelSmall}>PROT</Text>
+                      </View>
+                      <View style={localStyles.bentoSmall}>
+                        <Text style={localStyles.bentoValueSmall}>
+                          {macros.cb}g
+                        </Text>
+                        <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
+                      </View>
+                      <View style={localStyles.bentoSmall}>
+                        <Text style={localStyles.bentoValueSmall}>{macros.f}g</Text>
+                        <Text style={localStyles.bentoLabelSmall}>FAT</Text>
+                      </View>
+                    </View>
+                  </View>
+
                   <TouchableOpacity
-                    style={localStyles.createBtn}
-                    onPress={() => router.push("/create-food")}
+                    style={localStyles.confirmBtn}
+                    onPress={confirmAdd}
+                    disabled={submitting}
                   >
-                    <Plus size={20} color={Colors.accent} />
-                    <Text style={{ color: Colors.text, fontWeight: "bold" }}>
-                      Create "{query}"
+                    <Text style={localStyles.confirmText}>
+                      {submitting ? "Adding..." : "Log this meal"}
                     </Text>
                   </TouchableOpacity>
                 </View>
-              ) : null
-            }
-          />
-        )}
+              ) : (
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 100 }}>
+                  <Text style={{ color: Colors.textSecondary, fontSize: 16, textAlign: "center" }}>
+                    Select a food item from the list to adjust serving size and log it to your day.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
 
-        <Modal visible={!!selectedFood} transparent animationType="fade">
+        <Modal visible={!isDesktop && !!selectedFood} transparent animationType="fade">
           <View style={localStyles.modalOverlay}>
             <View style={localStyles.modalContent}>
               <View style={localStyles.modalDragBar} />
@@ -629,12 +766,19 @@ const localStyles = RNStyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    marginRight: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 3,
+  },
+  suggestionItemCard: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: "auto",
+    alignSelf: "stretch",
+    marginRight: 0,
+    marginBottom: 8,
   },
   iconCircle: {
     width: 42,
@@ -645,6 +789,7 @@ const localStyles = RNStyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.borderLight,
+    flexShrink: 0,
   },
   itemName: {
     color: Colors.text,

@@ -26,9 +26,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import { Colors } from "@/src/styles/colors";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 export default function CookbookPage() {
   const router = useRouter();
+  const { isDesktop } = useResponsive();
 
   const [personalFoods, setPersonalFoods] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,22 +205,25 @@ export default function CookbookPage() {
       edges={["top"]}
     >
       <View
-        style={{
-          padding: 18,
-          flex: 1,
-          maxWidth: 520,
-          alignSelf: "center",
-          width: "100%",
-        }}
+        style={[
+          {
+            padding: 18,
+            flex: 1,
+            width: "100%",
+          },
+          isDesktop ? { maxWidth: 1200, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }
+        ]}
       >
         {/* ── HEADER ── */}
         <View style={localStyles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={localStyles.backButton}
-          >
-            <CaretLeft size={24} color={Colors.accent} weight="bold" />
-          </TouchableOpacity>
+          {!isDesktop && (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={localStyles.backButton}
+            >
+              <CaretLeft size={24} color={Colors.accent} weight="bold" />
+            </TouchableOpacity>
+          )}
           <Text style={localStyles.headerTitle}>My Cookbook</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
@@ -273,11 +278,14 @@ export default function CookbookPage() {
           />
         ) : (
           <FlatList
+            key={isDesktop ? "desktop" : "mobile"}
+            numColumns={isDesktop ? 2 : 1}
+            columnWrapperStyle={isDesktop ? { gap: 16 } : undefined}
             data={filteredFoods}
             keyboardShouldPersistTaps="handled"
             keyExtractor={(item) => item.code}
             renderItem={({ item }) => (
-              <View style={localStyles.itemRowContainer}>
+              <View style={[localStyles.itemRowContainer, isDesktop && { flex: 1, marginBottom: 16, marginRight: 0 }]}>
                 <TouchableOpacity
                   style={localStyles.itemCard}
                   onPress={() => {
@@ -310,8 +318,8 @@ export default function CookbookPage() {
                   <View style={localStyles.iconCircle}>
                     <Text style={{ fontSize: 18 }}>🍪</Text>
                   </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={localStyles.itemName} numberOfLines={1}>
+                  <View style={{ flex: 1, flexShrink: 1, marginLeft: 12 }}>
+                    <Text style={localStyles.itemName} numberOfLines={2}>
                       {item.product_name}
                     </Text>
                     <Text style={localStyles.itemSub}>
@@ -526,7 +534,7 @@ export default function CookbookPage() {
               </View>
               <Text style={localStyles.deleteModalTitle}>Remove Recipe</Text>
               <Text style={localStyles.deleteModalSubtitle}>
-                Are you sure you want to delete "{deletingFood?.name}" from your
+                Are you sure you want to delete &quot;{deletingFood?.name}&quot; from your
                 cookbook?
               </Text>
               <View style={localStyles.deleteModalBtnRow}>

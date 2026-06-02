@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { getLocalDateStr } from "@/src/lib/dailySummary";
 import { Colors } from "@/src/styles/colors";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 interface DayData {
   date: string;
@@ -35,6 +36,7 @@ interface DayData {
 
 export default function StatsPage() {
   const router = useRouter();
+  const { isDesktop } = useResponsive();
 
   const [weekData, setWeekData] = useState<DayData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,22 +241,25 @@ export default function StatsPage() {
     >
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{
-          padding: 18,
-          maxWidth: 520,
-          alignSelf: "center",
-          width: "100%",
-          paddingBottom: 40,
-        }}
+        contentContainerStyle={[
+          {
+            padding: 18,
+            width: "100%",
+            paddingBottom: 40,
+          },
+          isDesktop ? { maxWidth: 1200, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }
+        ]}
       >
         {/* ── HEADER ── */}
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backBtn}
-          >
-            <CaretLeft size={24} color={Colors.accent} weight="bold" />
-          </TouchableOpacity>
+          {!isDesktop && (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backBtn}
+            >
+              <CaretLeft size={24} color={Colors.accent} weight="bold" />
+            </TouchableOpacity>
+          )}
           <Text style={styles.headerTitle}>Weekly Stats</Text>
           <View style={{ width: 42 }} />
         </View>
@@ -296,126 +301,259 @@ export default function StatsPage() {
           </View>
         </View>
 
-        {/* ── WEEKLY BAR CHART ── */}
-        <View style={styles.chartCard}>
-          <View style={styles.chartHeader}>
-            <ChartBar size={18} color={Colors.accent} weight="fill" />
-            <Text style={styles.chartTitle}>Calorie Intake</Text>
-            <Text style={styles.chartSubtitle}>Last 7 days</Text>
-          </View>
+        {isDesktop ? (
+          <View style={{ flexDirection: "row", gap: 32, marginTop: 16 }}>
+            {/* Left side: Calorie Intake Chart */}
+            <View style={{ flex: 3 }}>
+              {/* ── WEEKLY BAR CHART ── */}
+              <View style={[styles.chartCard, { marginBottom: 0 }]}>
+                <View style={styles.chartHeader}>
+                  <ChartBar size={18} color={Colors.accent} weight="fill" />
+                  <Text style={styles.chartTitle}>Calorie Intake</Text>
+                  <Text style={styles.chartSubtitle}>Last 7 days</Text>
+                </View>
 
-          {/* Goal line indicator */}
-          <View style={styles.goalIndicator}>
-            <View style={styles.goalLine} />
-            <Text style={styles.goalLineText}>{calorieGoal} goal</Text>
-          </View>
+                {/* Goal line indicator */}
+                <View style={styles.goalIndicator}>
+                  <View style={styles.goalLine} />
+                  <Text style={styles.goalLineText}>{calorieGoal} goal</Text>
+                </View>
 
-          <View style={styles.barsRow}>
-            {weekData.map((day) => {
-              const barHeight = chartMax > 0 ? (day.calories / chartMax) * 140 : 0;
-              const isToday = day.date === todayStr;
-              const overGoal = day.calories > calorieGoal;
+                <View style={styles.barsRow}>
+                  {weekData.map((day) => {
+                    const barHeight = chartMax > 0 ? (day.calories / chartMax) * 140 : 0;
+                    const isToday = day.date === todayStr;
+                    const overGoal = day.calories > calorieGoal;
 
-              return (
-                <View key={day.date} style={styles.barColumn}>
-                  <Text style={styles.barValue}>
-                    {day.calories > 0 ? day.calories : ""}
+                    return (
+                      <View key={day.date} style={styles.barColumn}>
+                        <Text style={styles.barValue}>
+                          {day.calories > 0 ? day.calories : ""}
+                        </Text>
+                        <View style={styles.barTrack}>
+                          <View
+                            style={[
+                              styles.barFill,
+                              {
+                                height: Math.max(barHeight, day.calories > 0 ? 6 : 0),
+                                backgroundColor: overGoal
+                                  ? Colors.error
+                                  : isToday
+                                  ? Colors.accent
+                                  : "rgba(255, 204, 0, 0.5)",
+                              },
+                              isToday && {
+                                shadowColor: Colors.accent,
+                                shadowOffset: { width: 0, height: 0 },
+                                shadowOpacity: 0.6,
+                                shadowRadius: 8,
+                                elevation: 4,
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.barDayName,
+                            isToday && { color: Colors.accent, fontWeight: "900" },
+                          ]}
+                        >
+                          {day.dayName}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.barDateNum,
+                            isToday && { color: Colors.accent },
+                          ]}
+                        >
+                          {day.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+
+            {/* Right side: Averages & Best Day */}
+            <View style={{ flex: 2, gap: 20 }}>
+              <Text style={[styles.sectionTitle, { marginBottom: 4 }]}>Daily Averages</Text>
+              
+              <View style={styles.avgGrid}>
+                <View
+                  style={[
+                    styles.avgCard,
+                    { borderLeftColor: Colors.protein, borderLeftWidth: 3 },
+                  ]}
+                >
+                  <Text style={[styles.avgValue, { color: Colors.protein }]}>
+                    {avgProtein}g
                   </Text>
-                  <View style={styles.barTrack}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        {
-                          height: Math.max(barHeight, day.calories > 0 ? 6 : 0),
-                          backgroundColor: overGoal
-                            ? Colors.error
-                            : isToday
-                            ? Colors.accent
-                            : "rgba(255, 204, 0, 0.5)",
-                        },
-                        isToday && {
-                          shadowColor: Colors.accent,
-                          shadowOffset: { width: 0, height: 0 },
-                          shadowOpacity: 0.6,
-                          shadowRadius: 8,
-                          elevation: 4,
-                        },
-                      ]}
-                    />
+                  <Text style={styles.avgLabel}>Protein</Text>
+                </View>
+                <View
+                  style={[
+                    styles.avgCard,
+                    { borderLeftColor: Colors.carbs, borderLeftWidth: 3 },
+                  ]}
+                >
+                  <Text style={[styles.avgValue, { color: Colors.carbs }]}>
+                    {avgCarbs}g
+                  </Text>
+                  <Text style={styles.avgLabel}>Carbs</Text>
+                </View>
+                <View
+                  style={[
+                    styles.avgCard,
+                    { borderLeftColor: Colors.fat, borderLeftWidth: 3 },
+                  ]}
+                >
+                  <Text style={[styles.avgValue, { color: Colors.fat }]}>
+                    {avgFat}g
+                  </Text>
+                  <Text style={styles.avgLabel}>Fat</Text>
+                </View>
+              </View>
+
+              {maxCalDay && maxCalDay.calories > 0 && (
+                <View style={[styles.bestDayCard, { flex: 0 }]}>
+                  <View style={styles.bestDayIcon}>
+                    <Trophy size={24} color="#FFD700" weight="fill" />
                   </View>
-                  <Text
-                    style={[
-                      styles.barDayName,
-                      isToday && { color: Colors.accent, fontWeight: "900" },
-                    ]}
-                  >
-                    {day.dayName}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.barDateNum,
-                      isToday && { color: Colors.accent },
-                    ]}
-                  >
-                    {day.label}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.bestDayTitle}>Highest Intake Day</Text>
+                    <Text style={styles.bestDaySubtext}>
+                      {maxCalDay.dayName} — {maxCalDay.calories} kcal
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        ) : (
+          <>
+            {/* ── WEEKLY BAR CHART ── */}
+            <View style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <ChartBar size={18} color={Colors.accent} weight="fill" />
+                <Text style={styles.chartTitle}>Calorie Intake</Text>
+                <Text style={styles.chartSubtitle}>Last 7 days</Text>
+              </View>
+
+              {/* Goal line indicator */}
+              <View style={styles.goalIndicator}>
+                <View style={styles.goalLine} />
+                <Text style={styles.goalLineText}>{calorieGoal} goal</Text>
+              </View>
+
+              <View style={styles.barsRow}>
+                {weekData.map((day) => {
+                  const barHeight = chartMax > 0 ? (day.calories / chartMax) * 140 : 0;
+                  const isToday = day.date === todayStr;
+                  const overGoal = day.calories > calorieGoal;
+
+                  return (
+                    <View key={day.date} style={styles.barColumn}>
+                      <Text style={styles.barValue}>
+                        {day.calories > 0 ? day.calories : ""}
+                      </Text>
+                      <View style={styles.barTrack}>
+                        <View
+                          style={[
+                            styles.barFill,
+                            {
+                              height: Math.max(barHeight, day.calories > 0 ? 6 : 0),
+                              backgroundColor: overGoal
+                                ? Colors.error
+                                : isToday
+                                ? Colors.accent
+                                : "rgba(255, 204, 0, 0.5)",
+                            },
+                            isToday && {
+                              shadowColor: Colors.accent,
+                              shadowOffset: { width: 0, height: 0 },
+                              shadowOpacity: 0.6,
+                              shadowRadius: 8,
+                              elevation: 4,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.barDayName,
+                          isToday && { color: Colors.accent, fontWeight: "900" },
+                        ]}
+                      >
+                        {day.dayName}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.barDateNum,
+                          isToday && { color: Colors.accent },
+                        ]}
+                      >
+                        {day.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* ── DAILY AVERAGES ── */}
+            <Text style={styles.sectionTitle}>Daily Averages</Text>
+            <View style={styles.avgGrid}>
+              <View
+                style={[
+                  styles.avgCard,
+                  { borderLeftColor: Colors.protein, borderLeftWidth: 3 },
+                ]}
+              >
+                <Text style={[styles.avgValue, { color: Colors.protein }]}>
+                  {avgProtein}g
+                </Text>
+                <Text style={styles.avgLabel}>Protein</Text>
+              </View>
+              <View
+                style={[
+                  styles.avgCard,
+                  { borderLeftColor: Colors.carbs, borderLeftWidth: 3 },
+                ]}
+              >
+                <Text style={[styles.avgValue, { color: Colors.carbs }]}>
+                  {avgCarbs}g
+                </Text>
+                <Text style={styles.avgLabel}>Carbs</Text>
+              </View>
+              <View
+                style={[
+                  styles.avgCard,
+                  { borderLeftColor: Colors.fat, borderLeftWidth: 3 },
+                ]}
+              >
+                <Text style={[styles.avgValue, { color: Colors.fat }]}>
+                  {avgFat}g
+                </Text>
+                <Text style={styles.avgLabel}>Fat</Text>
+              </View>
+            </View>
+
+            {/* ── BEST DAY HIGHLIGHT ── */}
+            {maxCalDay && maxCalDay.calories > 0 && (
+              <View style={styles.bestDayCard}>
+                <View style={styles.bestDayIcon}>
+                  <Trophy size={24} color="#FFD700" weight="fill" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bestDayTitle}>Highest Intake Day</Text>
+                  <Text style={styles.bestDaySubtext}>
+                    {maxCalDay.dayName} — {maxCalDay.calories} kcal
                   </Text>
                 </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* ── DAILY AVERAGES ── */}
-        <Text style={styles.sectionTitle}>Daily Averages</Text>
-        <View style={styles.avgGrid}>
-          <View
-            style={[
-              styles.avgCard,
-              { borderLeftColor: Colors.protein, borderLeftWidth: 3 },
-            ]}
-          >
-            <Text style={[styles.avgValue, { color: Colors.protein }]}>
-              {avgProtein}g
-            </Text>
-            <Text style={styles.avgLabel}>Protein</Text>
-          </View>
-          <View
-            style={[
-              styles.avgCard,
-              { borderLeftColor: Colors.carbs, borderLeftWidth: 3 },
-            ]}
-          >
-            <Text style={[styles.avgValue, { color: Colors.carbs }]}>
-              {avgCarbs}g
-            </Text>
-            <Text style={styles.avgLabel}>Carbs</Text>
-          </View>
-          <View
-            style={[
-              styles.avgCard,
-              { borderLeftColor: Colors.fat, borderLeftWidth: 3 },
-            ]}
-          >
-            <Text style={[styles.avgValue, { color: Colors.fat }]}>
-              {avgFat}g
-            </Text>
-            <Text style={styles.avgLabel}>Fat</Text>
-          </View>
-        </View>
-
-        {/* ── BEST DAY HIGHLIGHT ── */}
-        {maxCalDay && maxCalDay.calories > 0 && (
-          <View style={styles.bestDayCard}>
-            <View style={styles.bestDayIcon}>
-              <Trophy size={24} color="#FFD700" weight="fill" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.bestDayTitle}>Highest Intake Day</Text>
-              <Text style={styles.bestDaySubtext}>
-                {maxCalDay.dayName} — {maxCalDay.calories} kcal
-              </Text>
-            </View>
-          </View>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>

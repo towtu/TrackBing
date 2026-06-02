@@ -25,8 +25,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
+import { useResponsive } from "@/src/hooks/useResponsive";
 
 export function ProfileScreen() {
+  const { isDesktop } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
@@ -283,293 +285,591 @@ export function ProfileScreen() {
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: Colors.primary }}
-      edges={["top", "left", "right"]}
+      edges={isDesktop ? [] : ["top", "left", "right"]}
     >
-      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 100, maxWidth: 520, alignSelf: "center", width: "100%" }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[
+          {
+            padding: 18,
+            width: "100%",
+            paddingBottom: 100,
+          },
+          isDesktop ? { maxWidth: 1200, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }
+        ]}
+      >
         {/* HEADER */}
         <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backBtn}
-          >
-            <CaretLeft size={24} color={Colors.accent} />
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity onPress={handleLogout}>
-            <SignOut size={24} color="#ef4444" />
-          </TouchableOpacity>
+          {!isDesktop ? (
+            <>
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={styles.backBtn}
+              >
+                <CaretLeft size={24} color={Colors.accent} />
+                <Text style={styles.backText}>Back</Text>
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Profile</Text>
+              <TouchableOpacity onPress={handleLogout}>
+                <SignOut size={24} color="#ef4444" />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={styles.headerTitle}>Profile Settings</Text>
+          )}
         </View>
 
-        {/* --- CARD 1: PHYSICAL STATS --- */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ruler color={Colors.accent} weight="fill" />
-            <Text style={styles.cardTitle}>Body Stats</Text>
-          </View>
+        {isDesktop ? (
+          <View style={{ flexDirection: "row", gap: 32, marginTop: 16 }}>
+            {/* Left Column: Physical Stats & Activity Level */}
+            <View style={{ flex: 1, gap: 16 }}>
+              {/* --- CARD 1: PHYSICAL STATS --- */}
+              <View style={[styles.card, { marginBottom: 0 }]}>
+                <View style={styles.cardHeader}>
+                  <Ruler color={Colors.accent} weight="fill" />
+                  <Text style={styles.cardTitle}>Body Stats</Text>
+                </View>
 
-          {/* Row 1: Weight & Target */}
-          <View style={styles.inputRow}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>CURRENT (KG)</Text>
-              <TextInput
-                value={weight}
-                onChangeText={(val) => { setWeight(val); recalculateCalories(val, height, age, gender, activity, goalOffset); }}
-                keyboardType="numeric"
-                style={styles.input}
-                placeholder="0"
-                placeholderTextColor="#A8C0D6"
-              />
-            </View>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>TARGET (KG)</Text>
-              <TextInput
-                value={targetWeight}
-                onChangeText={setTargetWeight}
-                keyboardType="numeric"
-                style={styles.input}
-                placeholder="0"
-                placeholderTextColor="#A8C0D6"
-              />
-            </View>
-          </View>
+                {/* Row 1: Weight & Target */}
+                <View style={styles.inputRow}>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>CURRENT (KG)</Text>
+                    <TextInput
+                      value={weight}
+                      onChangeText={(val) => { setWeight(val); recalculateCalories(val, height, age, gender, activity, goalOffset); }}
+                      keyboardType="numeric"
+                      style={styles.input}
+                      placeholder="0"
+                      placeholderTextColor="#A8C0D6"
+                    />
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>TARGET (KG)</Text>
+                    <TextInput
+                      value={targetWeight}
+                      onChangeText={setTargetWeight}
+                      keyboardType="numeric"
+                      style={styles.input}
+                      placeholder="0"
+                      placeholderTextColor="#A8C0D6"
+                    />
+                  </View>
+                </View>
 
-          {/* Row 2: Height & Age */}
-          <View style={styles.inputRow}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>HEIGHT (CM)</Text>
-              <TextInput
-                value={height}
-                onChangeText={(val) => { setHeight(val); recalculateCalories(weight, val, age, gender, activity, goalOffset); }}
-                keyboardType="numeric"
-                style={styles.input}
-                placeholder="0"
-                placeholderTextColor="#A8C0D6"
-              />
-            </View>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>AGE (YRS)</Text>
-              <TextInput
-                value={age}
-                onChangeText={(val) => { setAge(val); recalculateCalories(weight, height, val, gender, activity, goalOffset); }}
-                keyboardType="numeric"
-                style={styles.input}
-                placeholder="0"
-                placeholderTextColor="#A8C0D6"
-              />
-            </View>
-          </View>
+                {/* Row 2: Height & Age */}
+                <View style={styles.inputRow}>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>HEIGHT (CM)</Text>
+                    <TextInput
+                      value={height}
+                      onChangeText={(val) => { setHeight(val); recalculateCalories(weight, val, age, gender, activity, goalOffset); }}
+                      keyboardType="numeric"
+                      style={styles.input}
+                      placeholder="0"
+                      placeholderTextColor="#A8C0D6"
+                    />
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>AGE (YRS)</Text>
+                    <TextInput
+                      value={age}
+                      onChangeText={(val) => { setAge(val); recalculateCalories(weight, height, val, gender, activity, goalOffset); }}
+                      keyboardType="numeric"
+                      style={styles.input}
+                      placeholder="0"
+                      placeholderTextColor="#A8C0D6"
+                    />
+                  </View>
+                </View>
 
-          {/* Row 3: Gender */}
-          <View style={{ marginTop: 15 }}>
-            <Text style={styles.label}>GENDER</Text>
-            <View style={styles.genderRow}>
-              <TouchableOpacity
-                style={[
-                  styles.genderBtn,
-                  gender === "male" && styles.genderBtnActive,
-                ]}
-                onPress={() => { setGender("male"); recalculateCalories(weight, height, age, "male", activity, goalOffset); }}
-              >
-                <Text
-                  style={[
-                    styles.genderText,
-                    gender === "male" && { color: Colors.textOnAccent },
-                  ]}
+                {/* Row 3: Gender */}
+                <View style={{ marginTop: 15 }}>
+                  <Text style={styles.label}>GENDER</Text>
+                  <View style={styles.genderRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.genderBtn,
+                        gender === "male" && styles.genderBtnActive,
+                      ]}
+                      onPress={() => { setGender("male"); recalculateCalories(weight, height, age, "male", activity, goalOffset); }}
+                    >
+                      <Text
+                        style={[
+                          styles.genderText,
+                          gender === "male" && { color: Colors.textOnAccent },
+                        ]}
+                      >
+                        Male
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.genderBtn,
+                        gender === "female" && styles.genderBtnActive,
+                      ]}
+                      onPress={() => { setGender("female"); recalculateCalories(weight, height, age, "female", activity, goalOffset); }}
+                    >
+                      <Text
+                        style={[
+                          styles.genderText,
+                          gender === "female" && { color: Colors.textOnAccent },
+                        ]}
+                      >
+                        Female
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              {/* --- CARD 2: ACTIVITY LEVEL --- */}
+              <View style={[styles.card, { marginBottom: 0 }]}>
+                <View style={styles.cardHeader}>
+                  <Lightning color={Colors.accent} weight="fill" />
+                  <Text style={styles.cardTitle}>Activity Level</Text>
+                </View>
+                <View style={{ gap: 8 }}>
+                  {[
+                    { l: "Sedentary (Desk Job)", v: 1.2 },
+                    { l: "Light Active (1-3 days)", v: 1.375 },
+                    { l: "Moderate (3-5 days)", v: 1.55 },
+                    { l: "Very Active (6-7 days)", v: 1.725 },
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.v}
+                      style={[
+                        styles.activityOption,
+                        activity === item.v && styles.activityActive,
+                      ]}
+                      onPress={() => { setActivity(item.v); recalculateCalories(weight, height, age, gender, item.v, goalOffset); }}
+                    >
+                      <Text
+                        style={{
+                          color: activity === item.v ? Colors.accentBlue : Colors.textSecondary,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {item.l}
+                      </Text>
+                      {activity === item.v && (
+                        <CheckCircle size={16} color={Colors.accentBlue} weight="fill" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            {/* Right Column: Calculated Goal & Macros & Save Button */}
+            <View style={{ flex: 1, gap: 16 }}>
+              {/* --- CARD 3: GOAL SETTING --- */}
+              <View style={[styles.card, { marginBottom: 0 }]}>
+                <View style={styles.cardHeader}>
+                  <Target color={Colors.accent} weight="fill" />
+                  <Text style={styles.cardTitle}>Calculated Goal</Text>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginBottom: 20 }}
                 >
-                  Male
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.genderBtn,
-                  gender === "female" && styles.genderBtnActive,
-                ]}
-                onPress={() => { setGender("female"); recalculateCalories(weight, height, age, "female", activity, goalOffset); }}
-              >
-                <Text
-                  style={[
-                    styles.genderText,
-                    gender === "female" && { color: Colors.textOnAccent },
-                  ]}
-                >
-                  Female
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+                  {[
+                    { l: "-1 kg/wk", v: -1000 },
+                    { l: "-0.5 kg/wk", v: -500 },
+                    { l: "Maintain", v: 0 },
+                    { l: "+0.5 kg/wk", v: 500 },
+                    { l: "+1 kg/wk", v: 1000 },
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.v}
+                      onPress={() => { setGoalOffset(item.v); recalculateCalories(weight, height, age, gender, activity, item.v); }}
+                      style={[
+                        styles.goalPill,
+                        goalOffset === item.v
+                          ? { backgroundColor: Colors.accent }
+                          : { backgroundColor: Colors.inputBg },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: goalOffset === item.v ? Colors.textOnAccent : Colors.text,
+                          fontWeight: "bold",
+                          fontSize: 12,
+                        }}
+                      >
+                        {item.l}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
 
-        {/* --- CARD 2: ACTIVITY LEVEL --- */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Lightning color={Colors.accent} weight="fill" />
-            <Text style={styles.cardTitle}>Activity Level</Text>
-          </View>
-          <View style={{ gap: 8 }}>
-            {[
-              { l: "Sedentary (Desk Job)", v: 1.2 },
-              { l: "Light Active (1-3 days)", v: 1.375 },
-              { l: "Moderate (3-5 days)", v: 1.55 },
-              { l: "Very Active (6-7 days)", v: 1.725 },
-            ].map((item) => (
+                <View style={styles.caloriesBox}>
+                  <Text style={{ color: Colors.accent, fontSize: 32, fontWeight: "bold" }}>
+                    {calories}
+                  </Text>
+                  <Text style={{ color: Colors.textSecondary, fontSize: 14, fontWeight: "bold" }}>
+                    kcal / day
+                  </Text>
+                </View>
+              </View>
+
+              {/* --- CARD 4: MACROS --- */}
+              <View style={[styles.card, { marginBottom: 0 }]}>
+                <View style={styles.cardHeader}>
+                  <Barbell color={Colors.accent} weight="fill" />
+                  <Text style={styles.cardTitle}>Macros (%)</Text>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 10, marginBottom: 15 }}>
+                  {[
+                    { l: "Prot", v: pRatio, f: setPRatio, c: "#3b82f6" },
+                    { l: "Carb", v: cRatio, f: setCRatio, c: "#22c55e" },
+                    { l: "Fat", v: fRatio, f: setFRatio, c: "#ef4444" },
+                  ].map((m) => (
+                    <View key={m.l} style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          color: m.c,
+                          fontSize: 12,
+                          fontWeight: "bold",
+                          marginBottom: 5,
+                        }}
+                      >
+                        {m.l}
+                      </Text>
+                      <TextInput
+                        value={m.v}
+                        onChangeText={m.f}
+                        keyboardType="numeric"
+                        maxLength={3}
+                        style={styles.input}
+                      />
+                    </View>
+                  ))}
+                </View>
+
+                {/* ✅ SHOW CALCULATED GRAMS */}
+                <View style={styles.gramsPreview}>
+                  <Text style={styles.gramsLabel}>Calculated Daily Targets:</Text>
+                  <View style={styles.gramsRow}>
+                    <View style={styles.gramItem}>
+                      <Text style={[styles.gramValue, { color: "#3b82f6" }]}>
+                        {proteinGrams}g
+                      </Text>
+                      <Text style={styles.gramLabel}>Protein</Text>
+                    </View>
+                    <View style={styles.gramItem}>
+                      <Text style={[styles.gramValue, { color: "#22c55e" }]}>
+                        {carbsGrams}g
+                      </Text>
+                      <Text style={styles.gramLabel}>Carbs</Text>
+                    </View>
+                    <View style={styles.gramItem}>
+                      <Text style={[styles.gramValue, { color: "#ef4444" }]}>
+                        {fatGrams}g
+                      </Text>
+                      <Text style={styles.gramLabel}>Fat</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* SAVE BUTTON */}
               <TouchableOpacity
-                key={item.v}
-                style={[
-                  styles.activityOption,
-                  activity === item.v && styles.activityActive,
-                ]}
-                onPress={() => { setActivity(item.v); recalculateCalories(weight, height, age, gender, item.v, goalOffset); }}
+                onPress={handleSave}
+                disabled={saving}
+                style={styles.saveBtn}
               >
-                <Text
-                  style={{
-                    color: activity === item.v ? Colors.accentBlue : Colors.textSecondary,
-                    fontWeight: "600",
-                  }}
-                >
-                  {item.l}
-                </Text>
-                {activity === item.v && (
-                  <CheckCircle size={16} color={Colors.accentBlue} weight="fill" />
+                {saving ? (
+                  <ActivityIndicator color="black" />
+                ) : (
+                  <>
+                    <FloppyDisk
+                      size={20}
+                      color="black"
+                      weight="bold"
+                      style={{ marginRight: 10 }}
+                    />
+                    <Text style={styles.saveBtnText}>Save Changes</Text>
+                  </>
                 )}
               </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* --- CARD 3: GOAL SETTING --- */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Target color={Colors.accent} weight="fill" />
-            <Text style={styles.cardTitle}>Calculated Goal</Text>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginBottom: 20 }}
-          >
-            {[
-              { l: "-1 kg/wk", v: -1000 },
-              { l: "-0.5 kg/wk", v: -500 },
-              { l: "Maintain", v: 0 },
-              { l: "+0.5 kg/wk", v: 500 },
-              { l: "+1 kg/wk", v: 1000 },
-            ].map((item) => (
-              <TouchableOpacity
-                key={item.v}
-                onPress={() => { setGoalOffset(item.v); recalculateCalories(weight, height, age, gender, activity, item.v); }}
-                style={[
-                  styles.goalPill,
-                  goalOffset === item.v
-                    ? { backgroundColor: Colors.accent }
-                    : { backgroundColor: Colors.inputBg },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: goalOffset === item.v ? Colors.textOnAccent : Colors.text,
-                    fontWeight: "bold",
-                    fontSize: 12,
-                  }}
-                >
-                  {item.l}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <View style={styles.caloriesBox}>
-            <Text style={{ color: Colors.accent, fontSize: 32, fontWeight: "bold" }}>
-              {calories}
-            </Text>
-            <Text style={{ color: Colors.textSecondary, fontSize: 14, fontWeight: "bold" }}>
-              kcal / day
-            </Text>
-          </View>
-        </View>
-
-        {/* --- CARD 4: MACROS --- */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Barbell color={Colors.accent} weight="fill" />
-            <Text style={styles.cardTitle}>Macros (%)</Text>
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10, marginBottom: 15 }}>
-            {[
-              { l: "Prot", v: pRatio, f: setPRatio, c: "#3b82f6" },
-              { l: "Carb", v: cRatio, f: setCRatio, c: "#22c55e" },
-              { l: "Fat", v: fRatio, f: setFRatio, c: "#ef4444" },
-            ].map((m) => (
-              <View key={m.l} style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    color: m.c,
-                    fontSize: 12,
-                    fontWeight: "bold",
-                    marginBottom: 5,
-                  }}
-                >
-                  {m.l}
-                </Text>
-                <TextInput
-                  value={m.v}
-                  onChangeText={m.f}
-                  keyboardType="numeric"
-                  maxLength={3}
-                  style={styles.input}
-                />
-              </View>
-            ))}
-          </View>
-
-          {/* ✅ SHOW CALCULATED GRAMS */}
-          <View style={styles.gramsPreview}>
-            <Text style={styles.gramsLabel}>Calculated Daily Targets:</Text>
-            <View style={styles.gramsRow}>
-              <View style={styles.gramItem}>
-                <Text style={[styles.gramValue, { color: "#3b82f6" }]}>
-                  {proteinGrams}g
-                </Text>
-                <Text style={styles.gramLabel}>Protein</Text>
-              </View>
-              <View style={styles.gramItem}>
-                <Text style={[styles.gramValue, { color: "#22c55e" }]}>
-                  {carbsGrams}g
-                </Text>
-                <Text style={styles.gramLabel}>Carbs</Text>
-              </View>
-              <View style={styles.gramItem}>
-                <Text style={[styles.gramValue, { color: "#ef4444" }]}>
-                  {fatGrams}g
-                </Text>
-                <Text style={styles.gramLabel}>Fat</Text>
-              </View>
             </View>
           </View>
-        </View>
+        ) : (
+          <>
+            {/* --- CARD 1: PHYSICAL STATS --- */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ruler color={Colors.accent} weight="fill" />
+                <Text style={styles.cardTitle}>Body Stats</Text>
+              </View>
 
-        {/* SAVE BUTTON */}
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={saving}
-          style={styles.saveBtn}
-        >
-          {saving ? (
-            <ActivityIndicator color="black" />
-          ) : (
-            <>
-              <FloppyDisk
-                size={20}
-                color="black"
-                weight="bold"
-                style={{ marginRight: 10 }}
-              />
-              <Text style={styles.saveBtnText}>Save Changes</Text>
-            </>
-          )}
-        </TouchableOpacity>
+              {/* Row 1: Weight & Target */}
+              <View style={styles.inputRow}>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>CURRENT (KG)</Text>
+                  <TextInput
+                    value={weight}
+                    onChangeText={(val) => { setWeight(val); recalculateCalories(val, height, age, gender, activity, goalOffset); }}
+                    keyboardType="numeric"
+                    style={styles.input}
+                    placeholder="0"
+                    placeholderTextColor="#A8C0D6"
+                  />
+                </View>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>TARGET (KG)</Text>
+                  <TextInput
+                    value={targetWeight}
+                    onChangeText={setTargetWeight}
+                    keyboardType="numeric"
+                    style={styles.input}
+                    placeholder="0"
+                    placeholderTextColor="#A8C0D6"
+                  />
+                </View>
+              </View>
+
+              {/* Row 2: Height & Age */}
+              <View style={styles.inputRow}>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>HEIGHT (CM)</Text>
+                  <TextInput
+                    value={height}
+                    onChangeText={(val) => { setHeight(val); recalculateCalories(weight, val, age, gender, activity, goalOffset); }}
+                    keyboardType="numeric"
+                    style={styles.input}
+                    placeholder="0"
+                    placeholderTextColor="#A8C0D6"
+                  />
+                </View>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>AGE (YRS)</Text>
+                  <TextInput
+                    value={age}
+                    onChangeText={(val) => { setAge(val); recalculateCalories(weight, height, val, gender, activity, goalOffset); }}
+                    keyboardType="numeric"
+                    style={styles.input}
+                    placeholder="0"
+                    placeholderTextColor="#A8C0D6"
+                  />
+                </View>
+              </View>
+
+              {/* Row 3: Gender */}
+              <View style={{ marginTop: 15 }}>
+                <Text style={styles.label}>GENDER</Text>
+                <View style={styles.genderRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.genderBtn,
+                      gender === "male" && styles.genderBtnActive,
+                    ]}
+                    onPress={() => { setGender("male"); recalculateCalories(weight, height, age, "male", activity, goalOffset); }}
+                  >
+                    <Text
+                      style={[
+                        styles.genderText,
+                        gender === "male" && { color: Colors.textOnAccent },
+                      ]}
+                    >
+                      Male
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.genderBtn,
+                      gender === "female" && styles.genderBtnActive,
+                    ]}
+                    onPress={() => { setGender("female"); recalculateCalories(weight, height, age, "female", activity, goalOffset); }}
+                  >
+                    <Text
+                      style={[
+                        styles.genderText,
+                        gender === "female" && { color: Colors.textOnAccent },
+                      ]}
+                    >
+                      Female
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* --- CARD 2: ACTIVITY LEVEL --- */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Lightning color={Colors.accent} weight="fill" />
+                <Text style={styles.cardTitle}>Activity Level</Text>
+              </View>
+              <View style={{ gap: 8 }}>
+                {[
+                  { l: "Sedentary (Desk Job)", v: 1.2 },
+                  { l: "Light Active (1-3 days)", v: 1.375 },
+                  { l: "Moderate (3-5 days)", v: 1.55 },
+                  { l: "Very Active (6-7 days)", v: 1.725 },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.v}
+                    style={[
+                      styles.activityOption,
+                      activity === item.v && styles.activityActive,
+                    ]}
+                    onPress={() => { setActivity(item.v); recalculateCalories(weight, height, age, gender, item.v, goalOffset); }}
+                  >
+                    <Text
+                      style={{
+                        color: activity === item.v ? Colors.accentBlue : Colors.textSecondary,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {item.l}
+                    </Text>
+                    {activity === item.v && (
+                      <CheckCircle size={16} color={Colors.accentBlue} weight="fill" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* --- CARD 3: GOAL SETTING --- */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Target color={Colors.accent} weight="fill" />
+                <Text style={styles.cardTitle}>Calculated Goal</Text>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: 20 }}
+              >
+                {[
+                  { l: "-1 kg/wk", v: -1000 },
+                  { l: "-0.5 kg/wk", v: -500 },
+                  { l: "Maintain", v: 0 },
+                  { l: "+0.5 kg/wk", v: 500 },
+                  { l: "+1 kg/wk", v: 1000 },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.v}
+                    onPress={() => { setGoalOffset(item.v); recalculateCalories(weight, height, age, gender, activity, item.v); }}
+                    style={[
+                      styles.goalPill,
+                      goalOffset === item.v
+                        ? { backgroundColor: Colors.accent }
+                        : { backgroundColor: Colors.inputBg },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: goalOffset === item.v ? Colors.textOnAccent : Colors.text,
+                        fontWeight: "bold",
+                        fontSize: 12,
+                      }}
+                    >
+                      {item.l}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={styles.caloriesBox}>
+                <Text style={{ color: Colors.accent, fontSize: 32, fontWeight: "bold" }}>
+                  {calories}
+                </Text>
+                <Text style={{ color: Colors.textSecondary, fontSize: 14, fontWeight: "bold" }}>
+                  kcal / day
+                </Text>
+              </View>
+            </View>
+
+            {/* --- CARD 4: MACROS --- */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Barbell color={Colors.accent} weight="fill" />
+                <Text style={styles.cardTitle}>Macros (%)</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 10, marginBottom: 15 }}>
+                {[
+                  { l: "Prot", v: pRatio, f: setPRatio, c: "#3b82f6" },
+                  { l: "Carb", v: cRatio, f: setCRatio, c: "#22c55e" },
+                  { l: "Fat", v: fRatio, f: setFRatio, c: "#ef4444" },
+                ].map((m) => (
+                  <View key={m.l} style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: m.c,
+                        fontSize: 12,
+                        fontWeight: "bold",
+                        marginBottom: 5,
+                      }}
+                    >
+                      {m.l}
+                    </Text>
+                    <TextInput
+                      value={m.v}
+                      onChangeText={m.f}
+                      keyboardType="numeric"
+                      maxLength={3}
+                      style={styles.input}
+                    />
+                  </View>
+                ))}
+              </View>
+
+              {/* ✅ SHOW CALCULATED GRAMS */}
+              <View style={styles.gramsPreview}>
+                <Text style={styles.gramsLabel}>Calculated Daily Targets:</Text>
+                <View style={styles.gramsRow}>
+                  <View style={styles.gramItem}>
+                    <Text style={[styles.gramValue, { color: "#3b82f6" }]}>
+                      {proteinGrams}g
+                    </Text>
+                    <Text style={styles.gramLabel}>Protein</Text>
+                  </View>
+                  <View style={styles.gramItem}>
+                    <Text style={[styles.gramValue, { color: "#22c55e" }]}>
+                      {carbsGrams}g
+                    </Text>
+                    <Text style={styles.gramLabel}>Carbs</Text>
+                  </View>
+                  <View style={styles.gramItem}>
+                    <Text style={[styles.gramValue, { color: "#ef4444" }]}>
+                      {fatGrams}g
+                    </Text>
+                    <Text style={styles.gramLabel}>Fat</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* SAVE BUTTON */}
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={saving}
+              style={styles.saveBtn}
+            >
+              {saving ? (
+                <ActivityIndicator color="black" />
+              ) : (
+                <>
+                  <FloppyDisk
+                    size={20}
+                    color="black"
+                    weight="bold"
+                    style={{ marginRight: 10 }}
+                  />
+                  <Text style={styles.saveBtnText}>Save Changes</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
 
       {/* SUCCESS MODAL */}

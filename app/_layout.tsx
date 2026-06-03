@@ -8,10 +8,13 @@ import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
 import ErrorBoundary from "@/src/components/ErrorBoundary";
 import AuthRoute from "./auth";
+import { useResponsive } from "@/src/hooks/useResponsive";
+import DesktopSidebar from "@/src/components/DesktopSidebar";
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const { isDesktop } = useResponsive();
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -58,22 +61,26 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
-        <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
           <StatusBar style="light" />
 
-          <View style={styles.content}>
-            {!session ? (
-              <AuthRoute />
-            ) : (
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  title: "TrackBing", // <--- THIS SETS THE BROWSER TAB NAME
-                }}
-              >
-                <Stack.Screen name="(tabs)" />
-              </Stack>
-            )}
+          <View style={[styles.content, isDesktop && { flexDirection: "row" }]}>
+            {isDesktop && session && <DesktopSidebar />}
+            
+            <View style={{ flex: 1, backgroundColor: Colors.primary }}>
+              {!session ? (
+                <AuthRoute />
+              ) : (
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    title: "TrackBing", // <--- THIS SETS THE BROWSER TAB NAME
+                  }}
+                >
+                  <Stack.Screen name="(tabs)" />
+                </Stack>
+              )}
+            </View>
           </View>
         </SafeAreaView>
       </SafeAreaProvider>

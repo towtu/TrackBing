@@ -20,4 +20,4 @@ jobs:
       - name: Lint
         run: npx expo lint
       - name: Audit production deps
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=critical

@@ -144,7 +144,7 @@ export default function DesktopSidebar() {
             <Pressable
               key={item.label}
               onPress={() => router.push(item.route as any)}
-              style={({ hovered }) => [
+              style={({ hovered }: any) => [
                 styles.navItem,
                 item.isActive && styles.navItemActive,
                 hovered && !item.isActive && styles.navItemHover,
@@ -182,7 +182,7 @@ export default function DesktopSidebar() {
 
         <Pressable
           onPress={handleLogout}
-          style={({ hovered }) => [
+          style={({ hovered }: any) => [
             styles.logoutBtn,
             hovered && styles.logoutBtnHover,
           ]}

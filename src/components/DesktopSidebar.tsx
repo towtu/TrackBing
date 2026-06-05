@@ -5,6 +5,7 @@ import {
   House,
   MagnifyingGlass,
   BookOpen,
+  ForkKnife,
   ChartBar,
   User,
   Barcode,
@@ -78,7 +79,7 @@ export default function DesktopSidebar() {
       label: "Dashboard",
       icon: House,
       route: "/",
-      isActive: pathname === "/" || pathname === "/index" || pathname.includes("/(tabs)/index") || (!pathname.includes("/add") && !pathname.includes("/cookbook") && !pathname.includes("/stats") && !pathname.includes("/profile") && !pathname.includes("/scan")),
+      isActive: pathname === "/" || pathname === "/index" || pathname.includes("/(tabs)/index") || (!pathname.includes("/add") && !pathname.includes("/cookbook") && !pathname.includes("/my-foods") && !pathname.includes("/create") && !pathname.includes("/stats") && !pathname.includes("/profile") && !pathname.includes("/scan")),
     },
     {
       label: "Find Food",
@@ -91,6 +92,12 @@ export default function DesktopSidebar() {
       icon: BookOpen,
       route: "/(tabs)/cookbook",
       isActive: pathname.includes("/cookbook"),
+    },
+    {
+      label: "My Foods",
+      icon: ForkKnife,
+      route: "/my-foods",
+      isActive: pathname.includes("/my-foods"),
     },
     {
       label: "Weekly Stats",

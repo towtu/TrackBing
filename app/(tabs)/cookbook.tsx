@@ -2,10 +2,9 @@ import { useFocusEffect, useRouter } from "expo-router";
 import {
   BookOpen,
   CaretLeft,
-  Cookie,
   MagnifyingGlass,
-  Minus,
   Plus,
+  SlidersHorizontal,
   Trash,
   X,
 } from "phosphor-react-native";
@@ -25,146 +24,94 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
+import {
+  calcMacros,
+  recipeTotal,
+  type RecipeIngredient,
+} from "@/src/lib/macros";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
+
+type Recipe = {
+  id: string;
+  name: string;
+  ingredients: RecipeIngredient[];
+};
 
 export default function CookbookPage() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
 
-  const [personalFoods, setPersonalFoods] = useState<any[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterQuery, setFilterQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // ── SELECTED FOOD MODAL STATE ──
-  const [selectedFood, setSelectedFood] = useState<any | null>(null);
-  const [inputWeight, setInputWeight] = useState("100");
-  const [selectedUnit, setSelectedUnit] = useState<
-    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving"
-  >("g");
+  // ── LOG MODAL STATE ──
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [workingIngredients, setWorkingIngredients] = useState<
+    RecipeIngredient[]
+  >([]);
+  const [adjustMode, setAdjustMode] = useState(false);
 
   // ── DELETE MODAL STATE ──
   const [deleteModal, setDeleteModal] = useState(false);
-  const [deletingFood, setDeletingFood] = useState<{
+  const [deletingRecipe, setDeletingRecipe] = useState<{
     id: string;
     name: string;
-    code: string;
   } | null>(null);
 
-  const fetchMyFoods = async () => {
+  const fetchRecipes = async () => {
     setLoading(true);
     const { data } = await supabase
-      .from("personal_foods")
+      .from("recipes")
       .select("*")
       .order("created_at", { ascending: false });
-    const formatted =
-      data?.map((f) => ({
-        code: "personal-" + f.id,
-        product_name: f.name,
-        brands: "My Food",
-        default_unit: f.default_unit || "g",
-        nutriments: {
-          "energy-kcal_100g": f.calories,
-          proteins_100g: f.protein,
-          carbohydrates_100g: f.carbs,
-          fat_100g: f.fat,
-        },
-        original_id: f.id,
+    const formatted: Recipe[] =
+      data?.map((r) => ({
+        id: r.id,
+        name: r.name,
+        ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
       })) || [];
-    setPersonalFoods(formatted);
+    setRecipes(formatted);
     setLoading(false);
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchMyFoods();
+      fetchRecipes();
     }, [])
   );
 
-  const filteredFoods = filterQuery.length >= 2
-    ? personalFoods.filter((f) =>
-        f.product_name?.toLowerCase().includes(filterQuery.toLowerCase())
-      )
-    : personalFoods;
+  const filteredRecipes =
+    filterQuery.length >= 2
+      ? recipes.filter((r) =>
+          r.name?.toLowerCase().includes(filterQuery.toLowerCase())
+        )
+      : recipes;
 
-  // ── DELETE ──
-  const handleDeletePress = (item: any) => {
-    setDeletingFood({
-      id: item.original_id,
-      name: item.product_name,
-      code: item.code,
+  // ── OPEN LOG MODAL ──
+  const openRecipe = (recipe: Recipe) => {
+    Keyboard.dismiss();
+    setSelectedRecipe(recipe);
+    // Deep-clone ingredients so log-time weight edits stay one-off.
+    setWorkingIngredients(recipe.ingredients.map((ing) => ({ ...ing })));
+    setAdjustMode(false);
+  };
+
+  const updateIngredientWeight = (index: number, text: string) => {
+    const value = parseFloat(text.replace(/[^0-9.]/g, "")) || 0;
+    setWorkingIngredients((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], weight: value };
+      return next;
     });
-    setDeleteModal(true);
   };
 
-  const confirmDelete = async () => {
-    if (!deletingFood) return;
-    const { error } = await supabase
-      .from("personal_foods")
-      .delete()
-      .eq("id", deletingFood.id);
-    if (error) {
-      alert("Error: " + error.message);
-    } else {
-      setPersonalFoods((prev) =>
-        prev.filter((f) => f.code !== deletingFood.code)
-      );
-    }
-    setDeleteModal(false);
-    setDeletingFood(null);
-  };
+  const modalTotal = recipeTotal(workingIngredients);
 
-  // ── MACRO CALCULATIONS ──
-  const calculateMacros = () => {
-    if (!selectedFood) return { c: 0, p: 0, cb: 0, f: 0 };
-
-    const inputAmount = parseFloat(inputWeight) || 0;
-    let ratio = 1;
-
-    if (selectedUnit === "serving") {
-      const sw = selectedFood.serving_weight || selectedFood.serving_quantity;
-      ratio = sw ? (inputAmount * sw) / 100 : inputAmount;
-    } else if (selectedUnit === "cup") {
-      ratio = selectedFood.cup_weight
-        ? (inputAmount * selectedFood.cup_weight) / 100
-        : (inputAmount * 236.588) / 100;
-    } else if (selectedUnit === "tbsp") {
-      ratio = selectedFood.cup_weight
-        ? (inputAmount * (selectedFood.cup_weight / 16)) / 100
-        : (inputAmount * 14.7868) / 100;
-    } else if (selectedUnit === "tsp") {
-      ratio = selectedFood.cup_weight
-        ? (inputAmount * (selectedFood.cup_weight / 48)) / 100
-        : (inputAmount * 4.92892) / 100;
-    } else {
-      let weightInGrams = inputAmount;
-      if (selectedUnit === "oz") weightInGrams *= 28.3495;
-      ratio = weightInGrams / 100;
-    }
-
-    const n = selectedFood.nutriments;
-    return {
-      c: Math.round((n?.["energy-kcal_100g"] || 0) * ratio),
-      p: Math.round((n?.proteins_100g || 0) * ratio),
-      cb: Math.round((n?.carbohydrates_100g || 0) * ratio),
-      f: Math.round((n?.fat_100g || 0) * ratio),
-    };
-  };
-
-  const macros = calculateMacros();
-
-  const adjustWeight = (amount: number) => {
-    const current = parseFloat(inputWeight) || 0;
-    const isWeight =
-      selectedUnit === "g" || selectedUnit === "ml" || selectedUnit === "oz";
-    const step = isWeight ? amount : Math.sign(amount) * 1;
-    const next = Math.max(0, current + step);
-    setInputWeight(next.toString());
-  };
-
-  const confirmAdd = async () => {
-    if (!selectedFood || submitting) return;
+  const confirmLog = async () => {
+    if (!selectedRecipe || submitting) return;
     setSubmitting(true);
     const {
       data: { user },
@@ -174,30 +121,42 @@ export default function CookbookPage() {
       await supabase.from("food_logs").insert([
         {
           user_id: user.id,
-          name: selectedFood.product_name,
-          calories: macros.c,
-          protein: macros.p,
-          carbs: macros.cb,
-          fat: macros.f,
-          serving_size: inputWeight,
-          serving_unit: selectedUnit,
+          name: selectedRecipe.name,
+          calories: modalTotal.c,
+          protein: modalTotal.p,
+          carbs: modalTotal.cb,
+          fat: modalTotal.f,
+          serving_size: "1",
+          serving_unit: "recipe",
         },
       ]);
       upsertDailySummary();
-      alert("Added to your log!");
-      setSelectedFood(null);
+      alert("Recipe logged!");
+      setSelectedRecipe(null);
     }
     setSubmitting(false);
   };
 
-  const isLiquid = selectedFood?.default_unit === "ml";
-  const hasServing = !!(
-    selectedFood?.serving_weight || selectedFood?.serving_quantity
-  );
-  const baseUnits: string[] = isLiquid
-    ? ["ml", "tsp", "tbsp", "cup"]
-    : ["g", "oz", "tsp", "tbsp", "cup"];
-  const unitsToDisplay = hasServing ? [...baseUnits, "serving"] : baseUnits;
+  // ── DELETE ──
+  const handleDeletePress = (recipe: Recipe) => {
+    setDeletingRecipe({ id: recipe.id, name: recipe.name });
+    setDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingRecipe) return;
+    const { error } = await supabase
+      .from("recipes")
+      .delete()
+      .eq("id", deletingRecipe.id);
+    if (error) {
+      alert("Error: " + error.message);
+    } else {
+      setRecipes((prev) => prev.filter((r) => r.id !== deletingRecipe.id));
+    }
+    setDeleteModal(false);
+    setDeletingRecipe(null);
+  };
 
   return (
     <SafeAreaView
@@ -206,12 +165,10 @@ export default function CookbookPage() {
     >
       <View
         style={[
-          {
-            padding: 18,
-            flex: 1,
-            width: "100%",
-          },
-          isDesktop ? { maxWidth: 1200, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }
+          { padding: 18, flex: 1, width: "100%" },
+          isDesktop
+            ? { maxWidth: 1200, alignSelf: "center" }
+            : { maxWidth: 520, alignSelf: "center" },
         ]}
       >
         {/* ── HEADER ── */}
@@ -225,14 +182,12 @@ export default function CookbookPage() {
             </TouchableOpacity>
           )}
           <Text style={localStyles.headerTitle}>My Cookbook</Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity
-              onPress={() => router.push("/create-food")}
-              style={localStyles.backButton}
-            >
-              <Plus size={24} color={Colors.accent} weight="bold" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => router.push("/create-recipe")}
+            style={localStyles.backButton}
+          >
+            <Plus size={24} color={Colors.accent} weight="bold" />
+          </TouchableOpacity>
         </View>
 
         {/* ── SEARCH / FILTER BAR ── */}
@@ -259,96 +214,67 @@ export default function CookbookPage() {
           )}
         </View>
 
-        {/* ── FOOD COUNT BADGE ── */}
+        {/* ── COUNT BADGE ── */}
         <View style={localStyles.countRow}>
           <View style={localStyles.countBadge}>
-            <Cookie size={14} color={Colors.accent} weight="fill" />
+            <BookOpen size={14} color={Colors.accent} weight="fill" />
             <Text style={localStyles.countText}>
-              {filteredFoods.length}{" "}
-              {filteredFoods.length === 1 ? "recipe" : "recipes"}
+              {filteredRecipes.length}{" "}
+              {filteredRecipes.length === 1 ? "recipe" : "recipes"}
             </Text>
           </View>
         </View>
 
-        {/* ── FOOD LIST ── */}
+        {/* ── RECIPE LIST ── */}
         {loading ? (
-          <ActivityIndicator
-            color={Colors.accent}
-            style={{ marginTop: 40 }}
-          />
+          <ActivityIndicator color={Colors.accent} style={{ marginTop: 40 }} />
         ) : (
           <FlatList
             key={isDesktop ? "desktop" : "mobile"}
             numColumns={isDesktop ? 2 : 1}
             columnWrapperStyle={isDesktop ? { gap: 16 } : undefined}
-            data={filteredFoods}
+            data={filteredRecipes}
             keyboardShouldPersistTaps="handled"
-            keyExtractor={(item) => item.code}
-            renderItem={({ item }) => (
-              <View style={[localStyles.itemRowContainer, isDesktop && { flex: 1, marginBottom: 16, marginRight: 0 }]}>
-                <TouchableOpacity
-                  style={localStyles.itemCard}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setSelectedFood(item);
-                    if (
-                      item.default_unit &&
-                      [
-                        "g",
-                        "ml",
-                        "oz",
-                        "tsp",
-                        "tbsp",
-                        "cup",
-                        "serving",
-                      ].includes(item.default_unit)
-                    ) {
-                      setSelectedUnit(item.default_unit as any);
-                      setInputWeight(
-                        item.default_unit === "g" || item.default_unit === "ml"
-                          ? "100"
-                          : "1"
-                      );
-                    } else {
-                      setSelectedUnit("g");
-                      setInputWeight("100");
-                    }
-                  }}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => {
+              const total = recipeTotal(item.ingredients);
+              return (
+                <View
+                  style={[
+                    localStyles.itemRowContainer,
+                    isDesktop && { flex: 1, marginBottom: 16, marginRight: 0 },
+                  ]}
                 >
-                  <View style={localStyles.iconCircle}>
-                    <Text style={{ fontSize: 18 }}>🍪</Text>
-                  </View>
-                  <View style={{ flex: 1, flexShrink: 1, marginLeft: 12 }}>
-                    <Text style={localStyles.itemName} numberOfLines={2}>
-                      {item.product_name}
-                    </Text>
-                    <Text style={localStyles.itemSub}>
-                      {Math.round(
-                        item.nutriments?.["energy-kcal_100g"] || 0
-                      )}{" "}
-                      kcal ·{" "}
-                      P:{Math.round(item.nutriments?.proteins_100g || 0)}g ·{" "}
-                      C:
-                      {Math.round(
-                        item.nutriments?.carbohydrates_100g || 0
-                      )}
-                      g · F:{Math.round(item.nutriments?.fat_100g || 0)}g
-                    </Text>
-                  </View>
-                  <View style={localStyles.unitBadge}>
-                    <Text style={localStyles.unitBadgeText}>
-                      {item.default_unit}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={localStyles.deleteBtn}
-                  onPress={() => handleDeletePress(item)}
-                >
-                  <Trash size={20} color="#FF4444" weight="bold" />
-                </TouchableOpacity>
-              </View>
-            )}
+                  <TouchableOpacity
+                    style={localStyles.itemCard}
+                    onPress={() => openRecipe(item)}
+                  >
+                    <View style={localStyles.iconCircle}>
+                      <Text style={{ fontSize: 18 }}>🍲</Text>
+                    </View>
+                    <View style={{ flex: 1, flexShrink: 1, marginLeft: 12 }}>
+                      <Text style={localStyles.itemName} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                      <Text style={localStyles.itemSub}>
+                        {item.ingredients.length}{" "}
+                        {item.ingredients.length === 1
+                          ? "ingredient"
+                          : "ingredients"}{" "}
+                        · {total.c} kcal · P:{total.p}g · C:{total.cb}g · F:
+                        {total.f}g
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={localStyles.deleteBtn}
+                    onPress={() => handleDeletePress(item)}
+                  >
+                    <Trash size={20} color="#FF4444" weight="bold" />
+                  </TouchableOpacity>
+                </View>
+              );
+            }}
             ListEmptyComponent={
               <View style={localStyles.emptyState}>
                 <View style={localStyles.emptyIconBox}>
@@ -366,12 +292,12 @@ export default function CookbookPage() {
                 <Text style={localStyles.emptySubtext}>
                   {filterQuery.length >= 2
                     ? "Try a different search term"
-                    : "Create your first custom food to build your cookbook."}
+                    : "Combine ingredients into a recipe — the calories add up automatically."}
                 </Text>
                 {filterQuery.length < 2 && (
                   <TouchableOpacity
                     style={localStyles.emptyCreateBtn}
-                    onPress={() => router.push("/create-food")}
+                    onPress={() => router.push("/create-recipe")}
                   >
                     <Plus size={20} color={Colors.accent} />
                     <Text
@@ -381,7 +307,7 @@ export default function CookbookPage() {
                         fontSize: 14,
                       }}
                     >
-                      Create Food
+                      Create Recipe
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -390,128 +316,134 @@ export default function CookbookPage() {
           />
         )}
 
-        {/* ── LOG FOOD MODAL ── */}
-        <Modal visible={!!selectedFood} transparent animationType="fade">
+        {/* ── LOG RECIPE MODAL ── */}
+        <Modal visible={!!selectedRecipe} transparent animationType="fade">
           <View style={localStyles.modalOverlay}>
             <View style={localStyles.modalContent}>
               <View style={localStyles.modalDragBar} />
               <View style={localStyles.modalHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={localStyles.modalFoodName}>
-                    {selectedFood?.product_name}
+                    {selectedRecipe?.name}
                   </Text>
                   <Text style={{ color: Colors.textSecondary }}>
-                    My Food
+                    {adjustMode
+                      ? "Tweak the amounts for this log"
+                      : `${workingIngredients.length} ingredients`}
                   </Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => setSelectedFood(null)}
+                  onPress={() => setSelectedRecipe(null)}
                   style={localStyles.closeBtn}
                 >
                   <X size={24} color="white" />
                 </TouchableOpacity>
               </View>
 
-              <View style={localStyles.weightSection}>
-                <TouchableOpacity
-                  onPress={() => adjustWeight(-10)}
-                  style={localStyles.adjustBtn}
-                >
-                  <Minus size={20} color="white" weight="bold" />
-                </TouchableOpacity>
-
-                <View style={localStyles.weightInputContainer}>
-                  <TextInput
-                    style={localStyles.weightInput}
-                    keyboardType="numeric"
-                    value={inputWeight}
-                    onChangeText={(t) =>
-                      setInputWeight(t.replace(/[^0-9.]/g, ""))
-                    }
-                    selectTextOnFocus
-                  />
-
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={[{ marginTop: 8 }, localStyles.unitBarStyle]}
-                    contentContainerStyle={{ paddingHorizontal: 4 }}
-                  >
-                    {unitsToDisplay.map((u) => (
-                      <TouchableOpacity
-                        key={u}
-                        onPress={() => setSelectedUnit(u as any)}
-                        style={{
-                          paddingHorizontal: 16,
-                          paddingVertical: 10,
-                          borderBottomWidth: 2,
-                          borderBottomColor:
-                            selectedUnit === u ? Colors.accent : "transparent",
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color:
-                              selectedUnit === u
-                                ? Colors.accent
-                                : Colors.textSecondary,
-                            fontWeight: selectedUnit === u ? "700" : "500",
-                            fontSize: 12,
-                            textTransform: "uppercase",
-                            letterSpacing: 1,
-                          }}
-                        >
-                          {u}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => adjustWeight(10)}
-                  style={localStyles.adjustBtn}
-                >
-                  <Plus size={20} color="white" weight="bold" />
-                </TouchableOpacity>
-              </View>
-
+              {/* Total */}
               <View style={localStyles.bentoContainer}>
                 <View style={localStyles.bentoMain}>
-                  <Text style={localStyles.bentoValue}>{macros.c}</Text>
+                  <Text style={localStyles.bentoValue}>{modalTotal.c}</Text>
                   <Text style={localStyles.bentoLabel}>CALORIES</Text>
                 </View>
                 <View style={localStyles.bentoGrid}>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {macros.p}g
+                      {modalTotal.p}g
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>PROT</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {macros.cb}g
+                      {modalTotal.cb}g
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {macros.f}g
+                      {modalTotal.f}g
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>FAT</Text>
                   </View>
                 </View>
               </View>
 
-              <TouchableOpacity
-                style={localStyles.confirmBtn}
-                onPress={confirmAdd}
-                disabled={submitting}
+              {/* Ingredient list */}
+              <ScrollView
+                style={{ maxHeight: 240, marginBottom: 18 }}
+                keyboardShouldPersistTaps="handled"
               >
-                <Text style={localStyles.confirmText}>
-                  {submitting ? "Adding..." : "Log this meal"}
-                </Text>
-              </TouchableOpacity>
+                {workingIngredients.map((ing, index) => {
+                  const m = calcMacros(ing, ing.weight, ing.unit);
+                  return (
+                    <View key={index} style={localStyles.ingRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={localStyles.ingName} numberOfLines={1}>
+                          {ing.name}
+                        </Text>
+                        <Text style={localStyles.ingSub}>
+                          {m.c} kcal · P{m.p} C{m.cb} F{m.f}
+                        </Text>
+                      </View>
+                      {adjustMode ? (
+                        <View style={localStyles.weightEditRow}>
+                          <TextInput
+                            style={localStyles.weightEditInput}
+                            keyboardType="numeric"
+                            value={ing.weight.toString()}
+                            onChangeText={(t) =>
+                              updateIngredientWeight(index, t)
+                            }
+                            selectTextOnFocus
+                          />
+                          <Text style={localStyles.weightEditUnit}>
+                            {ing.unit}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={localStyles.ingAmount}>
+                          {ing.weight}
+                          {ing.unit}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Actions */}
+              {adjustMode ? (
+                <TouchableOpacity
+                  style={localStyles.confirmBtn}
+                  onPress={confirmLog}
+                  disabled={submitting}
+                >
+                  <Text style={localStyles.confirmText}>
+                    {submitting ? "Logging..." : "Log adjusted recipe"}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ gap: 12 }}>
+                  <TouchableOpacity
+                    style={localStyles.confirmBtn}
+                    onPress={confirmLog}
+                    disabled={submitting}
+                  >
+                    <Text style={localStyles.confirmText}>
+                      {submitting ? "Logging..." : "Log as-is"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={localStyles.adjustToggleBtn}
+                    onPress={() => setAdjustMode(true)}
+                  >
+                    <SlidersHorizontal size={18} color={Colors.text} />
+                    <Text style={localStyles.adjustToggleText}>
+                      Adjust amounts
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </View>
         </Modal>
@@ -524,7 +456,7 @@ export default function CookbookPage() {
               activeOpacity={1}
               onPress={() => {
                 setDeleteModal(false);
-                setDeletingFood(null);
+                setDeletingRecipe(null);
               }}
             />
             <View style={localStyles.glassModal}>
@@ -534,15 +466,15 @@ export default function CookbookPage() {
               </View>
               <Text style={localStyles.deleteModalTitle}>Remove Recipe</Text>
               <Text style={localStyles.deleteModalSubtitle}>
-                Are you sure you want to delete &quot;{deletingFood?.name}&quot; from your
-                cookbook?
+                Are you sure you want to delete &quot;{deletingRecipe?.name}
+                &quot; from your cookbook?
               </Text>
               <View style={localStyles.deleteModalBtnRow}>
                 <TouchableOpacity
                   style={localStyles.btnKeep}
                   onPress={() => {
                     setDeleteModal(false);
-                    setDeletingFood(null);
+                    setDeletingRecipe(null);
                   }}
                 >
                   <Text style={localStyles.btnKeepText}>Keep it</Text>
@@ -667,21 +599,6 @@ const localStyles = RNStyleSheet.create({
     fontSize: 10,
     marginTop: 2,
   },
-  unitBadge: {
-    backgroundColor: Colors.accentDim,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 204, 0, 0.2)",
-  },
-  unitBadgeText: {
-    color: Colors.accent,
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
   deleteBtn: {
     backgroundColor: "rgba(239,68,68,0.12)",
     padding: 13,
@@ -751,6 +668,9 @@ const localStyles = RNStyleSheet.create({
     paddingBottom: 44,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
   },
   modalDragBar: {
     width: 36,
@@ -779,35 +699,52 @@ const localStyles = RNStyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  weightSection: {
+  ingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 20,
-    marginBottom: 22,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  adjustBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: Colors.inputBg,
+  ingName: {
+    color: Colors.text,
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  ingSub: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  ingAmount: {
+    color: Colors.accent,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  weightEditRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    backgroundColor: Colors.inputBg,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  weightInputContainer: { alignItems: "center" },
-  weightInput: {
+  weightEditInput: {
     color: Colors.accent,
-    fontSize: 52,
-    fontWeight: "900",
-    textAlign: "center",
-    letterSpacing: -2,
+    fontSize: 16,
+    fontWeight: "800",
+    minWidth: 44,
+    textAlign: "right",
+    paddingVertical: 4,
   },
-  unitBarStyle: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    marginBottom: 22,
+  weightEditUnit: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
   bentoContainer: { flexDirection: "row", gap: 10, marginBottom: 22 },
   bentoMain: {
@@ -874,6 +811,22 @@ const localStyles = RNStyleSheet.create({
     fontSize: 17,
     fontWeight: "900",
     letterSpacing: 0.2,
+  },
+  adjustToggleBtn: {
+    flexDirection: "row",
+    backgroundColor: Colors.inputBg,
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  adjustToggleText: {
+    color: Colors.text,
+    fontSize: 15,
+    fontWeight: "700",
   },
 
   // ── DELETE MODAL ──

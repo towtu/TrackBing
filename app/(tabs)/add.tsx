@@ -3,6 +3,7 @@ import {
   Barcode,
   CaretLeft,
   CheckCircle,
+  ForkKnife,
   MagnifyingGlass,
   Minus,
   Plus,
@@ -25,12 +26,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
-import { searchUSDA } from "@/src/lib/usda";
+import { loadGistFoods, searchAllFoods } from "@/src/lib/foodSearch";
+import {
+  calcMacros,
+  getUnitsToDisplay,
+  type FoodItem,
+} from "@/src/lib/macros";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
-
-const CUSTOM_DB_URL =
-  "https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json";
 
 export default function AddFoodPage() {
   const router = useRouter();
@@ -42,7 +45,7 @@ export default function AddFoodPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [customFoods, setCustomFoods] = useState<any[]>([]);
+  const [customFoods, setCustomFoods] = useState<FoodItem[]>([]);
 
   const [showToast, setShowToast] = useState(false);
   const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -56,30 +59,7 @@ export default function AddFoodPage() {
   >("g");
 
   useEffect(() => {
-    const fetchGist = async () => {
-      try {
-        const response = await fetch(CUSTOM_DB_URL);
-        const data = await response.json();
-        const formatted = data.map((f: any) => ({
-          code: "gist-" + f.name,
-          product_name: f.name,
-          brands: "Generic",
-          default_unit: f.unit || "g",
-          serving_weight: f.serving_weight,
-          cup_weight: f.cup_weight,
-          nutriments: {
-            "energy-kcal_100g": f.c,
-            proteins_100g: f.p,
-            carbohydrates_100g: f.cb,
-            fat_100g: f.f,
-          },
-        }));
-        setCustomFoods(formatted);
-      } catch (e) {
-        console.error("Gist failed", e);
-      }
-    };
-    fetchGist();
+    loadGistFoods().then(setCustomFoods);
   }, []);
 
   useEffect(() => {
@@ -121,82 +101,14 @@ export default function AddFoodPage() {
   const handleSearch = async () => {
     if (!query.trim()) return;
     setLoading(true);
-
-    const [usdaResults, offResults] = await Promise.all([
-      searchUSDA(query),
-      (async () => {
-        try {
-          const offRes = await fetch(
-            `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=10&lc=en`,
-          );
-          const offData = await offRes.json();
-          return (
-            offData.products?.map((item: any) => ({
-              code: item.code || Math.random().toString(),
-              product_name: item.product_name || "Unknown Food",
-              brands: item.brands || "Packaged",
-              default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
-              serving_quantity: item.serving_quantity || 100,
-              nutriments: {
-                "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
-                proteins_100g: item.nutriments?.proteins_100g || 0,
-                carbohydrates_100g: item.nutriments?.carbohydrates_100g || 0,
-                fat_100g: item.nutriments?.fat_100g || 0,
-              },
-            })) || []
-          );
-        } catch (e) {
-          console.warn(e);
-          return [];
-        }
-      })(),
-    ]);
-
-    const gistMatches = customFoods.filter((f) =>
-      f.product_name?.toLowerCase().includes(query.toLowerCase())
-    );
-    setResults([...gistMatches, ...usdaResults, ...offResults]);
+    const all = await searchAllFoods(query);
+    setResults(all);
     setLoading(false);
   };
 
-  const calculateMacros = () => {
-    if (!selectedFood) return { c: 0, p: 0, cb: 0, f: 0 };
-
-    const inputAmount = parseFloat(inputWeight) || 0;
-    let ratio = 1;
-
-    if (selectedUnit === "serving") {
-      const sw = selectedFood.serving_weight || selectedFood.serving_quantity;
-      ratio = sw ? (inputAmount * sw) / 100 : inputAmount;
-    } else if (selectedUnit === "cup") {
-      ratio = selectedFood.cup_weight
-        ? (inputAmount * selectedFood.cup_weight) / 100
-        : (inputAmount * 236.588) / 100;
-    } else if (selectedUnit === "tbsp") {
-      ratio = selectedFood.cup_weight
-        ? (inputAmount * (selectedFood.cup_weight / 16)) / 100
-        : (inputAmount * 14.7868) / 100;
-    } else if (selectedUnit === "tsp") {
-      ratio = selectedFood.cup_weight
-        ? (inputAmount * (selectedFood.cup_weight / 48)) / 100
-        : (inputAmount * 4.92892) / 100;
-    } else {
-      let weightInGrams = inputAmount;
-      if (selectedUnit === "oz") weightInGrams *= 28.3495;
-      ratio = weightInGrams / 100;
-    }
-
-    const n = selectedFood.nutriments;
-
-    return {
-      c: Math.round((n?.["energy-kcal_100g"] || 0) * ratio),
-      p: Math.round((n?.proteins_100g || 0) * ratio),
-      cb: Math.round((n?.carbohydrates_100g || 0) * ratio),
-      f: Math.round((n?.fat_100g || 0) * ratio),
-    };
-  };
-
-  const macros = calculateMacros();
+  const macros = selectedFood
+    ? calcMacros(selectedFood, parseFloat(inputWeight) || 0, selectedUnit)
+    : { c: 0, p: 0, cb: 0, f: 0 };
 
   const adjustWeight = (amount: number) => {
     const current = parseFloat(inputWeight) || 0;
@@ -251,12 +163,7 @@ export default function AddFoodPage() {
 
   const displayList = results;
 
-  const isLiquid = selectedFood?.default_unit === "ml";
-  const hasServing = !!(selectedFood?.serving_weight || selectedFood?.serving_quantity);
-  const baseUnits: string[] = isLiquid
-    ? ["ml", "tsp", "tbsp", "cup"]
-    : ["g", "oz", "tsp", "tbsp", "cup"];
-  const unitsToDisplay = hasServing ? [...baseUnits, "serving"] : baseUnits;
+  const unitsToDisplay = getUnitsToDisplay(selectedFood ?? undefined);
 
   return (
     <SafeAreaView
@@ -275,6 +182,12 @@ export default function AddFoodPage() {
           )}
           <Text style={localStyles.headerTitle}>Find Food</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => router.push("/my-foods")}
+              style={localStyles.backButton}
+            >
+              <ForkKnife size={24} color={Colors.accent} />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/create-food")}
               style={localStyles.backButton}

@@ -404,6 +404,10 @@ export default function CreateRecipePage() {
             <TouchableOpacity
               style={s.scanBtn}
               onPress={() => {
+                // Close the search modal first so the scanner is the only
+                // modal on screen — nested modals break the camera and the
+                // editor that should open afterwards on React Native Web.
+                setSearchOpen(false);
                 setScanBusy(false);
                 setScanOpen(true);
               }}
@@ -478,7 +482,10 @@ export default function CreateRecipePage() {
           <View style={s.scanOverlay} pointerEvents="box-none">
             <View style={s.scanHeader}>
               <TouchableOpacity
-                onPress={() => setScanOpen(false)}
+                onPress={() => {
+                  setScanOpen(false);
+                  setSearchOpen(true);
+                }}
                 style={s.scanCloseBtn}
               >
                 <X size={24} color="white" />

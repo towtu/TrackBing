@@ -3,6 +3,7 @@ import {
   Barcode,
   CaretLeft,
   CheckCircle,
+  Keyboard as KeyboardIcon,
   MagnifyingGlass,
   Minus,
   Pencil,
@@ -30,6 +31,7 @@ import { supabase } from "@/src/lib/supabase";
 import { lookupBarcode, searchAllFoods } from "@/src/lib/foodSearch";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
+import ManualEntrySheet from "@/src/components/scan/ManualEntrySheet";
 import {
   calcMacros,
   defaultWeightForUnit,
@@ -59,6 +61,8 @@ export default function CreateRecipePage() {
   // ── BARCODE SCAN MODAL ──
   const [scanOpen, setScanOpen] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualCode, setManualCode] = useState("");
 
   // ── INGREDIENT EDITOR MODAL ──
   // editingFood holds the macro source (a search result or an existing row).
@@ -137,6 +141,15 @@ export default function CreateRecipePage() {
     },
     [scanBusy]
   );
+
+  // Manually typed barcode — same lookup path as a camera scan.
+  const submitManualCode = () => {
+    const code = manualCode.trim();
+    if (!code) return;
+    setManualOpen(false);
+    setManualCode("");
+    handleScannedBarcode(code);
+  };
 
   // Open the editor for an ingredient already in the recipe.
   const editIngredient = (index: number) => {
@@ -490,6 +503,18 @@ export default function CreateRecipePage() {
               >
                 <X size={24} color="white" />
               </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  // Swap the camera for the manual entry sheet — single modal
+                  // on screen at a time, same as the rest of this flow.
+                  setScanOpen(false);
+                  setManualCode("");
+                  setManualOpen(true);
+                }}
+                style={s.scanCloseBtn}
+              >
+                <KeyboardIcon size={24} color="white" />
+              </TouchableOpacity>
             </View>
 
             <View style={s.scanReticle}>
@@ -506,6 +531,18 @@ export default function CreateRecipePage() {
           </View>
         </View>
       </Modal>
+
+      {/* ── MANUAL BARCODE ENTRY ── */}
+      <ManualEntrySheet
+        visible={manualOpen}
+        value={manualCode}
+        onChange={setManualCode}
+        onClose={() => {
+          setManualOpen(false);
+          setScanOpen(true);
+        }}
+        onSubmit={submitManualCode}
+      />
 
       {/* ── INGREDIENT EDITOR MODAL ── */}
       <Modal visible={!!editingFood} transparent animationType="fade">
@@ -785,7 +822,7 @@ const s = StyleSheet.create({
   },
   scanHeader: {
     flexDirection: "row",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 60,
   },

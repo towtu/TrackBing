@@ -88,40 +88,82 @@ async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
 }
 
 /**
- * Look up a single product by barcode via OpenFoodFacts. Returns a FoodItem
- * ready to drop into the ingredient editor, or null if the code is unknown.
+ * Outcome of a barcode lookup. We distinguish "couldn't reach the database"
+ * from "that code isn't in the database" so the UI can react sensibly, and
+ * flag products that exist but carry no nutrition data.
  */
-export async function lookupBarcode(code: string): Promise<FoodItem | null> {
-  try {
-    const res = await fetch(
-      `https://world.openfoodfacts.org/api/v0/product/${code}.json`
-    );
-    const json = await res.json();
-    if (json.status !== 1 || !json.product) return null;
-    const p = json.product;
-    const n = p.nutriments || {};
-    const isLiquid =
-      p.product_quantity_unit === "ml" ||
-      p.product_quantity_unit === "cl" ||
-      p.product_quantity_unit === "l";
-    return {
-      code,
-      product_name: p.product_name || "Unknown Product",
-      brands: p.brands || "Packaged Item",
-      default_unit: isLiquid ? "ml" : "g",
-      serving_quantity: p.serving_quantity || 100,
-      nutriments: {
-        "energy-kcal_100g":
-          n["energy-kcal_100g"] || n["energy-kcal"] || n["energy_value"] || 0,
-        proteins_100g: n.proteins_100g || n.proteins || 0,
-        carbohydrates_100g: n.carbohydrates_100g || n.carbohydrates || 0,
-        fat_100g: n.fat_100g || n.fat || 0,
-      },
-    };
-  } catch (e) {
-    console.warn("Barcode lookup failed", e);
-    return null;
+export type BarcodeResult =
+  | { ok: true; food: FoodItem; hasNutrition: boolean }
+  | { ok: false; reason: "not-found" | "unreachable" };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Look up a single product by barcode via OpenFoodFacts. OpenFoodFacts is
+ * flaky and intermittently answers with a 500 / HTML error page, so we retry a
+ * few times before giving up and reporting the database as unreachable.
+ */
+export async function lookupBarcode(code: string): Promise<BarcodeResult> {
+  const url = `https://world.openfoodfacts.org/api/v0/product/${code}.json`;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url);
+      // 5xx is the transient flakiness we want to retry past.
+      if (res.status >= 500) {
+        if (attempt < 2) {
+          await sleep(500 * (attempt + 1));
+          continue;
+        }
+        return { ok: false, reason: "unreachable" };
+      }
+      if (!res.ok) return { ok: false, reason: "unreachable" };
+
+      const json = await res.json();
+      if (json.status !== 1 || !json.product) {
+        return { ok: false, reason: "not-found" };
+      }
+
+      const p = json.product;
+      const n = p.nutriments || {};
+      const kcal =
+        n["energy-kcal_100g"] || n["energy-kcal"] || n["energy_value"] || 0;
+      const protein = n.proteins_100g || n.proteins || 0;
+      const carbs = n.carbohydrates_100g || n.carbohydrates || 0;
+      const fat = n.fat_100g || n.fat || 0;
+      const isLiquid =
+        p.product_quantity_unit === "ml" ||
+        p.product_quantity_unit === "cl" ||
+        p.product_quantity_unit === "l";
+
+      return {
+        ok: true,
+        hasNutrition: kcal > 0 || protein > 0 || carbs > 0 || fat > 0,
+        food: {
+          code,
+          product_name: p.product_name || "Unknown Product",
+          brands: p.brands || "Packaged Item",
+          default_unit: isLiquid ? "ml" : "g",
+          serving_quantity: p.serving_quantity || 100,
+          nutriments: {
+            "energy-kcal_100g": kcal,
+            proteins_100g: protein,
+            carbohydrates_100g: carbs,
+            fat_100g: fat,
+          },
+        },
+      };
+    } catch (e) {
+      // Network error or HTML body that failed to parse as JSON — retry.
+      if (attempt < 2) {
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      console.warn("Barcode lookup failed", e);
+      return { ok: false, reason: "unreachable" };
+    }
   }
+  return { ok: false, reason: "unreachable" };
 }
 
 /**

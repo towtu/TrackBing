@@ -127,11 +127,23 @@ export default function CreateRecipePage() {
     async (code: string) => {
       if (scanBusy) return;
       setScanBusy(true);
-      const food = await lookupBarcode(code);
+      const result = await lookupBarcode(code);
       setScanOpen(false);
       setScanBusy(false);
-      if (food) {
-        pickResult(food);
+      if (result.ok) {
+        if (!result.hasNutrition) {
+          Alert.alert(
+            "No nutrition data",
+            `Found "${result.food.product_name}", but the database has no calories or macros for it. Add it under My Foods to set those yourself.`
+          );
+          return;
+        }
+        pickResult(result.food);
+      } else if (result.reason === "unreachable") {
+        Alert.alert(
+          "Food database unavailable",
+          "OpenFoodFacts didn't respond. Check your connection and try again in a moment."
+        );
       } else {
         Alert.alert(
           "Not found",

@@ -20,6 +20,9 @@ export default function WebBarcodeScanner({
 
     let stopped = false;
     let reader: any = null;
+    // Capture the element now so the cleanup uses a stable reference, not a ref
+    // that may have changed by the time cleanup runs.
+    const videoElement = videoRef.current;
 
     const startScanner = async () => {
       const { BrowserMultiFormatReader } = await import("@zxing/browser");
@@ -35,7 +38,6 @@ export default function WebBarcodeScanner({
         delayBetweenScanAttempts: 200,
       });
 
-      const videoElement = videoRef.current;
       if (!videoElement || stopped) return;
 
       try {
@@ -66,11 +68,21 @@ export default function WebBarcodeScanner({
 
     return () => {
       stopped = true;
+      // Grab the stream BEFORE reset(), since @zxing/browser may detach it from
+      // the video element without actually stopping the camera.
+      const stream = (videoElement?.srcObject as MediaStream | null) ?? null;
       if (reader) {
         try {
-          reader.reset(); // stops camera stream + scanning loop
+          reader.reset(); // stops the scanning loop
         } catch {}
       }
+      // reader.reset() does NOT reliably release the camera, which leaves the
+      // stream (and its indicator light) running and bogs the app down. Stop
+      // every track explicitly.
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+      if (videoElement) videoElement.srcObject = null;
     };
   }, [active]);
 

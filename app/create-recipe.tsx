@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Barcode,
   CaretLeft,
@@ -14,7 +14,6 @@ import {
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Keyboard,
   Modal,
@@ -48,9 +47,24 @@ export default function CreateRecipePage() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
 
+  // When opened with an ?id= param we're editing an existing recipe rather
+  // than creating a new one.
+  const params = useLocalSearchParams();
+  const editId = typeof params.id === "string" ? params.id : null;
+
   const [name, setName] = useState("");
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Cross-platform feedback. react-native-web's Alert.alert is a no-op, so a
+  // plain <Modal> is the only thing that actually shows on web.
+  const [notice, setNotice] = useState<{
+    title: string;
+    message: string;
+    onClose?: () => void;
+  } | null>(null);
+  const notify = (title: string, message: string, onClose?: () => void) =>
+    setNotice({ title, message, onClose });
 
   // ── SEARCH MODAL ──
   const [searchOpen, setSearchOpen] = useState(false);
@@ -107,6 +121,28 @@ export default function CreateRecipePage() {
     };
   }, [query]);
 
+  // Editing: pull the existing recipe in once and seed the form.
+  useEffect(() => {
+    if (!editId) return;
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from("recipes")
+        .select("name, ingredients")
+        .eq("id", editId)
+        .single();
+      if (active && data) {
+        setName(data.name ?? "");
+        setIngredients(
+          Array.isArray(data.ingredients) ? data.ingredients : []
+        );
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [editId]);
+
   // Open the editor for a freshly picked search result.
   const pickResult = (item: FoodItem) => {
     const u = (item.default_unit as Unit) || "g";
@@ -132,7 +168,7 @@ export default function CreateRecipePage() {
       setScanBusy(false);
       if (result.ok) {
         if (!result.hasNutrition) {
-          Alert.alert(
+          notify(
             "No nutrition data",
             `Found "${result.food.product_name}", but the database has no calories or macros for it. Add it under My Foods to set those yourself.`
           );
@@ -140,14 +176,14 @@ export default function CreateRecipePage() {
         }
         pickResult(result.food);
       } else if (result.reason === "unreachable") {
-        Alert.alert(
+        notify(
           "Food database unavailable",
           "OpenFoodFacts didn't respond. Check your connection and try again in a moment."
         );
       } else {
-        Alert.alert(
-          "Not found",
-          "We couldn't find that barcode. Try searching by name or create it under My Foods."
+        notify(
+          "Not in OpenFoodFacts",
+          "OpenFoodFacts doesn't have this barcode yet. Search by name, or add it under My Foods."
         );
       }
     },
@@ -223,10 +259,10 @@ export default function CreateRecipePage() {
   const handleSave = async () => {
     if (submitting) return;
     if (!name.trim()) {
-      return Alert.alert("Missing name", "Give your recipe a name.");
+      return notify("Missing name", "Give your recipe a name.");
     }
     if (ingredients.length === 0) {
-      return Alert.alert("No ingredients", "Add at least one ingredient.");
+      return notify("No ingredients", "Add at least one ingredient.");
     }
     setSubmitting(true);
     const {
@@ -236,15 +272,21 @@ export default function CreateRecipePage() {
       setSubmitting(false);
       return;
     }
-    const { error } = await supabase
-      .from("recipes")
-      .insert([{ user_id: user.id, name: name.trim(), ingredients }]);
+    const { error } = editId
+      ? await supabase
+          .from("recipes")
+          .update({ name: name.trim(), ingredients })
+          .eq("id", editId)
+      : await supabase
+          .from("recipes")
+          .insert([{ user_id: user.id, name: name.trim(), ingredients }]);
+    setSubmitting(false);
     if (error) {
-      Alert.alert("Error", error.message);
-      setSubmitting(false);
+      notify("Error", error.message);
     } else {
-      Alert.alert("Success", "Recipe saved!");
-      router.back();
+      notify("Saved", editId ? "Recipe updated!" : "Recipe saved!", () =>
+        router.back()
+      );
     }
   };
 
@@ -271,7 +313,7 @@ export default function CreateRecipePage() {
           <TouchableOpacity onPress={() => router.back()} style={s.iconBtn}>
             <CaretLeft size={24} color={Colors.accent} weight="bold" />
           </TouchableOpacity>
-          <Text style={s.headerTitle}>New Recipe</Text>
+          <Text style={s.headerTitle}>{editId ? "Edit Recipe" : "New Recipe"}</Text>
           <View style={{ width: 42 }} />
         </View>
 
@@ -663,6 +705,26 @@ export default function CreateRecipePage() {
           </View>
         </View>
       </Modal>
+
+      {/* ── NOTICE MODAL (cross-platform alert replacement) ── */}
+      <Modal visible={!!notice} transparent animationType="fade">
+        <View style={s.noticeOverlay}>
+          <View style={s.noticeCard}>
+            <Text style={s.noticeTitle}>{notice?.title}</Text>
+            <Text style={s.noticeMessage}>{notice?.message}</Text>
+            <TouchableOpacity
+              style={s.noticeBtn}
+              onPress={() => {
+                const cb = notice?.onClose;
+                setNotice(null);
+                cb?.();
+              }}
+            >
+              <Text style={s.noticeBtnText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1016,5 +1078,46 @@ const s = StyleSheet.create({
     fontSize: 17,
     fontWeight: "900",
     letterSpacing: 0.2,
+  },
+
+  // ── NOTICE MODAL ──
+  noticeOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 28,
+  },
+  noticeCard: {
+    width: "100%",
+    maxWidth: 380,
+    backgroundColor: Colors.secondary,
+    borderRadius: 22,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  noticeTitle: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  noticeMessage: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 22,
+  },
+  noticeBtn: {
+    backgroundColor: Colors.accent,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  noticeBtnText: {
+    color: Colors.textOnAccent,
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

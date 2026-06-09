@@ -2,7 +2,9 @@ import { useFocusEffect, useRouter } from "expo-router";
 import {
   BookOpen,
   CaretLeft,
+  CheckCircle,
   MagnifyingGlass,
+  Pencil,
   Plus,
   SlidersHorizontal,
   Trash,
@@ -38,6 +40,14 @@ type Recipe = {
   ingredients: RecipeIngredient[];
 };
 
+// Quick portion fractions of the whole recipe.
+const PORTION_PRESETS = [
+  { label: "1", value: 1 },
+  { label: "½", value: 0.5 },
+  { label: "⅓", value: 1 / 3 },
+  { label: "¼", value: 0.25 },
+];
+
 export default function CookbookPage() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
@@ -53,6 +63,10 @@ export default function CookbookPage() {
     RecipeIngredient[]
   >([]);
   const [adjustMode, setAdjustMode] = useState(false);
+  // Portion of the whole recipe being logged: 1 = the entire recipe.
+  const [portion, setPortion] = useState(1);
+  const [customPortion, setCustomPortion] = useState("");
+  const [logSuccess, setLogSuccess] = useState(false);
 
   // ── DELETE MODAL STATE ──
   const [deleteModal, setDeleteModal] = useState(false);
@@ -97,6 +111,13 @@ export default function CookbookPage() {
     // Deep-clone ingredients so log-time weight edits stay one-off.
     setWorkingIngredients(recipe.ingredients.map((ing) => ({ ...ing })));
     setAdjustMode(false);
+    setPortion(1);
+    setCustomPortion("");
+  };
+
+  // Open the builder in edit mode for this recipe.
+  const editRecipe = (recipe: Recipe) => {
+    router.push({ pathname: "/create-recipe", params: { id: recipe.id } });
   };
 
   const updateIngredientWeight = (index: number, text: string) => {
@@ -108,7 +129,14 @@ export default function CookbookPage() {
     });
   };
 
-  const modalTotal = recipeTotal(workingIngredients);
+  // Full recipe total, then scaled to the portion actually being logged.
+  const baseTotal = recipeTotal(workingIngredients);
+  const loggedTotal = {
+    c: Math.round(baseTotal.c * portion),
+    p: Math.round(baseTotal.p * portion),
+    cb: Math.round(baseTotal.cb * portion),
+    f: Math.round(baseTotal.f * portion),
+  };
 
   const confirmLog = async () => {
     if (!selectedRecipe || submitting) return;
@@ -122,17 +150,17 @@ export default function CookbookPage() {
         {
           user_id: user.id,
           name: selectedRecipe.name,
-          calories: modalTotal.c,
-          protein: modalTotal.p,
-          carbs: modalTotal.cb,
-          fat: modalTotal.f,
-          serving_size: "1",
+          calories: loggedTotal.c,
+          protein: loggedTotal.p,
+          carbs: loggedTotal.cb,
+          fat: loggedTotal.f,
+          serving_size: parseFloat(portion.toFixed(2)).toString(),
           serving_unit: "recipe",
         },
       ]);
       upsertDailySummary();
-      alert("Recipe logged!");
       setSelectedRecipe(null);
+      setLogSuccess(true);
     }
     setSubmitting(false);
   };
@@ -267,6 +295,12 @@ export default function CookbookPage() {
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    style={localStyles.editBtn}
+                    onPress={() => editRecipe(item)}
+                  >
+                    <Pencil size={20} color={Colors.accent} weight="bold" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
                     style={localStyles.deleteBtn}
                     onPress={() => handleDeletePress(item)}
                   >
@@ -343,28 +377,86 @@ export default function CookbookPage() {
               {/* Total */}
               <View style={localStyles.bentoContainer}>
                 <View style={localStyles.bentoMain}>
-                  <Text style={localStyles.bentoValue}>{modalTotal.c}</Text>
+                  <Text style={localStyles.bentoValue}>{loggedTotal.c}</Text>
                   <Text style={localStyles.bentoLabel}>CALORIES</Text>
                 </View>
                 <View style={localStyles.bentoGrid}>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {modalTotal.p}g
+                      {loggedTotal.p}g
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>PROT</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {modalTotal.cb}g
+                      {loggedTotal.cb}g
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {modalTotal.f}g
+                      {loggedTotal.f}g
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>FAT</Text>
                   </View>
+                </View>
+              </View>
+
+              {/* Portion */}
+              <View style={localStyles.portionBlock}>
+                <View style={localStyles.portionHeader}>
+                  <Text style={localStyles.portionTitle}>How much?</Text>
+                  {portion !== 1 && (
+                    <Text style={localStyles.portionHint}>
+                      whole recipe = {baseTotal.c} kcal
+                    </Text>
+                  )}
+                </View>
+                <View style={localStyles.portionRow}>
+                  {PORTION_PRESETS.map((p) => {
+                    const active =
+                      !customPortion && Math.abs(portion - p.value) < 0.001;
+                    return (
+                      <TouchableOpacity
+                        key={p.label}
+                        style={[
+                          localStyles.portionChip,
+                          active && localStyles.portionChipActive,
+                        ]}
+                        onPress={() => {
+                          setCustomPortion("");
+                          setPortion(p.value);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            localStyles.portionChipText,
+                            active && localStyles.portionChipTextActive,
+                          ]}
+                        >
+                          {p.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TextInput
+                    style={[
+                      localStyles.portionCustom,
+                      !!customPortion && localStyles.portionChipActive,
+                    ]}
+                    keyboardType="numeric"
+                    placeholder="0.0"
+                    placeholderTextColor={Colors.textSecondary}
+                    value={customPortion}
+                    onChangeText={(t) => {
+                      const cleaned = t.replace(/[^0-9.]/g, "");
+                      setCustomPortion(cleaned);
+                      const v = parseFloat(cleaned);
+                      if (!isNaN(v) && v > 0) setPortion(v);
+                    }}
+                    selectTextOnFocus
+                  />
+                  <Text style={localStyles.portionTimes}>×</Text>
                 </View>
               </View>
 
@@ -490,6 +582,33 @@ export default function CookbookPage() {
             </View>
           </View>
         </Modal>
+
+        {/* ── LOG SUCCESS MODAL ── */}
+        <Modal visible={logSuccess} transparent animationType="fade">
+          <View style={localStyles.deleteOverlay}>
+            <TouchableOpacity
+              style={RNStyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setLogSuccess(false)}
+            />
+            <View style={localStyles.glassModal}>
+              <View style={localStyles.glassModalDrag} />
+              <View style={localStyles.successIcon}>
+                <CheckCircle size={36} color={Colors.accent} weight="fill" />
+              </View>
+              <Text style={localStyles.deleteModalTitle}>Logged!</Text>
+              <Text style={localStyles.deleteModalSubtitle}>
+                Added to today&apos;s food log.
+              </Text>
+              <TouchableOpacity
+                style={localStyles.successBtn}
+                onPress={() => setLogSuccess(false)}
+              >
+                <Text style={localStyles.btnConfirmDeleteText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -598,6 +717,17 @@ const localStyles = RNStyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 10,
     marginTop: 2,
+  },
+  editBtn: {
+    backgroundColor: Colors.surface,
+    padding: 13,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    minWidth: 48,
+    marginRight: 8,
   },
   deleteBtn: {
     backgroundColor: "rgba(239,68,68,0.12)",
@@ -827,6 +957,90 @@ const localStyles = RNStyleSheet.create({
     color: Colors.text,
     fontSize: 15,
     fontWeight: "700",
+  },
+
+  // ── PORTION ──
+  portionBlock: {
+    marginBottom: 20,
+  },
+  portionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  portionTitle: {
+    color: Colors.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  portionHint: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  portionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  portionChip: {
+    width: 48,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.inputBg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  portionChipActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  portionChipText: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  portionChipTextActive: {
+    color: Colors.textOnAccent,
+  },
+  portionCustom: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.inputBg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+    textAlign: "center",
+    paddingHorizontal: 8,
+  },
+  portionTimes: {
+    color: Colors.textSecondary,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+
+  // ── SUCCESS MODAL ──
+  successIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(150,255,150,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  successBtn: {
+    backgroundColor: Colors.accent,
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: "center",
   },
 
   // ── DELETE MODAL ──

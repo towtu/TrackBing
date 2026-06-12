@@ -45,6 +45,24 @@ const handleMessage = (onBarcodeScanned: (data: string) => void) =>
     } catch {}
   };
 
+// Grant the camera only — never blanket-approve whatever the page requests.
+const grantCameraOnly = (request: any) => {
+  const resources: string[] = Array.isArray(request?.resources)
+    ? request.resources
+    : [];
+  const camera = resources.filter((r) => r.includes("VIDEO_CAPTURE"));
+  request.grant(camera);
+};
+
+// The scanner is a self-contained inline document; it should never navigate
+// away. Allow only the initial inline/local origins and block anything else
+// (e.g. a scanned QR code that encodes a URL).
+const ALLOWED_LOAD_PREFIXES = ["about:blank", "data:", "https://localhost"];
+const allowInlineLoadsOnly = (req: { url?: string }) => {
+  const url = req?.url ?? "";
+  return ALLOWED_LOAD_PREFIXES.some((prefix) => url.startsWith(prefix));
+};
+
 export default function AndroidBarcodeScanner({ onBarcodeScanned, active }: Props) {
   if (!active) return null;
 
@@ -61,7 +79,8 @@ export default function AndroidBarcodeScanner({ onBarcodeScanned, active }: Prop
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback
         originWhitelist={["*"]}
-        onPermissionRequest={(request: any) => request.grant(request.resources)}
+        onPermissionRequest={grantCameraOnly}
+        onShouldStartLoadWithRequest={allowInlineLoadsOnly}
         onMessage={handleMessage(onBarcodeScanned)}
       />
     );
@@ -76,7 +95,8 @@ export default function AndroidBarcodeScanner({ onBarcodeScanned, active }: Prop
       mediaPlaybackRequiresUserAction={false}
       allowsInlineMediaPlayback
       originWhitelist={["about:blank"]}
-      onPermissionRequest={(request: any) => request.grant(request.resources)}
+      onPermissionRequest={grantCameraOnly}
+      onShouldStartLoadWithRequest={allowInlineLoadsOnly}
       onMessage={handleMessage(onBarcodeScanned)}
     />
   );

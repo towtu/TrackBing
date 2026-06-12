@@ -124,6 +124,10 @@ const parseDisplay = (value: string): number | null => {
 const roundDisplay = (value: number | null) =>
   value === null ? "" : String(Math.round(value * 10) / 10);
 
+// Basic shape check for emails; the server remains the source of truth.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 8;
+
 // Keep OTP verification isolated so the app does not enter authenticated
 // routes until the initial user_goals row has been saved successfully.
 const signupVerificationClient = createClient(
@@ -309,11 +313,33 @@ export function AuthScreen() {
 
   // --- LOGIC: AUTH FLOW ---
   async function handleAuth() {
+    const trimmedEmail = email.trim();
+
+    // Client-side validation (UX only — the server still enforces its own rules).
+    if (!trimmedEmail || !password) {
+      showAlert("Missing Details", "Enter both your email and password.");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      showAlert("Invalid Email", "Enter a valid email address.");
+      return;
+    }
+    if (!isLogin && password.length < MIN_PASSWORD_LENGTH) {
+      showAlert(
+        "Weak Password",
+        `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.`,
+      );
+      return;
+    }
+
+    // Normalise the stored email so later steps (OTP verify, profile save) match.
+    if (trimmedEmail !== email) setEmail(trimmedEmail);
+
     setLoading(true);
 
     if (isLogin) {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: trimmedEmail,
         password,
       });
       if (error) {
@@ -323,7 +349,10 @@ export function AuthScreen() {
       }
     } else {
       // SIGN UP -> Trigger Email
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+      });
 
       if (error) {
         showAlert("Signup Failed", error.message);

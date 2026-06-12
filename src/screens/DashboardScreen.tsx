@@ -407,16 +407,18 @@ export function DashboardScreen() {
     setEditLogModal(false);
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setLogs(previousLogs); calculateTotals(previousLogs); return; }
 
-    const { error: delError } = await supabase.from("food_logs").delete().eq("id", editingLog.id);
-    if (delError) { setLogs(previousLogs); calculateTotals(previousLogs); return; }
+    // Atomic in-place update (scoped to the owner) instead of delete-then-insert,
+    // which could permanently lose the log if the re-insert failed mid-way.
+    const { error: updateError } = await supabase
+      .from("food_logs")
+      .update(updatePayload)
+      .eq("id", editingLog.id)
+      .eq("user_id", user.id);
+    if (updateError) { setLogs(previousLogs); calculateTotals(previousLogs); return; }
 
-    const { error: insError } = await supabase.from("food_logs").insert([{
-      user_id: user.id, name: editingLog.name, barcode: editingLog.barcode || null, ...updatePayload,
-    }]);
-    if (insError) fetchData();
-    else upsertDailySummary();
+    upsertDailySummary();
   };
 
   const calculateTotals = (data: FoodLog[]) => {
@@ -447,7 +449,13 @@ export function DashboardScreen() {
     const updatedLogs = logs.filter((item) => item.id !== id);
     setLogs(updatedLogs);
     calculateTotals(updatedLogs);
-    const { error } = await supabase.from("food_logs").delete().eq("id", id);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLogs(previousLogs); calculateTotals(previousLogs); return; }
+    const { error } = await supabase
+      .from("food_logs")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
     if (error) { setLogs(previousLogs); calculateTotals(previousLogs); }
     else upsertDailySummary();
   };

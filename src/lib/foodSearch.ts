@@ -34,6 +34,10 @@ export async function loadGistFoods(): Promise<FoodItem[]> {
   try {
     const res = await fetch(CUSTOM_DB_URL);
     const data = await res.json();
+    if (!Array.isArray(data)) {
+      console.warn("Gist load returned unexpected shape");
+      return [];
+    }
     gistCache = data.map((f: any) => ({
       code: "gist-" + f.name,
       product_name: f.name,
@@ -146,12 +150,14 @@ export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
 async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
   try {
     const res = await fetch(
-      `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1&page_size=10&lc=en`
+      `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
+        query
+      )}&search_simple=1&action=process&json=1&page_size=10&lc=en`
     );
     const offData = await res.json();
     return (
-      offData.products?.map((item: any) => ({
-        code: item.code || Math.random().toString(),
+      offData.products?.map((item: any, index: number) => ({
+        code: item.code || `off-${index}`,
         product_name: item.product_name || "Unknown Food",
         brands: item.brands || "Packaged",
         default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
@@ -187,7 +193,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * few times before giving up and reporting the database as unreachable.
  */
 export async function lookupBarcode(code: string): Promise<BarcodeResult> {
-  const url = `https://world.openfoodfacts.org/api/v0/product/${code}.json`;
+  const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(
+    code
+  )}.json`;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {

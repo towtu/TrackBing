@@ -210,21 +210,23 @@ equations use age, height, weight, sex, activity category, and the energy cost
 of growth.
 
 The implementation uses the sex-specific equations from Table 5-15 of the
-National Academies report. A 13-year-old uses the 3-13 equation; users age
-14-17 use the 14-18 equation:
+National Academies report. The base equation is the same for the 3-13.99 and
+14-18.99 groups. The age-specific energy cost of growth differs: a 13-year-old
+adds 25 kcal/day for boys or 30 kcal/day for girls; users age 14-17 add
+20 kcal/day:
 
 ```text
 Age 13 boys:
-Inactive    =  242.62 - 16.69A + 1.883H + 15.15W + 20
-Low active  =   23.03 - 16.69A + 1.745H + 16.30W + 20
-Active      = -320.73 - 16.69A + 3.148H + 15.90W + 20
-Very active = -744.50 - 16.69A + 3.963H + 17.04W + 20
+Inactive    = -447.51 + 3.68A + 13.01H + 13.15W + 25
+Low active  =   19.12 + 3.68A +  8.62H + 20.28W + 25
+Active      = -388.19 + 3.68A + 12.66H + 20.46W + 25
+Very active = -671.75 + 3.68A + 15.38H + 23.25W + 25
 
 Age 13 girls:
-Inactive    =  189.55 - 17.50A + 1.625H + 7.90W + 20
-Low active  =  -98.88 - 17.50A + 1.809H + 8.40W + 20
-Active      = -162.31 - 17.50A + 2.220H + 9.01W + 20
-Very active = -286.16 - 17.50A + 2.709H + 9.85W + 20
+Inactive    =   55.59 - 22.25A +  8.43H + 17.07W + 30
+Low active  = -297.54 - 22.25A + 12.77H + 14.73W + 30
+Active      = -189.55 - 22.25A + 11.74H + 18.34W + 30
+Very active = -709.59 - 22.25A + 18.22H + 14.25W + 30
 
 Age 14-17 boys:
 Inactive    = -447.51 + 3.68A + 13.01H + 13.15W + 20

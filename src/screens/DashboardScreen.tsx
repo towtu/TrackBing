@@ -42,9 +42,23 @@ import CircularProgress from "react-native-circular-progress-indicator";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary, getLocalDateStr } from "@/src/lib/dailySummary";
+import {
+  CALORIE_FLOORS,
+  DEFAULT_MACRO_PERCENTAGES,
+  calculateMacroGrams,
+  validateMacroPercentages,
+} from "@/src/lib/nutritionTargets";
 import { Colors } from "@/src/styles/colors";
 import { DailyTotals, FoodLog } from "@/src/types";
 import { useResponsive } from "@/src/hooks/useResponsive";
+
+type GoalProfile = {
+  age: number;
+  gender: "male" | "female";
+  proteinRatio: number;
+  carbsRatio: number;
+  fatRatio: number;
+};
 
 export function DashboardScreen() {
   const { isDesktop } = useResponsive();
@@ -52,6 +66,7 @@ export function DashboardScreen() {
   const [totals, setTotals] = useState<DailyTotals>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
   const [calorieGoal, setCalorieGoal] = useState(2000);
   const [goals, setGoals] = useState({ p: 150, c: 200, f: 70 });
+  const [goalProfile, setGoalProfile] = useState<GoalProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editGoalModal, setEditGoalModal] = useState(false);
@@ -161,12 +176,36 @@ export function DashboardScreen() {
 
     const { data: userGoal } = await supabase
       .from("user_goals")
-      .select("calorie_target, protein_grams, carbs_grams, fat_grams")
+      .select(
+        "calorie_target, protein_grams, carbs_grams, fat_grams, protein_ratio, carbs_ratio, fat_ratio, age, gender, goal_mode",
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (userGoal?.calorie_target) setCalorieGoal(userGoal.calorie_target);
     if (userGoal) {
+      const percentages = {
+        protein:
+          userGoal.protein_ratio == null
+            ? DEFAULT_MACRO_PERCENTAGES.protein
+            : Number(userGoal.protein_ratio),
+        carbs:
+          userGoal.carbs_ratio == null
+            ? DEFAULT_MACRO_PERCENTAGES.carbs
+            : Number(userGoal.carbs_ratio),
+        fat:
+          userGoal.fat_ratio == null
+            ? DEFAULT_MACRO_PERCENTAGES.fat
+            : Number(userGoal.fat_ratio),
+      };
+
+      setGoalProfile({
+        age: userGoal.age == null ? Number.NaN : Number(userGoal.age),
+        gender: userGoal.gender === "female" ? "female" : "male",
+        proteinRatio: percentages.protein,
+        carbsRatio: percentages.carbs,
+        fatRatio: percentages.fat,
+      });
       setGoals({
         p: userGoal.protein_grams || 150,
         c: userGoal.carbs_grams || 200,
@@ -195,38 +234,71 @@ export function DashboardScreen() {
   };
 
   const handleSaveGoal = async () => {
-    const val = parseInt(newGoalInput);
-    if (!val || val < 500) return alert("Please enter a valid calorie goal.");
-    setCalorieGoal(val);
-    setEditGoalModal(false);
+    const value = Number(newGoalInput);
+    if (!goalProfile) {
+      alert("Open Profile and complete your body stats before setting a target.");
+      return;
+    }
+    if (
+      !Number.isFinite(goalProfile.age) ||
+      goalProfile.age < 13 ||
+      goalProfile.age > 100
+    ) {
+      alert("Open Profile and save a valid age before setting a target.");
+      return;
+    }
+    if (goalProfile.age < 18) {
+      alert("Custom calorie targets are unavailable for users ages 13-17.");
+      return;
+    }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const floor = CALORIE_FLOORS[goalProfile.gender];
+    if (!Number.isFinite(value) || value < floor) {
+      alert(`Enter at least ${floor} kcal/day for this profile.`);
+      return;
+    }
+
+    const percentages = {
+      protein: goalProfile.proteinRatio,
+      carbs: goalProfile.carbsRatio,
+      fat: goalProfile.fatRatio,
+    };
+    if (!validateMacroPercentages(percentages)) {
+      alert("Open Profile and correct the macro percentages before saving.");
+      return;
+    }
+    const grams = calculateMacroGrams(value, percentages);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: currentGoals } = await supabase
+    const { error } = await supabase
       .from("user_goals")
-      .select("protein_ratio, carbs_ratio, fat_ratio")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      .update({
+        calorie_target: value,
+        goal_mode: "custom_calories",
+        goal_rate: null,
+        protein_grams: grams.protein,
+        carbs_grams: grams.carbs,
+        fat_grams: grams.fat,
+      })
+      .eq("user_id", user.id);
 
-    let proteinGrams = 150, carbsGrams = 200, fatGrams = 70;
-    if (currentGoals) {
-      const pR = currentGoals.protein_ratio || 30;
-      const cR = currentGoals.carbs_ratio || 35;
-      const fR = currentGoals.fat_ratio || 35;
-      proteinGrams = Math.round((val * pR) / 100 / 4);
-      carbsGrams = Math.round((val * cR) / 100 / 4);
-      fatGrams = Math.round((val * fR) / 100 / 9);
-      setGoals({ p: proteinGrams, c: carbsGrams, f: fatGrams });
+    if (error) {
+      alert(`Unable to save calorie target: ${error.message}`);
+      return;
     }
 
-    const { data: existing } = await supabase.from("user_goals").select("id").eq("user_id", user.id).maybeSingle();
-    const updates = { user_id: user.id, calorie_target: val, protein_grams: proteinGrams, carbs_grams: carbsGrams, fat_grams: fatGrams };
-    if (existing) {
-      await supabase.from("user_goals").update(updates).eq("user_id", user.id);
-    } else {
-      await supabase.from("user_goals").insert([updates]);
-    }
+    setCalorieGoal(value);
+    setGoals({ p: grams.protein, c: grams.carbs, f: grams.fat });
+    setEditGoalModal(false);
+  };
+
+  const openCustomGoalEditor = () => {
+    setNewGoalInput(calorieGoal.toString());
+    setEditGoalModal(true);
   };
 
   const handleEditLogStart = (log: FoodLog) => {
@@ -325,6 +397,11 @@ export function DashboardScreen() {
   const rawDiff = calorieGoal - totals.calories;
   const isOver = rawDiff < 0;
   const displayDiff = Math.abs(Math.round(rawDiff));
+  const isMinorProfile =
+    goalProfile !== null &&
+    Number.isFinite(goalProfile.age) &&
+    goalProfile.age >= 13 &&
+    goalProfile.age < 18;
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
@@ -404,16 +481,29 @@ export function DashboardScreen() {
                         </View>
                       </View>
 
-                      <TouchableOpacity onPress={() => { setNewGoalInput(calorieGoal.toString()); setEditGoalModal(true); }} style={styles.goalButtonGroup}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
-                          <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
-                          <PencilSimple size={12} color={Colors.accent} weight="fill" />
-                        </View>
-                        <View style={styles.goalValueRow}>
-                          <Text style={styles.goalValueText}>{calorieGoal}</Text>
-                          <Text style={styles.goalUnitText}>kcal</Text>
-                        </View>
-                      </TouchableOpacity>
+                      <View style={styles.goalButtonGroup}>
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          disabled={isMinorProfile}
+                          onPress={openCustomGoalEditor}
+                        >
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
+                            <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
+                            {!isMinorProfile && (
+                              <PencilSimple size={12} color={Colors.accent} weight="fill" />
+                            )}
+                          </View>
+                          <View style={styles.goalValueRow}>
+                            <Text style={styles.goalValueText}>{calorieGoal}</Text>
+                            <Text style={styles.goalUnitText}>kcal</Text>
+                          </View>
+                        </TouchableOpacity>
+                        {isMinorProfile && (
+                          <Text style={styles.goalHelper}>
+                            Teen targets are maintenance estimates managed in Profile.
+                          </Text>
+                        )}
+                      </View>
                     </View>
 
                     <View style={styles.heroRight}>
@@ -562,16 +652,29 @@ export function DashboardScreen() {
                         </View>
                       </View>
 
-                      <TouchableOpacity onPress={() => { setNewGoalInput(calorieGoal.toString()); setEditGoalModal(true); }} style={styles.goalButtonGroup}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
-                          <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
-                          <PencilSimple size={12} color={Colors.accent} weight="fill" />
-                        </View>
-                        <View style={styles.goalValueRow}>
-                          <Text style={styles.goalValueText}>{calorieGoal}</Text>
-                          <Text style={styles.goalUnitText}>kcal</Text>
-                        </View>
-                      </TouchableOpacity>
+                      <View style={styles.goalButtonGroup}>
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          disabled={isMinorProfile}
+                          onPress={openCustomGoalEditor}
+                        >
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
+                            <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
+                            {!isMinorProfile && (
+                              <PencilSimple size={12} color={Colors.accent} weight="fill" />
+                            )}
+                          </View>
+                          <View style={styles.goalValueRow}>
+                            <Text style={styles.goalValueText}>{calorieGoal}</Text>
+                            <Text style={styles.goalUnitText}>kcal</Text>
+                          </View>
+                        </TouchableOpacity>
+                        {isMinorProfile && (
+                          <Text style={styles.goalHelper}>
+                            Teen targets are maintenance estimates managed in Profile.
+                          </Text>
+                        )}
+                      </View>
                     </View>
 
                     <View style={styles.heroRight}>
@@ -791,8 +894,10 @@ export function DashboardScreen() {
             <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setEditGoalModal(false)} />
             <View style={styles.glassModal}>
               <View style={styles.modalDrag} />
-              <Text style={styles.modalTitle}>Set Daily Goal</Text>
-              <Text style={styles.modalSubtitle}>Adjust your calorie target for the day</Text>
+              <Text style={styles.modalTitle}>Custom Calorie Target</Text>
+              <Text style={styles.modalSubtitle}>
+                Replace your estimated daily target with a custom value
+              </Text>
               
               <View style={styles.modalInputWrap}>
                 <TextInput
@@ -962,6 +1067,12 @@ const styles = StyleSheet.create({
   heroBigValue: { color: Colors.text, fontSize: 44, fontWeight: "900", letterSpacing: -2 },
   heroUnit: { color: Colors.textSecondary, fontSize: 14, fontWeight: "600" },
   goalButtonGroup: { width: '100%' },
+  goalHelper: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 6,
+  },
   goalValueRow: { borderBottomWidth: 1, borderStyle: "dashed", borderBottomColor: Colors.border, paddingBottom: 2, flexDirection: "row", alignItems: "baseline", gap: 4, alignSelf: "flex-start", marginTop: 2 },
   goalValueText: { color: Colors.text, fontSize: 20, fontWeight: "800", letterSpacing: -0.5 },
   goalUnitText: { color: Colors.textSecondary, fontSize: 13, fontWeight: "600" },

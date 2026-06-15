@@ -54,7 +54,7 @@ import { useResponsive } from "@/src/hooks/useResponsive";
 
 type GoalProfile = {
   age: number;
-  gender: "male" | "female";
+  gender: "male" | "female" | null;
   proteinRatio: number;
   carbsRatio: number;
   fatRatio: number;
@@ -171,16 +171,23 @@ export function DashboardScreen() {
   };
 
   const fetchData = async () => {
+    setGoalProfile(null);
+    setEditGoalModal(false);
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: userGoal } = await supabase
+    const { data: userGoal, error: goalError } = await supabase
       .from("user_goals")
       .select(
         "calorie_target, protein_grams, carbs_grams, fat_grams, protein_ratio, carbs_ratio, fat_ratio, age, gender, goal_mode",
       )
       .eq("user_id", user.id)
       .maybeSingle();
+
+    if (goalError) {
+      console.error("Unable to load nutrition goals:", goalError);
+    }
 
     if (userGoal?.calorie_target) setCalorieGoal(userGoal.calorie_target);
     if (userGoal) {
@@ -201,15 +208,18 @@ export function DashboardScreen() {
 
       setGoalProfile({
         age: userGoal.age == null ? Number.NaN : Number(userGoal.age),
-        gender: userGoal.gender === "female" ? "female" : "male",
+        gender:
+          userGoal.gender === "female" || userGoal.gender === "male"
+            ? userGoal.gender
+            : null,
         proteinRatio: percentages.protein,
         carbsRatio: percentages.carbs,
         fatRatio: percentages.fat,
       });
       setGoals({
-        p: userGoal.protein_grams || 150,
-        c: userGoal.carbs_grams || 200,
-        f: userGoal.fat_grams || 70,
+        p: userGoal.protein_grams ?? 150,
+        c: userGoal.carbs_grams ?? 200,
+        f: userGoal.fat_grams ?? 70,
       });
     }
 
@@ -251,6 +261,10 @@ export function DashboardScreen() {
       alert("Custom calorie targets are unavailable for users ages 13-17.");
       return;
     }
+    if (goalProfile.gender === null) {
+      alert("Open Profile and save a valid gender before setting a target.");
+      return;
+    }
 
     const floor = CALORIE_FLOORS[goalProfile.gender];
     if (!Number.isFinite(value) || value < floor) {
@@ -274,7 +288,7 @@ export function DashboardScreen() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { error } = await supabase
+    const { data: updatedGoal, error } = await supabase
       .from("user_goals")
       .update({
         calorie_target: value,
@@ -284,10 +298,16 @@ export function DashboardScreen() {
         carbs_grams: grams.carbs,
         fat_grams: grams.fat,
       })
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .select("user_id")
+      .maybeSingle();
 
-    if (error) {
-      alert(`Unable to save calorie target: ${error.message}`);
+    if (error || !updatedGoal) {
+      alert(
+        `Unable to save calorie target: ${
+          error?.message ?? "the profile row was not found"
+        }.`,
+      );
       return;
     }
 
@@ -484,8 +504,11 @@ export function DashboardScreen() {
                       <View style={styles.goalButtonGroup}>
                         <TouchableOpacity
                           accessibilityRole="button"
+                          accessibilityState={{ disabled: isMinorProfile }}
                           disabled={isMinorProfile}
+                          hitSlop={4}
                           onPress={openCustomGoalEditor}
+                          style={styles.goalEditTrigger}
                         >
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
                             <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
@@ -655,8 +678,11 @@ export function DashboardScreen() {
                       <View style={styles.goalButtonGroup}>
                         <TouchableOpacity
                           accessibilityRole="button"
+                          accessibilityState={{ disabled: isMinorProfile }}
                           disabled={isMinorProfile}
+                          hitSlop={4}
                           onPress={openCustomGoalEditor}
+                          style={styles.goalEditTrigger}
                         >
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
                             <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
@@ -901,6 +927,7 @@ export function DashboardScreen() {
               
               <View style={styles.modalInputWrap}>
                 <TextInput
+                  accessibilityLabel="Custom daily calorie target"
                   style={styles.modalInputBig}
                   keyboardType="numeric"
                   value={newGoalInput}
@@ -1067,6 +1094,10 @@ const styles = StyleSheet.create({
   heroBigValue: { color: Colors.text, fontSize: 44, fontWeight: "900", letterSpacing: -2 },
   heroUnit: { color: Colors.textSecondary, fontSize: 14, fontWeight: "600" },
   goalButtonGroup: { width: '100%' },
+  goalEditTrigger: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
   goalHelper: {
     color: Colors.textMuted,
     fontSize: 11,

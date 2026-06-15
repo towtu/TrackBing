@@ -128,11 +128,127 @@ describe("calculateNutritionTarget for adults", () => {
       calculateNutritionTarget({ ...adultBase, weeklyRate: 0.0051 }),
     ).toThrow("Weekly rate must be between -1% and 0.5%.");
   });
+});
 
-  it("defers minor calculations to the adolescent implementation task", () => {
-    expect(() =>
-      calculateNutritionTarget({ ...adultBase, age: 17, weeklyRate: 0 }),
-    ).toThrow("Minor EER calculation is not implemented yet.");
+describe("calculateNutritionTarget for minors", () => {
+  it.each([
+    ["sedentary", 2364],
+    ["light", 2485],
+    ["moderate", 2733],
+    ["very_active", 3024],
+  ] as const)(
+    "uses the age-13 male %s EER equation",
+    (activityLevel, expected) => {
+      expect(
+        calculateNutritionTarget({
+          age: 13,
+          sex: "male",
+          weightKg: 50,
+          heightCm: 160,
+          activityLevel,
+          weeklyRate: -0.01,
+        }),
+      ).toMatchObject({
+        maintenanceCalories: expected,
+        requestedRate: null,
+        requestedAdjustment: 0,
+        appliedAdjustment: 0,
+        finalCalories: expected,
+        calculationMethod: "nasem_eer_2023",
+      });
+    },
+  );
+
+  it.each([
+    ["sedentary", 1999],
+    ["light", 2223],
+    ["moderate", 2347],
+    ["very_active", 2659],
+  ] as const)(
+    "uses the age-13 female %s EER equation",
+    (activityLevel, expected) => {
+      expect(
+        calculateNutritionTarget({
+          age: 13,
+          sex: "female",
+          weightKg: 50,
+          heightCm: 160,
+          activityLevel,
+          weeklyRate: 0.005,
+        }),
+      ).toMatchObject({
+        maintenanceCalories: expected,
+        requestedRate: null,
+        requestedAdjustment: 0,
+        appliedAdjustment: 0,
+        finalCalories: expected,
+        calculationMethod: "nasem_eer_2023",
+      });
+    },
+  );
+
+  it("switches growth allowance at age 14", () => {
+    expect(
+      calculateNutritionTarget({
+        age: 14,
+        sex: "male",
+        weightKg: 50,
+        heightCm: 160,
+        activityLevel: "sedentary",
+        weeklyRate: 0,
+      }).finalCalories,
+    ).toBe(2363);
+  });
+
+  it("keeps age 17 on the adolescent path", () => {
+    expect(
+      calculateNutritionTarget({
+        age: 17,
+        sex: "female",
+        weightKg: 50,
+        heightCm: 160,
+        activityLevel: "moderate",
+        weeklyRate: 0,
+      }),
+    ).toMatchObject({
+      finalCalories: 2248,
+      calculationMethod: "nasem_eer_2023",
+    });
+  });
+
+  it("uses the adult path at age 18", () => {
+    expect(
+      calculateNutritionTarget({
+        age: 18,
+        sex: "male",
+        weightKg: 50,
+        heightCm: 160,
+        activityLevel: "sedentary",
+        weeklyRate: 0,
+      }).calculationMethod,
+    ).toBe("mifflin_st_jeor");
+  });
+
+  it("ignores supplied weekly rates and returns maintenance without safeguards", () => {
+    expect(
+      calculateNutritionTarget({
+        age: 13,
+        sex: "male",
+        weightKg: 50,
+        heightCm: 160,
+        activityLevel: "sedentary",
+        weeklyRate: -0.5,
+      }),
+    ).toEqual({
+      maintenanceCalories: 2364,
+      requestedRate: null,
+      requestedAdjustment: 0,
+      appliedAdjustment: 0,
+      finalCalories: 2364,
+      floorApplied: false,
+      adjustmentCapApplied: false,
+      calculationMethod: "nasem_eer_2023",
+    });
   });
 });
 

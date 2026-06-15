@@ -239,14 +239,83 @@ function calculateAdultTarget(
   };
 }
 
+type EerCoefficients = {
+  constant: number;
+  age: number;
+  height: number;
+  weight: number;
+};
+
+const MINOR_EER_COEFFICIENTS: Record<
+  BiologicalSex,
+  Record<ActivityLevel, EerCoefficients>
+> = {
+  male: {
+    sedentary: { constant: -447.51, age: 3.68, height: 13.01, weight: 13.15 },
+    light: { constant: 19.12, age: 3.68, height: 8.62, weight: 20.28 },
+    moderate: { constant: -388.19, age: 3.68, height: 12.66, weight: 20.46 },
+    very_active: {
+      constant: -671.75,
+      age: 3.68,
+      height: 15.38,
+      weight: 23.25,
+    },
+  },
+  female: {
+    sedentary: { constant: 55.59, age: -22.25, height: 8.43, weight: 17.07 },
+    light: { constant: -297.54, age: -22.25, height: 12.77, weight: 14.73 },
+    moderate: {
+      constant: -189.55,
+      age: -22.25,
+      height: 11.74,
+      weight: 18.34,
+    },
+    very_active: {
+      constant: -709.59,
+      age: -22.25,
+      height: 18.22,
+      weight: 14.25,
+    },
+  },
+};
+
+function minorGrowthAllowance(age: number, sex: BiologicalSex): number {
+  if (age === 13) return sex === "male" ? 25 : 30;
+  return 20;
+}
+
+function calculateMinorTarget(
+  input: NutritionTargetInput,
+): NutritionTargetResult {
+  const coefficients =
+    MINOR_EER_COEFFICIENTS[input.sex][input.activityLevel];
+  const maintenanceCalories = Math.round(
+    coefficients.constant +
+      coefficients.age * input.age +
+      coefficients.height * input.heightCm +
+      coefficients.weight * input.weightKg +
+      minorGrowthAllowance(input.age, input.sex),
+  );
+
+  return {
+    maintenanceCalories,
+    requestedRate: null,
+    requestedAdjustment: 0,
+    appliedAdjustment: 0,
+    finalCalories: maintenanceCalories,
+    floorApplied: false,
+    adjustmentCapApplied: false,
+    calculationMethod: "nasem_eer_2023",
+  };
+}
+
 export function calculateNutritionTarget(
   input: NutritionTargetInput,
 ): NutritionTargetResult {
   assertNutritionInput(input);
-  if (input.age < 18) {
-    throw new RangeError("Minor EER calculation is not implemented yet.");
-  }
-  return calculateAdultTarget(input);
+  return input.age < 18
+    ? calculateMinorTarget(input)
+    : calculateAdultTarget(input);
 }
 
 export function calculateMacroGrams(

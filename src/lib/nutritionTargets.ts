@@ -141,6 +141,19 @@ function assertActivityLevel(
 export function calculateAdultMaintenance(input: BodyStatsInput): number {
   assertBiologicalSex(input.sex);
   assertActivityLevel(input.activityLevel);
+  assertFiniteInRange("Age", input.age, 18, STAT_LIMITS.age.max);
+  assertFiniteInRange(
+    "Weight",
+    input.weightKg,
+    STAT_LIMITS.weightKg.min,
+    STAT_LIMITS.weightKg.max,
+  );
+  assertFiniteInRange(
+    "Height",
+    input.heightCm,
+    STAT_LIMITS.heightCm.min,
+    STAT_LIMITS.heightCm.max,
+  );
 
   const sexConstant = input.sex === "male" ? 5 : -161;
   const restingEnergy =
@@ -180,7 +193,7 @@ export function getBodyStatsValidationError(
   ) {
     return unitSystem === "metric"
       ? "Weight must be between 30-300 kg."
-      : "Weight must be between 66.2-661.4 lb.";
+      : "Weight must be between 66.2-661.3 lb.";
   }
   if (
     !Number.isFinite(input.heightCm) ||
@@ -307,7 +320,7 @@ const MINOR_EER_COEFFICIENTS: Record<
 };
 
 function minorGrowthAllowance(age: number, sex: BiologicalSex): number {
-  if (age === 13) return sex === "male" ? 25 : 30;
+  if (age < 14) return sex === "male" ? 25 : 30;
   return 20;
 }
 

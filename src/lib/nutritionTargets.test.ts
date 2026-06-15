@@ -245,6 +245,21 @@ describe("calculateNutritionTarget for minors", () => {
     ).toBe(2363);
   });
 
+  it("uses the age-13 growth allowance through age 13.99", () => {
+    expect(
+      calculateNutritionTarget({
+        age: 13.5,
+        sex: "male",
+        weightKg: 50,
+        heightCm: 160,
+        activityLevel: "sedentary",
+        weeklyRate: 0,
+      }).finalCalories,
+    ).toBe(
+      Math.round(-447.51 + 3.68 * 13.5 + 13.01 * 160 + 13.15 * 50 + 25),
+    );
+  });
+
   it("keeps age 17 on the adolescent path", () => {
     expect(
       calculateNutritionTarget({
@@ -389,11 +404,54 @@ describe("adult maintenance", () => {
       "Activity level is invalid.",
     );
   });
+
+  it.each([
+    [Number.NaN, "Age must be between 18 and 100."],
+    [17, "Age must be between 18 and 100."],
+    [101, "Age must be between 18 and 100."],
+  ])("rejects invalid adult age %s", (age, message) => {
+    expect(() => calculateAdultMaintenance({ ...adultStats, age })).toThrowError(
+      RangeError,
+    );
+    expect(() => calculateAdultMaintenance({ ...adultStats, age })).toThrow(
+      message,
+    );
+  });
+
+  it.each([
+    [0, "Weight must be between 30 and 300."],
+    [301, "Weight must be between 30 and 300."],
+  ])("rejects invalid adult weight %s", (weightKg, message) => {
+    expect(() =>
+      calculateAdultMaintenance({ ...adultStats, weightKg }),
+    ).toThrowError(RangeError);
+    expect(() =>
+      calculateAdultMaintenance({ ...adultStats, weightKg }),
+    ).toThrow(message);
+  });
+
+  it.each([
+    [99, "Height must be between 100 and 250."],
+    [251, "Height must be between 100 and 250."],
+  ])("rejects invalid adult height %s", (heightCm, message) => {
+    expect(() =>
+      calculateAdultMaintenance({ ...adultStats, heightCm }),
+    ).toThrowError(RangeError);
+    expect(() =>
+      calculateAdultMaintenance({ ...adultStats, heightCm }),
+    ).toThrow(message);
+  });
 });
 
 describe("unit conversion", () => {
   it("round-trips kilograms and pounds without storing display rounding", () => {
     expect(lbToKg(kgToLb(70))).toBeCloseTo(70, 10);
+  });
+
+  it("maps one-decimal pound endpoints to the canonical kilogram limits", () => {
+    expect(lbToKg(66.2)).toBeGreaterThanOrEqual(STAT_LIMITS.weightKg.min);
+    expect(lbToKg(661.3)).toBeLessThanOrEqual(STAT_LIMITS.weightKg.max);
+    expect(lbToKg(661.4)).toBeGreaterThan(STAT_LIMITS.weightKg.max);
   });
 
   it("normalizes rounded inches into the next foot", () => {
@@ -439,7 +497,7 @@ describe("validation and macros", () => {
       "Weight must be between 30-300 kg.",
     );
     expect(getBodyStatsValidationError(invalidWeight, "imperial")).toBe(
-      "Weight must be between 66.2-661.4 lb.",
+      "Weight must be between 66.2-661.3 lb.",
     );
   });
 

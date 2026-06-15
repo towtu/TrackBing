@@ -28,6 +28,15 @@ TrackBing uses a PostgreSQL backend via Supabase with three primary tables linke
 
 ## 🚀 Getting Started
 
+### Nutrition target migration
+
+Apply
+`supabase/migrations/20260614000000_add_nutrition_goal_metadata.sql`
+before deploying the updated signup, profile, or dashboard screens. The
+migration is non-destructive: existing calorie targets are preserved and rows
+without metadata load as existing custom targets until the user selects a new
+plan.
+
 ### Prerequisites
 * Node.js installed on your machine
 * Expo Go app installed on your physical mobile device (or Android Studio / Xcode for emulators)

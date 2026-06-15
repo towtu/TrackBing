@@ -12,12 +12,15 @@ export type GoalMode =
   | "minor_maintenance"
   | "legacy_custom";
 
-export type NutritionTargetInput = {
+export type BodyStatsInput = {
   age: number;
   sex: BiologicalSex;
   weightKg: number;
   heightCm: number;
   activityLevel: ActivityLevel;
+};
+
+export type NutritionTargetInput = BodyStatsInput & {
   weeklyRate: number;
 };
 
@@ -116,7 +119,29 @@ export function isUnitSystem(value: unknown): value is UnitSystem {
   return value === "metric" || value === "imperial";
 }
 
-export function calculateAdultMaintenance(input: NutritionTargetInput): number {
+function assertBiologicalSex(sex: unknown): asserts sex is BiologicalSex {
+  if (sex !== "male" && sex !== "female") {
+    throw new RangeError("Sex must be male or female.");
+  }
+}
+
+function assertActivityLevel(
+  activityLevel: unknown,
+): asserts activityLevel is ActivityLevel {
+  if (
+    activityLevel !== "sedentary" &&
+    activityLevel !== "light" &&
+    activityLevel !== "moderate" &&
+    activityLevel !== "very_active"
+  ) {
+    throw new RangeError("Activity level is invalid.");
+  }
+}
+
+export function calculateAdultMaintenance(input: BodyStatsInput): number {
+  assertBiologicalSex(input.sex);
+  assertActivityLevel(input.activityLevel);
+
   const sexConstant = input.sex === "male" ? 5 : -161;
   const restingEnergy =
     10 * input.weightKg +
@@ -155,7 +180,7 @@ export function getBodyStatsValidationError(
   ) {
     return unitSystem === "metric"
       ? "Weight must be between 30-300 kg."
-      : "Weight must be between 66-661 lb.";
+      : "Weight must be between 66.2-661.4 lb.";
   }
   if (
     !Number.isFinite(input.heightCm) ||
@@ -164,7 +189,7 @@ export function getBodyStatsValidationError(
   ) {
     return unitSystem === "metric"
       ? "Height must be between 100-250 cm."
-      : "Height must be between 3 ft 3 in and 8 ft 2 in.";
+      : "Height must be between 3 ft 4 in and 8 ft 2 in.";
   }
   if (!Number.isFinite(input.weeklyRate)) {
     return "Weekly goal rate must be a valid number.";
@@ -173,6 +198,8 @@ export function getBodyStatsValidationError(
 }
 
 function assertNutritionInput(input: NutritionTargetInput): void {
+  assertBiologicalSex(input.sex);
+  assertActivityLevel(input.activityLevel);
   assertFiniteInRange(
     "Age",
     input.age,

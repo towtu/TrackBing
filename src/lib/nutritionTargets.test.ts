@@ -21,16 +21,21 @@ import {
   kgToLb,
   lbToKg,
   resolveStoredGoalMode,
+  type BodyStatsInput,
   type NutritionTargetInput,
   validateMacroPercentages,
 } from "./nutritionTargets";
 
-const adultBase: NutritionTargetInput = {
+const adultStats: BodyStatsInput = {
   age: 30,
   sex: "male",
   weightKg: 80,
   heightCm: 180,
   activityLevel: "moderate",
+};
+
+const adultBase: NutritionTargetInput = {
+  ...adultStats,
   weeklyRate: -0.005,
 };
 
@@ -63,6 +68,22 @@ describe("calculateNutritionTarget for adults", () => {
       requestedAdjustment: -660,
       finalCalories: 1200,
       floorApplied: true,
+      adjustmentCapApplied: true,
+    });
+  });
+
+  it("caps a deficit at 30 percent without applying the calorie floor", () => {
+    expect(
+      calculateNutritionTarget({
+        ...adultBase,
+        weeklyRate: -0.01,
+      }),
+    ).toMatchObject({
+      maintenanceCalories: 2759,
+      requestedAdjustment: -880,
+      appliedAdjustment: -828,
+      finalCalories: 1931,
+      floorApplied: false,
       adjustmentCapApplied: true,
     });
   });
@@ -127,6 +148,30 @@ describe("calculateNutritionTarget for adults", () => {
     expect(() =>
       calculateNutritionTarget({ ...adultBase, weeklyRate: 0.0051 }),
     ).toThrow("Weekly rate must be between -1% and 0.5%.");
+  });
+
+  it("rejects invalid runtime sex values", () => {
+    const input = {
+      ...adultBase,
+      sex: "other" as NutritionTargetInput["sex"],
+    };
+
+    expect(() => calculateNutritionTarget(input)).toThrowError(RangeError);
+    expect(() => calculateNutritionTarget(input)).toThrow(
+      "Sex must be male or female.",
+    );
+  });
+
+  it("rejects invalid runtime activity levels", () => {
+    const input = {
+      ...adultBase,
+      activityLevel: "extreme" as NutritionTargetInput["activityLevel"],
+    };
+
+    expect(() => calculateNutritionTarget(input)).toThrowError(RangeError);
+    expect(() => calculateNutritionTarget(input)).toThrow(
+      "Activity level is invalid.",
+    );
   });
 });
 
@@ -315,10 +360,34 @@ describe("stored nutrition metadata", () => {
 
 describe("adult maintenance", () => {
   it("includes age in the Mifflin-St Jeor formula", () => {
-    expect(calculateAdultMaintenance(adultBase)).toBeCloseTo(2759.0, 10);
+    expect(calculateAdultMaintenance(adultStats)).toBeCloseTo(2759.0, 10);
     expect(
-      calculateAdultMaintenance({ ...adultBase, age: adultBase.age + 1 }),
+      calculateAdultMaintenance({ ...adultStats, age: adultStats.age + 1 }),
     ).toBeCloseTo(2751.25, 10);
+  });
+
+  it("rejects invalid runtime sex values", () => {
+    const input = {
+      ...adultStats,
+      sex: "other" as BodyStatsInput["sex"],
+    };
+
+    expect(() => calculateAdultMaintenance(input)).toThrowError(RangeError);
+    expect(() => calculateAdultMaintenance(input)).toThrow(
+      "Sex must be male or female.",
+    );
+  });
+
+  it("rejects invalid runtime activity levels", () => {
+    const input = {
+      ...adultStats,
+      activityLevel: "extreme" as BodyStatsInput["activityLevel"],
+    };
+
+    expect(() => calculateAdultMaintenance(input)).toThrowError(RangeError);
+    expect(() => calculateAdultMaintenance(input)).toThrow(
+      "Activity level is invalid.",
+    );
   });
 });
 
@@ -335,6 +404,13 @@ describe("unit conversion", () => {
   it("rejects inches outside 0 through 11", () => {
     expect(isValidImperialHeight(5, 11)).toBe(true);
     expect(isValidImperialHeight(5, 12)).toBe(false);
+  });
+
+  it("maps whole-inch height entries to the canonical centimeter limits", () => {
+    expect(ftInToCm(3, 3)).toBeLessThan(STAT_LIMITS.heightCm.min);
+    expect(ftInToCm(3, 4)).toBeGreaterThanOrEqual(STAT_LIMITS.heightCm.min);
+    expect(ftInToCm(8, 2)).toBeLessThanOrEqual(STAT_LIMITS.heightCm.max);
+    expect(ftInToCm(8, 3)).toBeGreaterThan(STAT_LIMITS.heightCm.max);
   });
 });
 
@@ -363,7 +439,7 @@ describe("validation and macros", () => {
       "Weight must be between 30-300 kg.",
     );
     expect(getBodyStatsValidationError(invalidWeight, "imperial")).toBe(
-      "Weight must be between 66-661 lb.",
+      "Weight must be between 66.2-661.4 lb.",
     );
   });
 
@@ -374,7 +450,7 @@ describe("validation and macros", () => {
       "Height must be between 100-250 cm.",
     );
     expect(getBodyStatsValidationError(invalidHeight, "imperial")).toBe(
-      "Height must be between 3 ft 3 in and 8 ft 2 in.",
+      "Height must be between 3 ft 4 in and 8 ft 2 in.",
     );
   });
 });

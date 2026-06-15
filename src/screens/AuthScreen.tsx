@@ -11,12 +11,131 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { createClient } from "@supabase/supabase-js";
 import { EnvelopeSimple, LockKey } from "phosphor-react-native";
 import { supabase } from "@/src/lib/supabase";
+import {
+  ACTIVITY_MULTIPLIERS,
+  DEFAULT_MACRO_PERCENTAGES,
+  GOAL_RATE_PRESETS,
+  calculateMacroGrams,
+  calculateNutritionTarget,
+  cmToFtIn,
+  ftInToCm,
+  getBodyStatsValidationError,
+  isValidImperialHeight,
+  kgToLb,
+  lbToKg,
+  type ActivityLevel,
+  type NutritionTargetResult,
+  type UnitSystem,
+} from "@/src/lib/nutritionTargets";
+import { TargetBreakdown } from "@/src/components/nutrition/TargetBreakdown";
+import { UnitSystemToggle } from "@/src/components/nutrition/UnitSystemToggle";
 import { AuthStyles as styles } from "@/src/styles/auth";
 import { Colors } from "@/src/styles/colors";
 import { router } from "expo-router";
 import { useResponsive } from "@/src/hooks/useResponsive";
+
+const ACTIVITY_OPTIONS: readonly {
+  label: string;
+  sub: string;
+  value: ActivityLevel;
+  emoji: string;
+}[] = [
+  {
+    label: "Sedentary",
+    sub: "Office / desk job",
+    value: "sedentary",
+    emoji: "💼",
+  },
+  {
+    label: "Light Active",
+    sub: "1-3 days / week",
+    value: "light",
+    emoji: "🚶",
+  },
+  {
+    label: "Moderate",
+    sub: "3-5 days / week",
+    value: "moderate",
+    emoji: "🏋️",
+  },
+  {
+    label: "Very Active",
+    sub: "6-7 days / week",
+    value: "very_active",
+    emoji: "🔥",
+  },
+];
+
+const SIGNUP_GOAL_OPTIONS = [
+  {
+    label: "Lose Slowly",
+    sub: "-0.25% / wk",
+    value: GOAL_RATE_PRESETS.lose_slow,
+    emoji: "🐢",
+  },
+  {
+    label: "Lose",
+    sub: "-0.50% / wk",
+    value: GOAL_RATE_PRESETS.lose,
+    emoji: "🎯",
+  },
+  {
+    label: "Lose Faster",
+    sub: "-0.75% / wk",
+    value: GOAL_RATE_PRESETS.lose_faster,
+    emoji: "📉",
+  },
+  {
+    label: "Maintain",
+    sub: "0% / wk",
+    value: GOAL_RATE_PRESETS.maintain,
+    emoji: "⚖️",
+  },
+  {
+    label: "Gain Slowly",
+    sub: "+0.10% / wk",
+    value: GOAL_RATE_PRESETS.gain_slow,
+    emoji: "📈",
+  },
+  {
+    label: "Gain",
+    sub: "+0.25% / wk",
+    value: GOAL_RATE_PRESETS.gain,
+    emoji: "💪",
+  },
+  {
+    label: "Gain Faster",
+    sub: "+0.50% / wk",
+    value: GOAL_RATE_PRESETS.gain_faster,
+    emoji: "🔥",
+  },
+] as const;
+
+const parseDisplay = (value: string): number | null => {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const roundDisplay = (value: number | null) =>
+  value === null ? "" : String(Math.round(value * 10) / 10);
+
+// Keep OTP verification isolated so the app does not enter authenticated
+// routes until the initial user_goals row has been saved successfully.
+const signupVerificationClient = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  },
+);
 
 export function AuthScreen() {
   const { isDesktop } = useResponsive();
@@ -32,13 +151,21 @@ export function AuthScreen() {
   const [modalMessage, setModalMessage] = useState("");
 
   // --- USER DATA ---
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>("metric");
   const [gender, setGender] = useState<"male" | "female">("male");
   const [age, setAge] = useState("");
-  const [weight, setWeight] = useState("");
-  const [height, setHeight] = useState("");
-  const [activity, setActivity] = useState(1.2);
-  const [goalOffset, setGoalOffset] = useState(0);
-  const [calculatedCalories, setCalculatedCalories] = useState(0);
+  const [weightKg, setWeightKg] = useState("");
+  const [weightLb, setWeightLb] = useState("");
+  const [heightCm, setHeightCm] = useState("");
+  const [heightFt, setHeightFt] = useState("");
+  const [heightIn, setHeightIn] = useState("");
+  const [activityLevel, setActivityLevel] =
+    useState<ActivityLevel>("sedentary");
+  const [goalRate, setGoalRate] = useState<number>(
+    GOAL_RATE_PRESETS.maintain,
+  );
+  const [targetResult, setTargetResult] =
+    useState<NutritionTargetResult | null>(null);
 
   // --- AUTH DATA ---
   const [email, setEmail] = useState("");
@@ -52,64 +179,129 @@ export function AuthScreen() {
     setModalVisible(true);
   };
 
+  const handleAgeChange = (value: string) => {
+    setAge(value);
+    setTargetResult(null);
+
+    const parsedAge = parseDisplay(value);
+    if (parsedAge !== null && parsedAge >= 13 && parsedAge < 18) {
+      setGoalRate(GOAL_RATE_PRESETS.maintain);
+    }
+  };
+
+  const handleWeightKgChange = (value: string) => {
+    setWeightKg(value);
+    setTargetResult(null);
+    const parsed = parseDisplay(value);
+    setWeightLb(roundDisplay(parsed === null ? null : kgToLb(parsed)));
+  };
+
+  const handleWeightLbChange = (value: string) => {
+    setWeightLb(value);
+    setTargetResult(null);
+    const parsed = parseDisplay(value);
+    setWeightKg(roundDisplay(parsed === null ? null : lbToKg(parsed)));
+  };
+
+  const handleHeightCmChange = (value: string) => {
+    setHeightCm(value);
+    setTargetResult(null);
+  };
+
+  const updateImperialHeight = (feetText: string, inchesText: string) => {
+    const feet = parseDisplay(feetText);
+    const inches = parseDisplay(inchesText);
+
+    if (
+      feet !== null &&
+      inches !== null &&
+      isValidImperialHeight(feet, inches)
+    ) {
+      setHeightCm(roundDisplay(ftInToCm(feet, inches)));
+    } else {
+      setHeightCm("");
+    }
+  };
+
+  const handleHeightFtChange = (value: string) => {
+    setHeightFt(value);
+    setTargetResult(null);
+    updateImperialHeight(value, heightIn);
+  };
+
+  const handleHeightInChange = (value: string) => {
+    setHeightIn(value);
+    setTargetResult(null);
+    updateImperialHeight(heightFt, value);
+  };
+
+  const switchSignupUnitSystem = (next: UnitSystem) => {
+    if (next === "imperial") {
+      const parsedHeight = parseDisplay(heightCm);
+      const convertedHeight =
+        parsedHeight === null ? null : cmToFtIn(parsedHeight);
+      setHeightFt(convertedHeight ? String(convertedHeight.feet) : "");
+      setHeightIn(convertedHeight ? String(convertedHeight.inches) : "");
+
+      const parsedWeight = parseDisplay(weightKg);
+      setWeightLb(
+        roundDisplay(parsedWeight === null ? null : kgToLb(parsedWeight)),
+      );
+    }
+
+    setUnitSystem(next);
+  };
+
   // --- LOGIC: CALCULATE WITH LIMITS ---
   const handleCalculate = () => {
-    // 1. Check if empty
-    if (!age || !weight || !height) {
-      showAlert("Missing Info", "Please fill in all your stats.");
-      return;
-    }
+    const parsedAge = parseDisplay(age);
+    const canonicalWeight = parseDisplay(weightKg);
+    const canonicalHeight = parseDisplay(heightCm);
+    const parsedFeet = parseDisplay(heightFt);
+    const parsedInches = parseDisplay(heightIn);
 
-    const w = parseFloat(weight);
-    const h = parseFloat(height);
-    const a = parseFloat(age);
-
-    // 2. NEW: REALISTIC LIMITS CHECKS
-    if (isNaN(w) || isNaN(h) || isNaN(a)) {
-      showAlert("Invalid Input", "Please enter valid numbers.");
-      return;
-    }
-
-    // Age Limit: 13 to 100
-    if (a < 13 || a > 100) {
-      showAlert(
-        "Invalid Age",
-        "You must be between 13 and 100 years old to use this app.",
-      );
-      return;
-    }
-
-    // Weight Limit: 30kg (66lbs) to 300kg (660lbs)
-    if (w < 30 || w > 300) {
-      showAlert(
-        "Invalid Weight",
-        "Please enter a realistic weight (30kg - 300kg).",
-      );
-      return;
-    }
-
-    // Height Limit: 100cm (3'3") to 250cm (8'2")
-    if (h < 100 || h > 250) {
+    if (
+      unitSystem === "imperial" &&
+      (parsedFeet === null ||
+        parsedInches === null ||
+        !isValidImperialHeight(parsedFeet, parsedInches))
+    ) {
       showAlert(
         "Invalid Height",
-        "Please enter a realistic height (100cm - 250cm).",
+        "Enter feet and inches, with inches between 0 and 11.",
       );
       return;
     }
 
-    // 3. Calculate BMR (Mifflin-St Jeor)
-    let bmr = 10 * w + 6.25 * h - 5 * a;
-    if (gender === "male") bmr += 5;
-    else bmr -= 161;
+    const isMinor =
+      parsedAge !== null && parsedAge >= 13 && parsedAge < 18;
+    const input = {
+      age: parsedAge ?? Number.NaN,
+      sex: gender,
+      weightKg: canonicalWeight ?? Number.NaN,
+      heightCm: canonicalHeight ?? Number.NaN,
+      activityLevel,
+      weeklyRate: isMinor ? GOAL_RATE_PRESETS.maintain : goalRate,
+    };
+    const validationError = getBodyStatsValidationError(input, unitSystem);
 
-    const tdee = bmr * activity;
-    const finalTarget = Math.round(tdee + goalOffset);
+    if (validationError) {
+      showAlert("Invalid Stats", validationError);
+      return;
+    }
 
-    // Safety Floor
-    const safeTarget = finalTarget < 1200 ? 1200 : finalTarget;
-
-    setCalculatedCalories(safeTarget);
-    setStep(2); // Go to Sign Up
+    try {
+      const result = calculateNutritionTarget(input);
+      setTargetResult(result);
+      setStep(2);
+    } catch (error) {
+      showAlert(
+        "Unable to Calculate",
+        error instanceof Error
+          ? error.message
+          : "Check your stats and try again.",
+      );
+    }
   };
 
   // --- LOGIC: AUTH FLOW ---
@@ -128,7 +320,7 @@ export function AuthScreen() {
       }
     } else {
       // SIGN UP -> Trigger Email
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { error } = await supabase.auth.signUp({ email, password });
 
       if (error) {
         showAlert("Signup Failed", error.message);
@@ -144,32 +336,102 @@ export function AuthScreen() {
   async function handleVerify() {
     setLoading(true);
 
-    const { data, error } = await supabase.auth.verifyOtp({
-      email,
-      token: code,
-      type: "signup",
-    });
+    try {
+      if (!targetResult) {
+        showAlert(
+          "Missing Target",
+          "Return to the target step and calculate again.",
+        );
+        return;
+      }
 
-    if (error) {
-      showAlert("Verification Failed", error.message);
-    } else if (data.session) {
-      // SAVE GOALS AFTER VERIFICATION
-      const { error: dbError } = await supabase.from("user_goals").insert([
-        {
-          user_id: data.session.user.id,
-          calorie_target: calculatedCalories,
-          current_weight: weight,
-          height: height,
-          age: age,
-          gender: gender,
-          activity_level: activity.toString(),
-        },
-      ]);
+      const { data, error } = await signupVerificationClient.auth.verifyOtp({
+        email,
+        token: code,
+        type: "signup",
+      });
 
-      if (dbError) console.error(dbError);
+      if (error) {
+        showAlert("Verification Failed", error.message);
+        return;
+      }
+
+      if (!data.session) {
+        showAlert(
+          "Verification Failed",
+          "Your email was verified, but no session was created. Please sign in.",
+        );
+        return;
+      }
+
+      const macroGrams = calculateMacroGrams(
+        targetResult.finalCalories,
+        DEFAULT_MACRO_PERCENTAGES,
+      );
+      const numericAge = Number(age);
+      const minor = numericAge < 18;
+      const savedMode = minor
+        ? "minor_maintenance"
+        : goalRate === GOAL_RATE_PRESETS.maintain
+          ? "maintenance"
+          : "estimated_rate";
+      const { error: dbError } = await signupVerificationClient
+        .from("user_goals")
+        .insert([
+          {
+            user_id: data.session.user.id,
+            calorie_target: targetResult.finalCalories,
+            current_weight: Number(weightKg),
+            height: Number(heightCm),
+            age: numericAge,
+            gender,
+            activity_level: activityLevel,
+            goal_mode: savedMode,
+            goal_rate:
+              minor || goalRate === GOAL_RATE_PRESETS.maintain
+                ? null
+                : goalRate,
+            unit_system: unitSystem,
+            protein_ratio: DEFAULT_MACRO_PERCENTAGES.protein,
+            carbs_ratio: DEFAULT_MACRO_PERCENTAGES.carbs,
+            fat_ratio: DEFAULT_MACRO_PERCENTAGES.fat,
+            protein_grams: macroGrams.protein,
+            carbs_grams: macroGrams.carbs,
+            fat_grams: macroGrams.fat,
+          },
+        ]);
+
+      if (dbError) {
+        showAlert("Profile Setup Failed", dbError.message);
+        return;
+      }
+
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+
+      if (sessionError) {
+        showAlert("Sign In Failed", sessionError.message);
+        return;
+      }
+
+      router.replace("/");
+    } catch (error) {
+      showAlert(
+        "Verification Failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to finish account setup. Please try again.",
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
+
+  const parsedAge = parseDisplay(age);
+  const isMinor =
+    parsedAge !== null && parsedAge >= 13 && parsedAge < 18;
 
   // --- VIEWS ---
   const renderStatsForm = () => (
@@ -182,6 +444,13 @@ export function AuthScreen() {
         <Text style={{ color: Colors.textMuted, fontSize: 13 }}>
           We&apos;ll dial in your daily numbers
         </Text>
+      </View>
+
+      <View style={styles.unitSection}>
+        <UnitSystemToggle
+          value={unitSystem}
+          onChange={switchSignupUnitSystem}
+        />
       </View>
 
       {/* Gender Toggle */}
@@ -197,8 +466,13 @@ export function AuthScreen() {
       }}>
         {(["male", "female"] as const).map((g) => (
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityState={{ selected: gender === g }}
             key={g}
-            onPress={() => setGender(g)}
+            onPress={() => {
+              setGender(g);
+              setTargetResult(null);
+            }}
             style={{
               flex: 1,
               paddingVertical: 12,
@@ -233,7 +507,7 @@ export function AuthScreen() {
               placeholder="25"
               keyboardType="numeric"
               value={age}
-              onChangeText={setAge}
+              onChangeText={handleAgeChange}
               placeholderTextColor={Colors.border}
               style={styles.statValueInput}
             />
@@ -251,14 +525,20 @@ export function AuthScreen() {
           </Text>
           <View style={styles.statValueRow}>
             <TextInput
-              placeholder="70"
+              placeholder={unitSystem === "metric" ? "70" : "154"}
               keyboardType="numeric"
-              value={weight}
-              onChangeText={setWeight}
+              value={unitSystem === "metric" ? weightKg : weightLb}
+              onChangeText={
+                unitSystem === "metric"
+                  ? handleWeightKgChange
+                  : handleWeightLbChange
+              }
               placeholderTextColor={Colors.border}
               style={styles.statValueInput}
             />
-            <Text style={styles.statUnitText}>kg</Text>
+            <Text style={styles.statUnitText}>
+              {unitSystem === "metric" ? "kg" : "lb"}
+            </Text>
           </View>
         </View>
       </View>
@@ -271,17 +551,48 @@ export function AuthScreen() {
         <Text style={{ color: Colors.textMuted, fontSize: 9, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>
           Height
         </Text>
-        <View style={styles.statValueRow}>
-          <TextInput
-            placeholder="175"
-            keyboardType="numeric"
-            value={height}
-            onChangeText={setHeight}
-            placeholderTextColor={Colors.border}
-            style={styles.statValueInput}
-          />
-          <Text style={styles.statUnitText}>cm</Text>
-        </View>
+        {unitSystem === "metric" ? (
+          <View style={styles.statValueRow}>
+            <TextInput
+              placeholder="175"
+              keyboardType="numeric"
+              value={heightCm}
+              onChangeText={handleHeightCmChange}
+              placeholderTextColor={Colors.border}
+              style={styles.statValueInput}
+            />
+            <Text style={styles.statUnitText}>cm</Text>
+          </View>
+        ) : (
+          <View style={styles.imperialHeightRow}>
+            <View style={styles.imperialHeightField}>
+              <TextInput
+                accessibilityHint="Enter the feet portion of your height."
+                accessibilityLabel="Height in feet"
+                placeholder="5"
+                keyboardType="numeric"
+                value={heightFt}
+                onChangeText={handleHeightFtChange}
+                placeholderTextColor={Colors.border}
+                style={styles.statValueInput}
+              />
+              <Text style={styles.statUnitText}>ft</Text>
+            </View>
+            <View style={styles.imperialHeightField}>
+              <TextInput
+                accessibilityHint="Enter a value from 0 through 11."
+                accessibilityLabel="Height in inches"
+                placeholder="9"
+                keyboardType="numeric"
+                value={heightIn}
+                onChangeText={handleHeightInChange}
+                placeholderTextColor={Colors.border}
+                style={styles.statValueInput}
+              />
+              <Text style={styles.statUnitText}>in</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Activity Level */}
@@ -292,17 +603,17 @@ export function AuthScreen() {
         <Text style={{ color: Colors.text, fontSize: 14, fontWeight: "700" }}>Activity Level</Text>
       </View>
       <View style={[{ gap: 8, marginBottom: 20 }, isDesktop && styles.webActivityGrid]}>
-        {[
-          { label: "Sedentary", sub: "Office / Desk Job", val: 1.2 },
-          { label: "Light Active", sub: "1–3 days / week", val: 1.375 },
-          { label: "Moderate",   sub: "3–5 days / week", val: 1.55 },
-          { label: "Very Active", sub: "6–7 days / week", val: 1.725 },
-        ].map((opt) => {
-          const active = activity === opt.val;
+        {ACTIVITY_OPTIONS.map((opt) => {
+          const active = activityLevel === opt.value;
           return (
             <TouchableOpacity
-              key={opt.val}
-              onPress={() => setActivity(opt.val)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={opt.value}
+              onPress={() => {
+                setActivityLevel(opt.value);
+                setTargetResult(null);
+              }}
               style={[
                 {
                   flexDirection: "row",
@@ -324,16 +635,14 @@ export function AuthScreen() {
                 borderColor: active ? Colors.accent : Colors.border,
                 alignItems: "center", justifyContent: "center",
               }}>
-                <Text style={{ fontSize: 18 }}>
-                  {opt.val === 1.2 ? "💼" : opt.val === 1.375 ? "🚶" : opt.val === 1.55 ? "🏋️" : "🔥"}
-                </Text>
+                <Text style={{ fontSize: 18 }}>{opt.emoji}</Text>
               </View>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={{ color: active ? Colors.accent : Colors.text, fontWeight: "700", fontSize: 14 }}>
                   {opt.label}
                 </Text>
                 <Text style={{ color: active ? Colors.accent : Colors.textMuted, fontSize: 11, opacity: 0.8 }}>
-                  {opt.sub}
+                  {opt.sub} · {ACTIVITY_MULTIPLIERS[opt.value]}x
                 </Text>
               </View>
             </TouchableOpacity>
@@ -348,44 +657,62 @@ export function AuthScreen() {
         </View>
         <Text style={{ color: Colors.text, fontSize: 14, fontWeight: "700" }}>Main Goal</Text>
       </View>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 }}>
-        {[
-          { label: "Lose Fast",   sub: "−1 kg/wk",    val: -1000, emoji: "📉" },
-          { label: "Lose Slow",   sub: "−0.5 kg/wk",  val: -500,  emoji: "🎯" },
-          { label: "Maintain",    sub: "±0 kg/wk",    val: 0,     emoji: "⚖️" },
-          { label: "Gain Slow",   sub: "+0.5 kg/wk",  val: 500,   emoji: "📈" },
-          { label: "Gain Fast",   sub: "+1 kg/wk",    val: 1000,  emoji: "💪" },
-        ].map((opt) => {
-          const active = goalOffset === opt.val;
-          return (
-            <TouchableOpacity
-              key={opt.val}
-              onPress={() => setGoalOffset(opt.val)}
-              style={[
-                {
-                  flexBasis: "47%", flexGrow: 1,
-                  backgroundColor: active ? Colors.accentDim : Colors.inputBg,
-                  borderWidth: 1,
-                  borderColor: active ? Colors.accent : Colors.border,
-                  borderRadius: 18,
-                  padding: 14,
-                  alignItems: "center",
-                  gap: 6,
-                },
-                isDesktop && styles.webGoalOption,
-              ]}
-            >
-              <Text style={{ fontSize: 22 }}>{opt.emoji}</Text>
-              <Text style={{ color: active ? Colors.accent : Colors.text, fontWeight: "700", fontSize: 13 }}>
-                {opt.label}
-              </Text>
-              <Text style={{ color: active ? Colors.accent : Colors.textMuted, fontSize: 11, opacity: 0.8 }}>
-                {opt.sub}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {isMinor ? (
+        <View style={styles.minorNotice}>
+          <Text style={styles.minorNoticeTitle}>
+            Maintain for healthy growth
+          </Text>
+          <Text style={styles.minorNoticeText}>
+            TrackBing estimates maintenance only for ages 13-17.
+            Weight-change plans for children and teens should be set with a
+            qualified health professional.
+          </Text>
+        </View>
+      ) : (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 }}>
+          {SIGNUP_GOAL_OPTIONS.map((opt) => {
+            const active = goalRate === opt.value;
+            return (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                key={opt.label}
+                onPress={() => {
+                  setGoalRate(opt.value);
+                  setTargetResult(null);
+                }}
+                style={[
+                  {
+                    flexBasis: "47%", flexGrow: 1,
+                    backgroundColor: active ? Colors.accentDim : Colors.inputBg,
+                    borderWidth: 1,
+                    borderColor: active ? Colors.accent : Colors.border,
+                    borderRadius: 18,
+                    padding: 14,
+                    alignItems: "center",
+                    gap: 6,
+                  },
+                  isDesktop && styles.webGoalOption,
+                ]}
+              >
+                <Text style={{ fontSize: 22 }}>{opt.emoji}</Text>
+                <Text style={{ color: active ? Colors.accent : Colors.text, fontWeight: "700", fontSize: 13 }}>
+                  {opt.label}
+                </Text>
+                <Text style={{ color: active ? Colors.accent : Colors.textMuted, fontSize: 11, opacity: 0.8 }}>
+                  {opt.sub}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      <Text style={styles.calculatorNotice}>
+        This is a general estimate, not medical advice. It is not designed for
+        pregnancy, breastfeeding, eating-disorder treatment or recovery, or
+        clinician-managed nutrition therapy.
+      </Text>
 
       <TouchableOpacity style={styles.primaryBtn} onPress={handleCalculate}>
         <Text style={styles.primaryBtnText}>Calculate & Continue</Text>
@@ -440,21 +767,13 @@ export function AuthScreen() {
         </Text>
       </View>
 
-      {!isLogin && calculatedCalories > 0 && (
-        <View style={{
-          backgroundColor: Colors.inputBg, padding: 20, borderRadius: 24,
-          marginBottom: 32, alignItems: "center", borderWidth: 1, borderColor: Colors.border,
-          shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12
-        }}>
-          <Text style={{ color: Colors.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: "800", marginBottom: 8 }}>
-            Your Daily Target
-          </Text>
-          <Text style={{ color: Colors.accent, fontSize: 48, fontWeight: "900", letterSpacing: -1.5 }}>
-            {calculatedCalories}
-          </Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1, marginTop: 4, fontWeight: "600" }}>
-            kcal / day
-          </Text>
+      {!isLogin && targetResult && (
+        <View style={styles.targetBreakdownSection}>
+          <TargetBreakdown
+            result={targetResult}
+            weightKg={Number(weightKg)}
+            unitSystem={unitSystem}
+          />
         </View>
       )}
 
@@ -508,8 +827,8 @@ export function AuthScreen() {
             <ActivityIndicator size="large" color={Colors.accent} />
           </View>
         ) : (
-          <TouchableOpacity 
-            style={[styles.primaryBtn, { borderRadius: 20, paddingVertical: 18, shadowColor: Colors.accent, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 }]} 
+          <TouchableOpacity
+            style={[styles.primaryBtn, { borderRadius: 20, paddingVertical: 18, shadowColor: Colors.accent, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 }]}
             onPress={handleAuth}
           >
             <Text style={[styles.primaryBtnText, { fontSize: 16, fontWeight: "800", letterSpacing: 0.5 }]}>

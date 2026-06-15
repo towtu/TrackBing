@@ -129,6 +129,9 @@ export const AuthStyles = StyleSheet.create({
     flexBasis: "18%",
     minWidth: 130,
   },
+  unitSection: {
+    marginBottom: 16,
+  },
   statValueRow: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -149,6 +152,45 @@ export const AuthStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     marginBottom: 4,
+  },
+  imperialHeightRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  imperialHeightField: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 3,
+  },
+  minorNotice: {
+    padding: 16,
+    marginBottom: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.inputBg,
+  },
+  minorNoticeTitle: {
+    color: Colors.accent,
+    fontSize: 15,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  minorNoticeText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  calculatorNotice: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginBottom: 18,
+  },
+  targetBreakdownSection: {
+    marginBottom: 32,
   },
   authInputIcon: {
     width: 50,

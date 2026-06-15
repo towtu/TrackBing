@@ -485,6 +485,9 @@ describe("validation and macros", () => {
     expect(validateMacroPercentages({ protein: 25, carbs: 45, fat: 30 })).toBe(
       true,
     );
+    expect(
+      validateMacroPercentages({ protein: 0.1, carbs: 64.1, fat: 35.8 }),
+    ).toBe(true);
     expect(validateMacroPercentages({ protein: 30, carbs: 35, fat: 34 })).toBe(
       false,
     );

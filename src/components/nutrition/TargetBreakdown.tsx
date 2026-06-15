@@ -13,9 +13,22 @@ type Props = {
 };
 
 function formatSigned(value: number, fractionDigits = 0): string {
-  const rounded = Number(value.toFixed(fractionDigits));
-  return `${rounded > 0 ? "+" : ""}${rounded}`;
+  if (!Number.isFinite(value)) return "Unavailable";
+
+  const rounded = Object.is(Number(value.toFixed(fractionDigits)), -0)
+    ? 0
+    : value;
+  const formatted = rounded.toLocaleString("en-US", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+  return `${rounded > 0 ? "+" : ""}${formatted}`;
 }
+
+const formatCalories = (value: number): string =>
+  Number.isFinite(value)
+    ? Math.round(value).toLocaleString("en-US")
+    : "Unavailable";
 
 export function TargetBreakdown({
   result,
@@ -33,7 +46,9 @@ export function TargetBreakdown({
     <View style={styles.box}>
       <View style={styles.row}>
         <Text style={styles.label}>Estimated maintenance</Text>
-        <Text style={styles.value}>{result.maintenanceCalories} kcal</Text>
+        <Text style={styles.value}>
+          {formatCalories(result.maintenanceCalories)} kcal
+        </Text>
       </View>
 
       {result.requestedRate !== null && (
@@ -62,7 +77,9 @@ export function TargetBreakdown({
 
       <View style={styles.targetRow}>
         <Text style={styles.targetLabel}>Daily target</Text>
-        <Text style={styles.target}>{result.finalCalories} kcal</Text>
+        <Text style={styles.target}>
+          {formatCalories(result.finalCalories)} kcal
+        </Text>
       </View>
 
       {safeguardApplied && (

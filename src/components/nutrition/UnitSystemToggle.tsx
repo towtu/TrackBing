@@ -14,15 +14,16 @@ const OPTIONS: readonly { label: string; value: UnitSystem }[] = [
 
 export function UnitSystemToggle({ value, onChange }: Props) {
   return (
-    <View style={styles.row}>
+    <View accessibilityRole="radiogroup" style={styles.row}>
       {OPTIONS.map((option) => {
         const active = value === option.value;
 
         return (
           <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: active }}
             activeOpacity={0.8}
+            hitSlop={4}
             key={option.value}
             onPress={() => onChange(option.value)}
             style={[styles.button, active && styles.activeButton]}
@@ -49,6 +50,7 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 10,

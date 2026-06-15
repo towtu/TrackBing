@@ -378,11 +378,14 @@ export function calculateMacroGrams(
 export function validateMacroPercentages(
   percentages: MacroPercentages,
 ): boolean {
+  const total =
+    percentages.protein + percentages.carbs + percentages.fat;
+
   return (
     Object.values(percentages).every(
       (value) => Number.isFinite(value) && value >= 0 && value <= 100,
     ) &&
-    percentages.protein + percentages.carbs + percentages.fat === 100
+    Math.abs(total - 100) < 0.000001
   );
 }
 

@@ -6,30 +6,24 @@ import {
   BowlFood,
   CalendarBlank,
   ChartBar,
-  Cookie,
   Drop,
   Egg,
   Fire,
   Gear,
   Grains,
   House,
-  Leaf,
   Lightning,
   MagnifyingGlass,
   PencilSimple,
-  PintGlass,
   Plus,
   Trash,
   User,
-  X,
 } from "phosphor-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Animated,
   FlatList,
   Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -120,7 +114,7 @@ export function DashboardScreen() {
         ]).start();
       });
     }
-  }, [menuOpen]);
+  }, [fabRotate, menuAnims, menuOpen]);
 
   const handleFabPress = () => {
     Animated.sequence([
@@ -130,7 +124,7 @@ export function DashboardScreen() {
     setMenuOpen((prev) => !prev);
   };
 
-  const calculateStreak = async (userId: string) => {
+  const calculateStreak = useCallback(async (userId: string) => {
     // Use daily_summaries for historical data + check today's food_logs
     const { data: summaries } = await supabase
       .from("daily_summaries")
@@ -168,9 +162,9 @@ export function DashboardScreen() {
       if (sorted[i] === getLocalDateStr(expected)) { count++; } else { break; }
     }
     setStreak(count);
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setGoalProfile(null);
     setEditGoalModal(false);
 
@@ -241,7 +235,7 @@ export function DashboardScreen() {
     await calculateStreak(user.id);
     await upsertDailySummary();
     setLoading(false);
-  };
+  }, [calculateStreak]);
 
   const handleSaveGoal = async () => {
     const value = Number(newGoalInput);
@@ -411,7 +405,7 @@ export function DashboardScreen() {
     else upsertDailySummary();
   };
 
-  useFocusEffect(useCallback(() => { fetchData(); setMenuOpen(false); }, []));
+  useFocusEffect(useCallback(() => { fetchData(); setMenuOpen(false); }, [fetchData]));
 
   const getProgress = (current: number, goal: number) => Math.min((current / goal) * 100, 100);
   const rawDiff = calorieGoal - totals.calories;

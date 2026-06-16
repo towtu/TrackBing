@@ -620,7 +620,11 @@ export function ProfileScreen() {
       return;
     }
 
-    const savedCalories = targetResult?.finalCalories ?? calories;
+    const effectiveTargetResult =
+      isMinor && goalMode !== "legacy_custom"
+        ? calculateNutritionTarget(bodyInput)
+        : targetResult;
+    const savedCalories = effectiveTargetResult?.finalCalories ?? calories;
     if (!Number.isFinite(savedCalories) || savedCalories <= 0) {
       showMessage(
         "Invalid Target",
@@ -658,13 +662,18 @@ export function ProfileScreen() {
         fat_grams: grams.fat,
       };
 
+      const savedGoalMode: GoalMode =
+        isMinor && goalMode !== "legacy_custom"
+          ? "minor_maintenance"
+          : goalMode;
+
       // Untouched legacy rows intentionally keep null goal metadata.
-      if (goalMode !== "legacy_custom") {
-        updates.goal_mode = goalMode;
+      if (savedGoalMode !== "legacy_custom") {
+        updates.goal_mode = savedGoalMode;
         updates.goal_rate =
-          goalMode === "maintenance" ||
-          goalMode === "minor_maintenance" ||
-          goalMode === "custom_calories"
+          savedGoalMode === "maintenance" ||
+          savedGoalMode === "minor_maintenance" ||
+          savedGoalMode === "custom_calories"
             ? null
             : goalRate;
       }
@@ -675,6 +684,9 @@ export function ProfileScreen() {
       if (error) throw error;
 
       setCalories(savedCalories);
+      if (effectiveTargetResult) setTargetResult(effectiveTargetResult);
+      setGoalMode(savedGoalMode);
+      if (savedGoalMode === "minor_maintenance") setGoalRate(0);
       setProteinGrams(grams.protein);
       setCarbsGrams(grams.carbs);
       setFatGrams(grams.fat);
@@ -945,6 +957,7 @@ export function ProfileScreen() {
         {!isMinor && (
           <>
             <ScrollView
+              accessibilityRole="radiogroup"
               horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.goalScroller}
@@ -957,8 +970,9 @@ export function ProfileScreen() {
                       Math.abs(goalRate - item.rate) < 0.000001));
                 return (
                   <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    hitSlop={4}
                     key={item.label}
                     onPress={() => selectGoalRate(item.rate)}
                     style={[
@@ -1000,13 +1014,17 @@ export function ProfileScreen() {
 
             {useCustomRate && (
               <View style={styles.customBlock}>
-                <View style={styles.customDirRow}>
+                <View
+                  accessibilityRole="radiogroup"
+                  style={styles.customDirRow}
+                >
                   {(["lose", "gain"] as const).map((direction) => {
                     const active = customDir === direction;
                     return (
                       <TouchableOpacity
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: active }}
+                        hitSlop={4}
                         key={direction}
                         onPress={() => setCustomDir(direction)}
                         style={[
@@ -1483,7 +1501,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginRight: 8,
     minWidth: 96,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -1535,6 +1555,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 10,
+    minHeight: 44,
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
   },

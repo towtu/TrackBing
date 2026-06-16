@@ -11,7 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type Session } from "@supabase/supabase-js";
 import { EnvelopeSimple, LockKey } from "phosphor-react-native";
 import { supabase } from "@/src/lib/supabase";
 import {
@@ -171,6 +171,8 @@ export function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [verifiedSignupSession, setVerifiedSignupSession] =
+    useState<Session | null>(null);
 
   // --- HELPER: SHOW CUSTOM ALERT ---
   const showAlert = (title: string, message: string) => {
@@ -326,6 +328,7 @@ export function AuthScreen() {
         showAlert("Signup Failed", error.message);
       } else {
         // SUCCESS: Move to Step 3 (Enter Code)
+        setVerifiedSignupSession(null);
         setStep(3);
       }
     }
@@ -345,23 +348,30 @@ export function AuthScreen() {
         return;
       }
 
-      const { data, error } = await signupVerificationClient.auth.verifyOtp({
-        email,
-        token: code,
-        type: "signup",
-      });
+      let signupSession = verifiedSignupSession;
 
-      if (error) {
-        showAlert("Verification Failed", error.message);
-        return;
-      }
+      if (!signupSession) {
+        const { data, error } = await signupVerificationClient.auth.verifyOtp({
+          email,
+          token: code,
+          type: "signup",
+        });
 
-      if (!data.session) {
-        showAlert(
-          "Verification Failed",
-          "Your email was verified, but no session was created. Please sign in.",
-        );
-        return;
+        if (error) {
+          showAlert("Verification Failed", error.message);
+          return;
+        }
+
+        if (!data.session) {
+          showAlert(
+            "Verification Failed",
+            "Your email was verified, but no session was created. Please sign in.",
+          );
+          return;
+        }
+
+        signupSession = data.session;
+        setVerifiedSignupSession(data.session);
       }
 
       const macroGrams = calculateMacroGrams(
@@ -375,11 +385,22 @@ export function AuthScreen() {
         : goalRate === GOAL_RATE_PRESETS.maintain
           ? "maintenance"
           : "estimated_rate";
+      const { error: setupSessionError } =
+        await signupVerificationClient.auth.setSession({
+          access_token: signupSession.access_token,
+          refresh_token: signupSession.refresh_token,
+        });
+
+      if (setupSessionError) {
+        showAlert("Profile Setup Failed", setupSessionError.message);
+        return;
+      }
+
       const { error: dbError } = await signupVerificationClient
         .from("user_goals")
-        .insert([
+        .upsert(
           {
-            user_id: data.session.user.id,
+            user_id: signupSession.user.id,
             calorie_target: targetResult.finalCalories,
             current_weight: Number(weightKg),
             height: Number(heightCm),
@@ -399,7 +420,8 @@ export function AuthScreen() {
             carbs_grams: macroGrams.carbs,
             fat_grams: macroGrams.fat,
           },
-        ]);
+          { onConflict: "user_id" },
+        );
 
       if (dbError) {
         showAlert("Profile Setup Failed", dbError.message);
@@ -407,8 +429,8 @@ export function AuthScreen() {
       }
 
       const { error: sessionError } = await supabase.auth.setSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
+        access_token: signupSession.access_token,
+        refresh_token: signupSession.refresh_token,
       });
 
       if (sessionError) {
@@ -416,6 +438,7 @@ export function AuthScreen() {
         return;
       }
 
+      setVerifiedSignupSession(null);
       router.replace("/");
     } catch (error) {
       showAlert(
@@ -504,6 +527,7 @@ export function AuthScreen() {
           </Text>
           <View style={styles.statValueRow}>
             <TextInput
+              accessibilityLabel="Age in years"
               placeholder="25"
               keyboardType="numeric"
               value={age}
@@ -525,6 +549,11 @@ export function AuthScreen() {
           </Text>
           <View style={styles.statValueRow}>
             <TextInput
+              accessibilityLabel={
+                unitSystem === "metric"
+                  ? "Weight in kilograms"
+                  : "Weight in pounds"
+              }
               placeholder={unitSystem === "metric" ? "70" : "154"}
               keyboardType="numeric"
               value={unitSystem === "metric" ? weightKg : weightLb}
@@ -554,6 +583,7 @@ export function AuthScreen() {
         {unitSystem === "metric" ? (
           <View style={styles.statValueRow}>
             <TextInput
+              accessibilityLabel="Height in centimeters"
               placeholder="175"
               keyboardType="numeric"
               value={heightCm}

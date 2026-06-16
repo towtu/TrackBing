@@ -921,8 +921,9 @@ export function ProfileScreen() {
             {preservedCustom && (
               <>
                 <Text style={styles.noticeText}>
-                  Your saved {calories} kcal target remains unchanged until you
-                  choose the maintenance estimate.
+                  {goalMode === "legacy_custom"
+                    ? `Your saved ${calories} kcal target remains unchanged until you choose the maintenance estimate.`
+                    : `Your saved ${calories} kcal custom target will be replaced with the maintenance estimate when you save.`}
                 </Text>
                 <TouchableOpacity
                   accessibilityRole="button"

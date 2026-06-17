@@ -131,6 +131,7 @@ export function getUnitsToDisplay(food?: {
   serving_weight?: number;
   serving_quantity?: number;
 }): Unit[] {
+  if (food?.default_unit === "serving") return ["serving"];
   const isLiquid = food?.default_unit === "ml";
   const hasServing = !!(food?.serving_weight || food?.serving_quantity);
   const baseUnits: Unit[] = isLiquid

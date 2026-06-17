@@ -28,11 +28,17 @@ import {
 } from "@/src/components/feedback/SweetFeedback";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
-import { loadGistFoods, searchAllFoods } from "@/src/lib/foodSearch";
+import {
+  loadGistFoods,
+  loadRecentBarcodeFoods,
+  searchAllFoods,
+} from "@/src/lib/foodSearch";
 import {
   calcMacros,
   getUnitsToDisplay,
   type FoodItem,
+  type Macros,
+  type Unit,
 } from "@/src/lib/macros";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -45,38 +51,83 @@ type FeedbackState = {
   onClose?: () => void;
 };
 
+const FOOD_UNITS: Unit[] = ["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"];
+
+const isFoodUnit = (unit: unknown): unit is Unit =>
+  typeof unit === "string" && FOOD_UNITS.includes(unit as Unit);
+
+const barcodeFromFood = (food: FoodItem | null) => {
+  const code = food?.code?.trim();
+  if (!code || code === "scanned") return null;
+  if (/^(personal|gist|usda)-/.test(code)) return null;
+  if (!/^[A-Za-z0-9-]{4,64}$/.test(code)) return null;
+  return code;
+};
+
+const createRecentBarcodeFood = (
+  food: FoodItem,
+  barcode: string,
+  macros: Macros,
+  servingSize: string,
+  servingUnit: Unit
+): FoodItem => ({
+  code: barcode,
+  product_name: food.product_name,
+  brands: `Recent barcode - ${servingSize}${servingUnit}`,
+  default_unit: "serving",
+  serving_quantity: 1,
+  serving_weight: 100,
+  nutriments: {
+    "energy-kcal_100g": macros.c,
+    proteins_100g: macros.p,
+    carbohydrates_100g: macros.cb,
+    fat_100g: macros.f,
+  },
+});
+
 export default function AddFoodPage() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { isDesktop } = useResponsive();
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [customFoods, setCustomFoods] = useState<FoodItem[]>([]);
+  const [recentBarcodeFoods, setRecentBarcodeFoods] = useState<FoodItem[]>([]);
 
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
-  const [selectedFood, setSelectedFood] = useState<any | null>(null);
+  const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
 
   const [inputWeight, setInputWeight] = useState("100");
-  const [selectedUnit, setSelectedUnit] = useState<
-    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving"
-  >("g");
+  const [selectedUnit, setSelectedUnit] = useState<Unit>("g");
 
   useEffect(() => {
-    loadGistFoods().then(setCustomFoods);
+    let active = true;
+    loadGistFoods().then((foods) => {
+      if (active) setCustomFoods(foods);
+    });
+    loadRecentBarcodeFoods().then((foods) => {
+      if (active) setRecentBarcodeFoods(foods);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
     if (params.initialName) {
+      const initialUnit = isFoodUnit(params.initialUnit)
+        ? params.initialUnit
+        : "g";
       setSelectedFood({
         code: (params.code as string) || "scanned",
         product_name: params.initialName as string,
         brands: (params.brand as string) || "Scanned",
-        default_unit: (params.initialUnit as string) || "g",
+        default_unit: initialUnit,
         nutriments: {
           "energy-kcal_100g": parseFloat(params.initialCal as string) || 0,
           proteins_100g: parseFloat(params.initialProt as string) || 0,
@@ -86,16 +137,21 @@ export default function AddFoodPage() {
       });
 
       setInputWeight((params.initialWeight as string) || "100");
-      setSelectedUnit((params.initialUnit as any) || "g");
+      setSelectedUnit(initialUnit);
 
       router.setParams({
+        code: "",
         initialName: "",
         initialWeight: "",
+        initialCal: "",
+        initialProt: "",
+        initialCarbs: "",
+        initialFat: "",
         brand: "",
         initialUnit: "",
       });
     }
-  }, [params]);
+  }, [params, router]);
 
   const suggestions = useMemo(() => {
     if (query.length < 2) return [];
@@ -106,12 +162,31 @@ export default function AddFoodPage() {
       .slice(0, 5);
   }, [query, customFoods]);
 
+  const selectFood = (item: FoodItem) => {
+    Keyboard.dismiss();
+    setSelectedFood(item);
+
+    const nextUnit = isFoodUnit(item.default_unit) ? item.default_unit : "g";
+    setSelectedUnit(nextUnit);
+
+    if (item.serving_quantity) {
+      setInputWeight(item.serving_quantity.toString());
+    } else {
+      setInputWeight(nextUnit === "g" || nextUnit === "ml" ? "100" : "1");
+    }
+  };
+
   const handleSearch = async () => {
     if (!query.trim()) return;
     setLoading(true);
     const all = await searchAllFoods(query);
     setResults(all);
     setLoading(false);
+  };
+
+  const handleQueryChange = (text: string) => {
+    setQuery(text);
+    if (!text.trim()) setResults([]);
   };
 
   const macros = selectedFood
@@ -130,6 +205,7 @@ export default function AddFoodPage() {
   const confirmAdd = async () => {
     if (!selectedFood || submitting) return;
     setSubmitting(true);
+    const foodBarcode = barcodeFromFood(selectedFood);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -145,6 +221,7 @@ export default function AddFoodPage() {
           fat: macros.f,
           serving_size: inputWeight,
           serving_unit: selectedUnit,
+          barcode: foodBarcode,
         },
       ]);
       if (error) {
@@ -156,6 +233,19 @@ export default function AddFoodPage() {
         });
       } else {
         upsertDailySummary();
+        if (foodBarcode) {
+          const recentFood = createRecentBarcodeFood(
+            selectedFood,
+            foodBarcode,
+            macros,
+            inputWeight,
+            selectedUnit
+          );
+          setRecentBarcodeFoods((current) => [
+            recentFood,
+            ...current.filter((item) => item.code !== foodBarcode),
+          ].slice(0, 8));
+        }
         setSelectedFood(null);
         setFeedback({
           type: "success",
@@ -226,12 +316,15 @@ export default function AddFoodPage() {
                 placeholder="Search food..."
                 placeholderTextColor={Colors.textSecondary}
                 value={query}
-                onChangeText={setQuery}
+                onChangeText={handleQueryChange}
                 onSubmitEditing={handleSearch}
               />
               {query.length > 0 && (
                 <TouchableOpacity
-                  onPress={() => setQuery("")}
+                  onPress={() => {
+                    setQuery("");
+                    setResults([]);
+                  }}
                   style={{ marginRight: 15 }}
                 >
                   <X size={18} color={Colors.textSecondary} weight="bold" />
@@ -246,11 +339,7 @@ export default function AddFoodPage() {
                   <TouchableOpacity
                     key={item.code}
                     style={[localStyles.itemCard, localStyles.suggestionItemCard]}
-                    onPress={() => {
-                      setSelectedFood(item);
-                      setSelectedUnit(item.default_unit === "ml" ? "ml" : "g");
-                      setInputWeight(item.serving_quantity ? item.serving_quantity.toString() : "100");
-                    }}
+                    onPress={() => selectFood(item)}
                   >
                     <View style={localStyles.iconCircle}>
                       <Text style={{ fontSize: 18 }}>🥗</Text>
@@ -269,6 +358,60 @@ export default function AddFoodPage() {
               </View>
             )}
 
+            {!loading &&
+              results.length === 0 &&
+              query.trim().length < 2 &&
+              recentBarcodeFoods.length > 0 && (
+                <View style={localStyles.recentSection}>
+                  <View style={localStyles.sectionTitleRow}>
+                    <Barcode size={16} color={Colors.accent} weight="bold" />
+                    <Text style={localStyles.sectionTitle}>
+                      Recent barcodes
+                    </Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={localStyles.recentList}
+                  >
+                    {recentBarcodeFoods.map((item) => (
+                      <TouchableOpacity
+                        key={item.code}
+                        style={[
+                          localStyles.recentCard,
+                          selectedFood?.code === item.code &&
+                            localStyles.recentCardActive,
+                        ]}
+                        onPress={() => selectFood(item)}
+                      >
+                        <View style={localStyles.recentCardHeader}>
+                          <Barcode
+                            size={16}
+                            color={Colors.accent}
+                            weight="bold"
+                          />
+                          <Text style={localStyles.recentBarcodeText}>
+                            {item.code}
+                          </Text>
+                        </View>
+                        <Text style={localStyles.recentName} numberOfLines={2}>
+                          {item.product_name}
+                        </Text>
+                        <Text style={localStyles.recentMeta} numberOfLines={1}>
+                          {item.brands}
+                        </Text>
+                        <Text style={localStyles.recentKcal}>
+                          {Math.round(
+                            item.nutriments?.["energy-kcal_100g"] || 0
+                          )}{" "}
+                          kcal
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
             {loading ? (
               <ActivityIndicator color={Colors.accent} style={{ marginTop: 20 }} />
             ) : (
@@ -283,42 +426,7 @@ export default function AddFoodPage() {
                         localStyles.itemCard,
                         selectedFood?.code === item.code && isDesktop && { borderColor: Colors.accent, borderWidth: 1 }
                       ]}
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        setSelectedFood(item);
-                        if (
-                          item.default_unit &&
-                          [
-                            "g",
-                            "ml",
-                            "oz",
-                            "tsp",
-                            "tbsp",
-                            "cup",
-                            "serving",
-                          ].includes(item.default_unit)
-                        ) {
-                          setSelectedUnit(item.default_unit as any);
-
-                          if (item.serving_quantity) {
-                            setInputWeight(item.serving_quantity.toString());
-                          } else {
-                            setInputWeight(
-                              item.default_unit === "g" ||
-                                item.default_unit === "ml"
-                                ? "100"
-                                : "1",
-                            );
-                          }
-                        } else {
-                          setSelectedUnit("g");
-                          setInputWeight(
-                            item.serving_quantity
-                              ? item.serving_quantity.toString()
-                              : "100",
-                          );
-                        }
-                      }}
+                      onPress={() => selectFood(item)}
                     >
                       <View style={localStyles.iconCircle}>
                         <Text style={{ fontSize: 18 }}>
@@ -416,7 +524,7 @@ export default function AddFoodPage() {
                         {unitsToDisplay.map((u) => (
                           <TouchableOpacity
                             key={u}
-                            onPress={() => setSelectedUnit(u as any)}
+                            onPress={() => setSelectedUnit(u)}
                             style={{
                               paddingHorizontal: 16,
                               paddingVertical: 10,
@@ -543,7 +651,7 @@ export default function AddFoodPage() {
                     {unitsToDisplay.map((u) => (
                       <TouchableOpacity
                         key={u}
-                        onPress={() => setSelectedUnit(u as any)}
+                        onPress={() => setSelectedUnit(u)}
                         style={{
                           paddingHorizontal: 16,
                           paddingVertical: 10,
@@ -711,6 +819,67 @@ const localStyles = RNStyleSheet.create({
     letterSpacing: -0.1,
   },
   itemSub: { color: Colors.textSecondary, fontSize: 11, marginTop: 2 },
+  recentSection: {
+    marginBottom: 16,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    color: Colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  recentList: {
+    paddingRight: 8,
+    gap: 10,
+  },
+  recentCard: {
+    width: 210,
+    minHeight: 126,
+    backgroundColor: Colors.secondary,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  recentCardActive: {
+    borderColor: Colors.accent,
+  },
+  recentCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  recentBarcodeText: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  recentName: {
+    color: Colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+    minHeight: 34,
+    letterSpacing: 0,
+  },
+  recentMeta: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    marginTop: 6,
+  },
+  recentKcal: {
+    color: Colors.accent,
+    fontSize: 12,
+    fontWeight: "900",
+    marginTop: 8,
+  },
   createBtn: {
     flexDirection: "row",
     backgroundColor: Colors.secondary,

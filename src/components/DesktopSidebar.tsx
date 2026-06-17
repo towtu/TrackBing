@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import {
   House,
@@ -145,31 +152,37 @@ export default function DesktopSidebar() {
 
       {/* Navigation items */}
       <View style={styles.navContainer}>
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Pressable
-              key={item.label}
-              onPress={() => router.push(item.route as any)}
-              style={({ hovered }: any) => [
-                styles.navItem,
-                item.isActive && styles.navItemActive,
-                hovered && !item.isActive && styles.navItemHover,
-              ]}
-            >
-              <View style={[styles.iconContainer, item.isActive && styles.iconActive]}>
-                <Icon
-                  size={20}
-                  weight={item.isActive ? "fill" : "bold"}
-                  color={item.isActive ? Colors.accent : Colors.textSecondary}
-                />
-              </View>
-              <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={styles.navScroll}
+          contentContainerStyle={styles.navContent}
+        >
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Pressable
+                key={item.label}
+                onPress={() => router.push(item.route as any)}
+                style={({ hovered }: any) => [
+                  styles.navItem,
+                  item.isActive && styles.navItemActive,
+                  hovered && !item.isActive && styles.navItemHover,
+                ]}
+              >
+                <View style={[styles.iconContainer, item.isActive && styles.iconActive]}>
+                  <Icon
+                    size={20}
+                    weight={item.isActive ? "fill" : "bold"}
+                    color={item.isActive ? Colors.accent : Colors.textSecondary}
+                  />
+                </View>
+                <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* User profile footer */}
@@ -211,14 +224,15 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 24,
     paddingHorizontal: 20,
-    justifyContent: "space-between",
     height: "100%",
+    minHeight: 0,
   },
   brandContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 24,
     gap: 12,
+    flexShrink: 0,
   },
   logoBadge: {
     width: 38,
@@ -251,6 +265,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 107, 53, 0.15)",
     marginBottom: 24,
     gap: 8,
+    flexShrink: 0,
   },
   streakText: {
     color: Colors.text,
@@ -263,7 +278,17 @@ const styles = StyleSheet.create({
   },
   navContainer: {
     flex: 1,
+    minHeight: 0,
+    marginBottom: 16,
+  },
+  navScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  navContent: {
     gap: 8,
+    paddingVertical: 4,
+    paddingBottom: 8,
   },
   navItem: {
     flexDirection: "row",
@@ -302,13 +327,15 @@ const styles = StyleSheet.create({
   footer: {
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingTop: 20,
-    gap: 16,
+    paddingTop: 16,
+    gap: 12,
+    flexShrink: 0,
   },
   profileSection: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    minWidth: 0,
   },
   avatar: {
     width: 42,
@@ -347,6 +374,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(239, 68, 68, 0.05)",
     borderWidth: 1,
     borderColor: "rgba(239, 68, 68, 0.1)",
+    minHeight: 46,
   },
   logoutBtnHover: {
     backgroundColor: "rgba(239, 68, 68, 0.1)",

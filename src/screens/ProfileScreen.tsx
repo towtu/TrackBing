@@ -900,6 +900,36 @@ export function ProfileScreen() {
         : CUSTOM_RATE_LIMITS.gain;
     const preservedCustom =
       goalMode === "legacy_custom" || goalMode === "custom_calories";
+    const goalChipControls = GOAL_CHIPS.map((item) => {
+      const active =
+        !useCustomRate &&
+        ((goalMode === "maintenance" && item.rate === 0) ||
+          (goalMode === "estimated_rate" &&
+            Math.abs(goalRate - item.rate) < 0.000001));
+      return (
+        <TouchableOpacity
+          accessibilityRole="radio"
+          accessibilityState={{ checked: active }}
+          hitSlop={4}
+          key={item.label}
+          onPress={() => selectGoalRate(item.rate)}
+          style={[
+            styles.goalPill,
+            !isDesktop && styles.goalPillMobile,
+            active ? styles.goalPillActive : styles.goalPillIdle,
+          ]}
+        >
+          <Text
+            style={[
+              styles.goalPillText,
+              active && styles.selectedText,
+            ]}
+          >
+            {item.label}
+          </Text>
+        </TouchableOpacity>
+      );
+    });
 
     return (
       <View style={[styles.card, flush && styles.flushCard]}>
@@ -957,42 +987,24 @@ export function ProfileScreen() {
 
         {!isMinor && (
           <>
-            <ScrollView
-              accessibilityRole="radiogroup"
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.goalScroller}
-            >
-              {GOAL_CHIPS.map((item) => {
-                const active =
-                  !useCustomRate &&
-                  ((goalMode === "maintenance" && item.rate === 0) ||
-                    (goalMode === "estimated_rate" &&
-                      Math.abs(goalRate - item.rate) < 0.000001));
-                return (
-                  <TouchableOpacity
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: active }}
-                    hitSlop={4}
-                    key={item.label}
-                    onPress={() => selectGoalRate(item.rate)}
-                    style={[
-                      styles.goalPill,
-                      active ? styles.goalPillActive : styles.goalPillIdle,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.goalPillText,
-                        active && styles.selectedText,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            {isDesktop ? (
+              <View
+                accessibilityRole="radiogroup"
+                style={styles.goalPillGrid}
+              >
+                {goalChipControls}
+              </View>
+            ) : (
+              <ScrollView
+                accessibilityRole="radiogroup"
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.goalScroller}
+                contentContainerStyle={styles.goalScrollerContent}
+              >
+                {goalChipControls}
+              </ScrollView>
+            )}
 
             <TouchableOpacity
               accessibilityRole="button"
@@ -1315,9 +1327,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 32,
     marginTop: 16,
+    alignItems: "flex-start",
   },
   desktopColumn: {
     flex: 1,
+    minWidth: 0,
     gap: 16,
   },
   headerRow: {
@@ -1496,17 +1510,28 @@ const styles = StyleSheet.create({
   goalScroller: {
     marginBottom: 16,
   },
+  goalScrollerContent: {
+    paddingRight: 8,
+  },
+  goalPillGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
   goalPill: {
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 20,
-    marginRight: 8,
     minWidth: 96,
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  goalPillMobile: {
+    marginRight: 8,
   },
   goalPillActive: {
     backgroundColor: Colors.accent,

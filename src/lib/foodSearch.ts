@@ -12,6 +12,22 @@ const CUSTOM_DB_URL =
 
 let gistCache: FoodItem[] | null = null;
 
+type RecentBarcodeLogRow = {
+  barcode: string | null;
+  name: string | null;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  serving_size: string | number | null;
+  serving_unit: string | null;
+};
+
+const numberOrZero = (value: unknown) => {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : 0;
+};
+
 /** Generic foods from the gist DB, cached for the session. */
 export async function loadGistFoods(): Promise<FoodItem[]> {
   if (gistCache) return gistCache;
@@ -58,6 +74,73 @@ export async function searchPersonalFoods(query: string): Promise<FoodItem[]> {
     },
     original_id: f.id,
   }));
+}
+
+/**
+ * Recent barcode logs are stored as the exact serving the user logged.
+ * `food_logs` does not keep per-100g nutrition, so these entries replay the
+ * last logged serving instead of inventing conversions.
+ */
+export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from("food_logs")
+      .select(
+        "barcode,name,calories,protein,carbs,fat,serving_size,serving_unit"
+      )
+      .eq("user_id", user.id)
+      .not("barcode", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(Math.max(limit * 4, limit));
+
+    if (error) {
+      console.warn("Recent barcode foods load failed", error);
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const foods: FoodItem[] = [];
+
+    for (const row of (data || []) as RecentBarcodeLogRow[]) {
+      const barcode = row.barcode?.trim();
+      if (!barcode || seen.has(barcode)) continue;
+      seen.add(barcode);
+
+      const servingSize = row.serving_size ? String(row.serving_size) : "";
+      const servingUnit = row.serving_unit || "";
+      const servingLabel =
+        servingSize || servingUnit ? `${servingSize}${servingUnit}` : "";
+
+      foods.push({
+        code: barcode,
+        product_name: row.name || `Barcode ${barcode}`,
+        brands: servingLabel
+          ? `Recent barcode - ${servingLabel}`
+          : "Recent barcode",
+        default_unit: "serving",
+        serving_quantity: 1,
+        serving_weight: 100,
+        nutriments: {
+          "energy-kcal_100g": numberOrZero(row.calories),
+          proteins_100g: numberOrZero(row.protein),
+          carbohydrates_100g: numberOrZero(row.carbs),
+          fat_100g: numberOrZero(row.fat),
+        },
+      });
+
+      if (foods.length >= limit) break;
+    }
+
+    return foods;
+  } catch (e) {
+    console.warn("Recent barcode foods load failed", e);
+    return [];
+  }
 }
 
 async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {

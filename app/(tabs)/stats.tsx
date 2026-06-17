@@ -1,6 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import {
-  CalendarBlank,
   CaretLeft,
   ChartBar,
   Fire,
@@ -20,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { getLocalDateStr } from "@/src/lib/dailySummary";
+import { readCache, writeCache } from "@/src/lib/cache";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -34,6 +34,192 @@ interface DayData {
   count: number;
 }
 
+interface CachedStats {
+  weekData: DayData[];
+  streak: number;
+  calorieGoal: number;
+}
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+type SummaryRow = {
+  date: string;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  meal_count: number | null;
+};
+
+/** Pure streak calc from the (already-fetched) summaries + today's live state. */
+function computeStreak(summaries: SummaryRow[], loggedToday: boolean): number {
+  const dates = new Set<string>();
+  summaries.forEach((s) => {
+    if ((s.meal_count || 0) > 0) dates.add(s.date);
+  });
+
+  const todayStr = getLocalDateStr();
+  if (loggedToday) dates.add(todayStr);
+  if (dates.size === 0) return 0;
+
+  const sorted = Array.from(dates).sort().reverse();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = getLocalDateStr(yesterday);
+
+  if (sorted[0] !== todayStr && sorted[0] !== yesterdayStr) return 0;
+
+  let count = 0;
+  const checkDate = new Date(sorted[0]);
+  for (let i = 0; i < sorted.length; i++) {
+    const expected = new Date(checkDate);
+    expected.setDate(expected.getDate() - i);
+    if (sorted[i] === getLocalDateStr(expected)) count++;
+    else break;
+  }
+  return count;
+}
+
+/**
+ * Fetches and shapes the weekly stats for a user. One daily_summaries read
+ * feeds both the 7-day chart and the streak (summaries are capped at 7 days by
+ * the cleanup job, so the result set stays tiny).
+ */
+type TodayTotals = {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  count: number;
+};
+
+type WeeklyRaw = {
+  calorieTarget: number | null;
+  summaries: SummaryRow[];
+  today: TodayTotals;
+};
+
+/** Shape of the get_weekly_stats RPC payload. */
+type WeeklyStatsRpc = {
+  calorie_target: number | null;
+  summaries: SummaryRow[];
+  today: TodayTotals;
+};
+
+const EMPTY_TODAY: TodayTotals = {
+  calories: 0,
+  protein: 0,
+  carbs: 0,
+  fat: 0,
+  count: 0,
+};
+
+/**
+ * Fetches the raw weekly data. Prefers the single-round-trip get_weekly_stats
+ * RPC; if it isn't available yet (migration not applied), falls back to the
+ * three source queries run in parallel.
+ */
+async function fetchWeeklyRaw(
+  userId: string,
+  todayStartIso: string,
+): Promise<WeeklyRaw> {
+  const { data, error } = await supabase.rpc("get_weekly_stats", {
+    p_today_start: todayStartIso,
+  });
+
+  if (!error && data) {
+    const payload = data as WeeklyStatsRpc;
+    return {
+      calorieTarget: payload.calorie_target ?? null,
+      summaries: payload.summaries ?? [],
+      today: payload.today ?? EMPTY_TODAY,
+    };
+  }
+
+  // Fallback: parallel queries (still one round-trip's worth of latency).
+  const [goalRes, summaryRes, todayRes] = await Promise.all([
+    supabase
+      .from("user_goals")
+      .select("calorie_target")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("daily_summaries")
+      .select("date, calories, protein, carbs, fat, meal_count")
+      .eq("user_id", userId)
+      .order("date", { ascending: false }),
+    supabase
+      .from("food_logs")
+      .select("calories, protein, carbs, fat")
+      .eq("user_id", userId)
+      .gte("created_at", todayStartIso),
+  ]);
+
+  const today = (todayRes.data ?? []).reduce<TodayTotals>(
+    (acc, log) => ({
+      calories: acc.calories + (log.calories || 0),
+      protein: acc.protein + (log.protein || 0),
+      carbs: acc.carbs + (log.carbs || 0),
+      fat: acc.fat + (log.fat || 0),
+      count: acc.count + 1,
+    }),
+    { ...EMPTY_TODAY },
+  );
+
+  return {
+    calorieTarget: goalRes.data?.calorie_target ?? null,
+    summaries: (summaryRes.data ?? []) as SummaryRow[],
+    today,
+  };
+}
+
+async function computeStats(userId: string): Promise<CachedStats> {
+  const now = new Date();
+  const todayStr = getLocalDateStr(now);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const raw = await fetchWeeklyRaw(userId, todayStart.toISOString());
+  const calorieGoal = raw.calorieTarget || 2000;
+
+  const dayMap: Record<string, DayData> = {};
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(now.getDate() - 6 + i);
+    const key = getLocalDateStr(d);
+    dayMap[key] = {
+      date: key,
+      label: d.getDate().toString(),
+      dayName: DAY_NAMES[d.getDay()],
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      count: 0,
+    };
+  }
+
+  raw.summaries.forEach((s) => {
+    if (dayMap[s.date]) {
+      dayMap[s.date].calories = s.calories || 0;
+      dayMap[s.date].protein = s.protein || 0;
+      dayMap[s.date].carbs = s.carbs || 0;
+      dayMap[s.date].fat = s.fat || 0;
+      dayMap[s.date].count = s.meal_count || 0;
+    }
+  });
+
+  // Today may not be flushed to a summary yet — fold in live totals, preferring
+  // whichever source has more meals recorded.
+  const loggedToday = raw.today.count > 0;
+  if (loggedToday && raw.today.count >= (dayMap[todayStr]?.count || 0)) {
+    dayMap[todayStr] = { ...dayMap[todayStr], ...raw.today };
+  }
+
+  const streak = computeStreak(raw.summaries, loggedToday);
+  return { weekData: Object.values(dayMap), streak, calorieGoal };
+}
+
 export default function StatsPage() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
@@ -43,140 +229,54 @@ export default function StatsPage() {
   const [streak, setStreak] = useState(0);
   const [calorieGoal, setCalorieGoal] = useState(2000);
 
-  const fetchStats = async () => {
-    setLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    // Fetch calorie goal
-    const { data: userGoal } = await supabase
-      .from("user_goals")
-      .select("calorie_target")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (userGoal?.calorie_target) setCalorieGoal(userGoal.calorie_target);
-
-    const now = new Date();
-    const todayStr = getLocalDateStr(now);
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-    // Build day map for last 7 days
-    const dayMap: Record<string, DayData> = {};
-    for (let i = 0; i < 7; i++) {
-      const d = new Date();
-      d.setDate(now.getDate() - 6 + i);
-      const key = getLocalDateStr(d);
-      dayMap[key] = {
-        date: key,
-        label: d.getDate().toString(),
-        dayName: dayNames[d.getDay()],
-        calories: 0, protein: 0, carbs: 0, fat: 0, count: 0,
-      };
-    }
-
-    // Fetch daily_summaries for past 7 days (historical data that survives midnight wipe)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(now.getDate() - 6);
-    const cutoffStr = getLocalDateStr(sevenDaysAgo);
-
-    const { data: summaries } = await supabase
-      .from("daily_summaries")
-      .select("date, calories, protein, carbs, fat, meal_count")
-      .eq("user_id", user.id)
-      .gte("date", cutoffStr);
-
-    if (summaries) {
-      summaries.forEach((s) => {
-        if (dayMap[s.date]) {
-          dayMap[s.date].calories = s.calories || 0;
-          dayMap[s.date].protein = s.protein || 0;
-          dayMap[s.date].carbs = s.carbs || 0;
-          dayMap[s.date].fat = s.fat || 0;
-          dayMap[s.date].count = s.meal_count || 0;
-        }
-      });
-    }
-
-    // For today, also check live food_logs (in case summary hasn't been updated yet)
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const { data: todayLogs } = await supabase
-      .from("food_logs")
-      .select("calories, protein, carbs, fat")
-      .eq("user_id", user.id)
-      .gte("created_at", todayStart.toISOString());
-
-    if (todayLogs && todayLogs.length > 0) {
-      const todayInit = { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 };
-      const todayTotals = todayLogs.reduce(
-        (acc: typeof todayInit, log) => ({
-          calories: acc.calories + (log.calories || 0),
-          protein: acc.protein + (log.protein || 0),
-          carbs: acc.carbs + (log.carbs || 0),
-          fat: acc.fat + (log.fat || 0),
-          count: acc.count + 1,
-        }),
-        todayInit
-      );
-      // Use whichever has more data (live logs might be more current than summary)
-      if (todayTotals.count >= (dayMap[todayStr]?.count || 0)) {
-        dayMap[todayStr] = { ...dayMap[todayStr], ...todayTotals };
-      }
-    }
-
-    setWeekData(Object.values(dayMap));
-    await calculateStreak(user.id);
-    setLoading(false);
-  };
-
-  const calculateStreak = async (userId: string) => {
-    // Use daily_summaries for historical + check today's food_logs
-    const { data: summaries } = await supabase
-      .from("daily_summaries")
-      .select("date")
-      .eq("user_id", userId)
-      .gt("meal_count", 0)
-      .order("date", { ascending: false });
-
-    const todayStr = getLocalDateStr();
-    const { data: todayLogs } = await supabase
-      .from("food_logs")
-      .select("id")
-      .eq("user_id", userId)
-      .limit(1);
-
-    const dates = new Set<string>();
-    if (summaries) summaries.forEach((s) => dates.add(s.date));
-    if (todayLogs && todayLogs.length > 0) dates.add(todayStr);
-
-    if (dates.size === 0) { setStreak(0); return; }
-
-    const sorted = Array.from(dates).sort().reverse();
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = getLocalDateStr(yesterday);
-
-    if (sorted[0] !== todayStr && sorted[0] !== yesterdayStr) { setStreak(0); return; }
-
-    let count = 0;
-    const checkDate = new Date(sorted[0]);
-    for (let i = 0; i < sorted.length; i++) {
-      const expected = new Date(checkDate);
-      expected.setDate(expected.getDate() - i);
-      if (sorted[i] === getLocalDateStr(expected)) { count++; } else { break; }
-    }
-    setStreak(count);
-  };
+  const applyStats = useCallback((s: CachedStats) => {
+    setWeekData(s.weekData);
+    setStreak(s.streak);
+    setCalorieGoal(s.calorieGoal);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      fetchStats();
-    }, [])
+      let cancelled = false;
+
+      (async () => {
+        // getSession reads from local storage (no network round-trip); RLS still
+        // enforces ownership server-side on the queries below.
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const user = session?.user;
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+
+        const cacheKey = `stats:week:${user.id}`;
+
+        // Render last-known data instantly; only block on a true cold start.
+        const cached = await readCache<CachedStats>(cacheKey);
+        if (cached && !cancelled) {
+          applyStats(cached);
+          setLoading(false);
+        }
+
+        // Revalidate in the background and update if anything changed.
+        try {
+          const fresh = await computeStats(user.id);
+          if (cancelled) return;
+          applyStats(fresh);
+          writeCache(cacheKey, fresh);
+        } catch (e) {
+          console.warn("Stats refresh failed", e);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [applyStats]),
   );
 
   // Computed stats

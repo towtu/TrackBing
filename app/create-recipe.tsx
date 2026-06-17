@@ -26,6 +26,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
 import { supabase } from "@/src/lib/supabase";
 import { lookupBarcode, searchAllFoods } from "@/src/lib/foodSearch";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
@@ -43,6 +47,14 @@ import {
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
+type FeedbackState = {
+  type: SweetFeedbackType;
+  title: string;
+  message: string;
+  autoDismissMs?: number;
+  onClose?: () => void;
+};
+
 export default function CreateRecipePage() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
@@ -56,15 +68,14 @@ export default function CreateRecipePage() {
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  // Cross-platform feedback. react-native-web's Alert.alert is a no-op, so a
-  // plain <Modal> is the only thing that actually shows on web.
-  const [notice, setNotice] = useState<{
-    title: string;
-    message: string;
-    onClose?: () => void;
-  } | null>(null);
-  const notify = (title: string, message: string, onClose?: () => void) =>
-    setNotice({ title, message, onClose });
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const notify = (
+    title: string,
+    message: string,
+    type: SweetFeedbackType = "warning",
+    onClose?: () => void,
+    autoDismissMs?: number
+  ) => setFeedback({ title, message, type, onClose, autoDismissMs });
 
   // ── SEARCH MODAL ──
   const [searchOpen, setSearchOpen] = useState(false);
@@ -170,7 +181,8 @@ export default function CreateRecipePage() {
         if (!result.hasNutrition) {
           notify(
             "No nutrition data",
-            `Found "${result.food.product_name}", but the database has no calories or macros for it. Add it under My Foods to set those yourself.`
+            `Found "${result.food.product_name}", but the database has no calories or macros for it. Add it under My Foods to set those yourself.`,
+            "warning"
           );
           return;
         }
@@ -178,12 +190,14 @@ export default function CreateRecipePage() {
       } else if (result.reason === "unreachable") {
         notify(
           "Food database unavailable",
-          "OpenFoodFacts didn't respond. Check your connection and try again in a moment."
+          "OpenFoodFacts didn't respond. Check your connection and try again in a moment.",
+          "error"
         );
       } else {
         notify(
           "Not in OpenFoodFacts",
-          "OpenFoodFacts doesn't have this barcode yet. Search by name, or add it under My Foods."
+          "OpenFoodFacts doesn't have this barcode yet. Search by name, or add it under My Foods.",
+          "warning"
         );
       }
     },
@@ -282,12 +296,22 @@ export default function CreateRecipePage() {
           .insert([{ user_id: user.id, name: name.trim(), ingredients }]);
     setSubmitting(false);
     if (error) {
-      notify("Error", error.message);
+      notify("Could not save recipe", error.message, "error");
     } else {
-      notify("Saved", editId ? "Recipe updated!" : "Recipe saved!", () =>
-        router.back()
+      notify(
+        "Saved!",
+        editId ? "Recipe updated." : "Recipe saved.",
+        "success",
+        () => router.back(),
+        1100
       );
     }
+  };
+
+  const closeFeedback = () => {
+    const onClose = feedback?.onClose;
+    setFeedback(null);
+    onClose?.();
   };
 
   const editorMacros = editingFood
@@ -623,7 +647,7 @@ export default function CreateRecipePage() {
                 <Minus size={20} color="white" weight="bold" />
               </TouchableOpacity>
 
-              <View style={{ alignItems: "center" }}>
+              <View style={s.weightInputContainer}>
                 <TextInput
                   style={s.weightInput}
                   keyboardType="numeric"
@@ -706,25 +730,14 @@ export default function CreateRecipePage() {
         </View>
       </Modal>
 
-      {/* ── NOTICE MODAL (cross-platform alert replacement) ── */}
-      <Modal visible={!!notice} transparent animationType="fade">
-        <View style={s.noticeOverlay}>
-          <View style={s.noticeCard}>
-            <Text style={s.noticeTitle}>{notice?.title}</Text>
-            <Text style={s.noticeMessage}>{notice?.message}</Text>
-            <TouchableOpacity
-              style={s.noticeBtn}
-              onPress={() => {
-                const cb = notice?.onClose;
-                setNotice(null);
-                cb?.();
-              }}
-            >
-              <Text style={s.noticeBtnText}>OK</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <SweetFeedback
+        visible={!!feedback}
+        type={feedback?.type}
+        title={feedback?.title ?? ""}
+        message={feedback?.message}
+        autoDismissMs={feedback?.autoDismissMs}
+        onClose={closeFeedback}
+      />
     </SafeAreaView>
   );
 }
@@ -776,6 +789,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 14,
   },
   totalValue: {
     color: Colors.accent,
@@ -971,6 +985,7 @@ const s = StyleSheet.create({
     borderTopColor: Colors.border,
     width: "100%",
     maxWidth: 520,
+    maxHeight: "92%",
     alignSelf: "center",
   },
   modalDragBar: {
@@ -996,8 +1011,8 @@ const s = StyleSheet.create({
   weightSection: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 20,
+    justifyContent: "space-between",
+    gap: 12,
     marginBottom: 22,
   },
   adjustBtn: {
@@ -1010,17 +1025,25 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  weightInputContainer: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+  },
   weightInput: {
     color: Colors.accent,
-    fontSize: 52,
+    fontSize: 44,
     fontWeight: "900",
     textAlign: "center",
-    letterSpacing: -2,
+    letterSpacing: 0,
+    width: "100%",
+    maxWidth: 180,
   },
   unitBar: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     marginBottom: 22,
+    maxWidth: "100%",
   },
   bentoContainer: { flexDirection: "row", gap: 10, marginBottom: 22 },
   bentoMain: {
@@ -1080,44 +1103,4 @@ const s = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ── NOTICE MODAL ──
-  noticeOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 28,
-  },
-  noticeCard: {
-    width: "100%",
-    maxWidth: 380,
-    backgroundColor: Colors.secondary,
-    borderRadius: 22,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  noticeTitle: {
-    color: Colors.text,
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 8,
-  },
-  noticeMessage: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 22,
-  },
-  noticeBtn: {
-    backgroundColor: Colors.accent,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  noticeBtnText: {
-    color: Colors.textOnAccent,
-    fontSize: 15,
-    fontWeight: "800",
-  },
 });

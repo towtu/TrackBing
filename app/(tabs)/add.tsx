@@ -2,17 +2,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Barcode,
   CaretLeft,
-  CheckCircle,
   ForkKnife,
   MagnifyingGlass,
   Minus,
   Plus,
   X,
 } from "phosphor-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   Keyboard,
   Modal,
@@ -24,6 +22,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import { loadGistFoods, searchAllFoods } from "@/src/lib/foodSearch";
@@ -34,6 +36,14 @@ import {
 } from "@/src/lib/macros";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
+
+type FeedbackState = {
+  type: SweetFeedbackType;
+  title: string;
+  message: string;
+  autoDismissMs?: number;
+  onClose?: () => void;
+};
 
 export default function AddFoodPage() {
   const router = useRouter();
@@ -47,9 +57,7 @@ export default function AddFoodPage() {
 
   const [customFoods, setCustomFoods] = useState<FoodItem[]>([]);
 
-  const [showToast, setShowToast] = useState(false);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-  const toastScale = useRef(new Animated.Value(0.8)).current;
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
   const [selectedFood, setSelectedFood] = useState<any | null>(null);
 
@@ -127,7 +135,7 @@ export default function AddFoodPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      await supabase.from("food_logs").insert([
+      const { error } = await supabase.from("food_logs").insert([
         {
           user_id: user.id,
           name: selectedFood.product_name,
@@ -139,26 +147,32 @@ export default function AddFoodPage() {
           serving_unit: selectedUnit,
         },
       ]);
-      upsertDailySummary();
-      setSelectedFood(null);
-      setShowToast(true);
-      toastOpacity.setValue(0);
-      toastScale.setValue(0.8);
-      Animated.parallel([
-        Animated.spring(toastScale, { toValue: 1, tension: 200, friction: 8, useNativeDriver: true }),
-        Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(toastOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
-          Animated.timing(toastScale, { toValue: 0.8, duration: 300, useNativeDriver: true }),
-        ]).start(() => {
-          setShowToast(false);
-          router.back();
+      if (error) {
+        setSelectedFood(null);
+        setFeedback({
+          type: "error",
+          title: "Could not log food",
+          message: error.message,
         });
-      }, 1200);
+      } else {
+        upsertDailySummary();
+        setSelectedFood(null);
+        setFeedback({
+          type: "success",
+          title: "Logged!",
+          message: "Added to your daily intake.",
+          autoDismissMs: 1100,
+          onClose: () => router.back(),
+        });
+      }
     }
     setSubmitting(false);
+  };
+
+  const closeFeedback = () => {
+    const onClose = feedback?.onClose;
+    setFeedback(null);
+    onClose?.();
   };
 
   const displayList = results;
@@ -601,28 +615,14 @@ export default function AddFoodPage() {
           </View>
         </Modal>
 
-        {/* ── SUCCESS TOAST ── */}
-        {showToast && (
-          <Animated.View
-            style={[
-              localStyles.toastOverlay,
-              { opacity: toastOpacity },
-            ]}
-          >
-            <Animated.View
-              style={[
-                localStyles.toastCard,
-                { transform: [{ scale: toastScale }] },
-              ]}
-            >
-              <View style={localStyles.toastIconWrap}>
-                <CheckCircle size={40} color={Colors.success} weight="fill" />
-              </View>
-              <Text style={localStyles.toastTitle}>Logged!</Text>
-              <Text style={localStyles.toastSubtitle}>Added to your daily intake</Text>
-            </Animated.View>
-          </Animated.View>
-        )}
+        <SweetFeedback
+          visible={!!feedback}
+          type={feedback?.type}
+          title={feedback?.title ?? ""}
+          message={feedback?.message}
+          autoDismissMs={feedback?.autoDismissMs}
+          onClose={closeFeedback}
+        />
       </View>
     </SafeAreaView>
   );
@@ -735,6 +735,7 @@ const localStyles = RNStyleSheet.create({
     paddingBottom: 44,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+    maxHeight: "92%",
   },
   modalDragBar: {
     width: 36,
@@ -766,8 +767,8 @@ const localStyles = RNStyleSheet.create({
   weightSection: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 20,
+    justifyContent: "space-between",
+    gap: 12,
     marginBottom: 22,
   },
   adjustBtn: {
@@ -780,18 +781,25 @@ const localStyles = RNStyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  weightInputContainer: { alignItems: "center" },
+  weightInputContainer: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+  },
   weightInput: {
     color: Colors.accent,
-    fontSize: 52,
+    fontSize: 44,
     fontWeight: "900",
     textAlign: "center",
-    letterSpacing: -2,
+    letterSpacing: 0,
+    width: "100%",
+    maxWidth: 180,
   },
   unitBar: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     marginBottom: 22,
+    maxWidth: "100%",
   },
   bentoContainer: { flexDirection: "row", gap: 10, marginBottom: 22 },
   bentoMain: {
@@ -870,48 +878,4 @@ const localStyles = RNStyleSheet.create({
     minWidth: 48,
   },
 
-  // ── SUCCESS TOAST ──
-  toastOverlay: {
-    ...RNStyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999,
-  },
-  toastCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 28,
-    padding: 32,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    shadowColor: Colors.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 12,
-    width: 200,
-  },
-  toastIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(74, 222, 128, 0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-  toastTitle: {
-    color: Colors.text,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  toastSubtitle: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
-  },
 });

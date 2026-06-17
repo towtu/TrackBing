@@ -2,7 +2,6 @@ import { useFocusEffect, useRouter } from "expo-router";
 import {
   BookOpen,
   CaretLeft,
-  CheckCircle,
   MagnifyingGlass,
   Pencil,
   Plus,
@@ -24,6 +23,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import {
@@ -48,6 +51,13 @@ const PORTION_PRESETS = [
   { label: "¼", value: 0.25 },
 ];
 
+type FeedbackState = {
+  type: SweetFeedbackType;
+  title: string;
+  message: string;
+  autoDismissMs?: number;
+};
+
 export default function CookbookPage() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
@@ -66,7 +76,7 @@ export default function CookbookPage() {
   // Portion of the whole recipe being logged: 1 = the entire recipe.
   const [portion, setPortion] = useState(1);
   const [customPortion, setCustomPortion] = useState("");
-  const [logSuccess, setLogSuccess] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
   // ── DELETE MODAL STATE ──
   const [deleteModal, setDeleteModal] = useState(false);
@@ -146,7 +156,7 @@ export default function CookbookPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      await supabase.from("food_logs").insert([
+      const { error } = await supabase.from("food_logs").insert([
         {
           user_id: user.id,
           name: selectedRecipe.name,
@@ -158,9 +168,23 @@ export default function CookbookPage() {
           serving_unit: "recipe",
         },
       ]);
-      upsertDailySummary();
-      setSelectedRecipe(null);
-      setLogSuccess(true);
+      if (error) {
+        setSelectedRecipe(null);
+        setFeedback({
+          type: "error",
+          title: "Could not log recipe",
+          message: error.message,
+        });
+      } else {
+        upsertDailySummary();
+        setSelectedRecipe(null);
+        setFeedback({
+          type: "success",
+          title: "Logged!",
+          message: "Added to today's food log.",
+          autoDismissMs: 1100,
+        });
+      }
     }
     setSubmitting(false);
   };
@@ -178,7 +202,11 @@ export default function CookbookPage() {
       .delete()
       .eq("id", deletingRecipe.id);
     if (error) {
-      alert("Error: " + error.message);
+      setFeedback({
+        type: "error",
+        title: "Could not remove recipe",
+        message: error.message,
+      });
     } else {
       setRecipes((prev) => prev.filter((r) => r.id !== deletingRecipe.id));
     }
@@ -583,32 +611,14 @@ export default function CookbookPage() {
           </View>
         </Modal>
 
-        {/* ── LOG SUCCESS MODAL ── */}
-        <Modal visible={logSuccess} transparent animationType="fade">
-          <View style={localStyles.deleteOverlay}>
-            <TouchableOpacity
-              style={RNStyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => setLogSuccess(false)}
-            />
-            <View style={localStyles.glassModal}>
-              <View style={localStyles.glassModalDrag} />
-              <View style={localStyles.successIcon}>
-                <CheckCircle size={36} color={Colors.accent} weight="fill" />
-              </View>
-              <Text style={localStyles.deleteModalTitle}>Logged!</Text>
-              <Text style={localStyles.deleteModalSubtitle}>
-                Added to today&apos;s food log.
-              </Text>
-              <TouchableOpacity
-                style={localStyles.successBtn}
-                onPress={() => setLogSuccess(false)}
-              >
-                <Text style={localStyles.btnConfirmDeleteText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        <SweetFeedback
+          visible={!!feedback}
+          type={feedback?.type}
+          title={feedback?.title ?? ""}
+          message={feedback?.message}
+          autoDismissMs={feedback?.autoDismissMs}
+          onClose={() => setFeedback(null)}
+        />
       </View>
     </SafeAreaView>
   );
@@ -800,6 +810,7 @@ const localStyles = RNStyleSheet.create({
     borderTopColor: Colors.border,
     width: "100%",
     maxWidth: 520,
+    maxHeight: "92%",
     alignSelf: "center",
   },
   modalDragBar: {
@@ -982,6 +993,7 @@ const localStyles = RNStyleSheet.create({
   portionRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
   },
   portionChip: {
@@ -1023,24 +1035,6 @@ const localStyles = RNStyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 18,
     fontWeight: "800",
-  },
-
-  // ── SUCCESS MODAL ──
-  successIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(150,255,150,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  successBtn: {
-    backgroundColor: Colors.accent,
-    paddingVertical: 18,
-    borderRadius: 20,
-    alignItems: "center",
   },
 
   // ── DELETE MODAL ──

@@ -3,7 +3,6 @@ import { Calculator, CheckCircle, X } from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,11 +11,26 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
+import { useResponsive } from "@/src/hooks/useResponsive";
+
+type FeedbackState = {
+  type: SweetFeedbackType;
+  title: string;
+  message: string;
+  autoDismissMs?: number;
+  onClose?: () => void;
+};
 
 export default function CreateFoodPage() {
   const router = useRouter();
+  const { width, isDesktop } = useResponsive();
+  const compactForm = width < 390;
   const [name, setName] = useState("");
   const [cal, setCal] = useState("");
   const [prot, setProt] = useState("");
@@ -28,6 +42,7 @@ export default function CreateFoodPage() {
   >("g");
 
   const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
   useEffect(() => {
     const p = parseFloat(prot) || 0;
@@ -43,10 +58,12 @@ export default function CreateFoodPage() {
   const handleSave = async () => {
     if (submitting) return;
     if (!name || !cal) {
-      return Alert.alert(
-        "Missing Info",
-        "Please enter at least a name and calories.",
-      );
+      setFeedback({
+        type: "warning",
+        title: "Missing info",
+        message: "Please enter at least a name and calories.",
+      });
+      return;
     }
 
     setSubmitting(true);
@@ -55,6 +72,11 @@ export default function CreateFoodPage() {
     } = await supabase.auth.getUser();
     if (!user) {
       setSubmitting(false);
+      setFeedback({
+        type: "warning",
+        title: "Sign in required",
+        message: "Please sign in again before saving this food.",
+      });
       return;
     }
 
@@ -71,12 +93,27 @@ export default function CreateFoodPage() {
     ]);
 
     if (error) {
-      Alert.alert("Error", error.message);
+      setFeedback({
+        type: "error",
+        title: "Could not save food",
+        message: error.message,
+      });
       setSubmitting(false);
     } else {
-      Alert.alert("Success", "Food saved!");
-      router.back();
+      setFeedback({
+        type: "success",
+        title: "Saved!",
+        message: "Food added to My Foods.",
+        autoDismissMs: 1100,
+        onClose: () => router.back(),
+      });
     }
+  };
+
+  const closeFeedback = () => {
+    const onClose = feedback?.onClose;
+    setFeedback(null);
+    onClose?.();
   };
 
   const isPer100 = unit === "g" || unit === "ml";
@@ -91,7 +128,12 @@ export default function CreateFoodPage() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isDesktop && styles.webContent,
+        ]}
+      >
         <View style={styles.infoBanner}>
           <Calculator size={20} color={Colors.accent} weight="fill" />
           <Text style={styles.infoText}>
@@ -145,7 +187,7 @@ export default function CreateFoodPage() {
           ))}
         </View>
 
-        <View style={styles.grid}>
+        <View style={[styles.grid, compactForm && styles.gridCompact]}>
           <View style={styles.gridItem}>
             <Text style={styles.label}>Protein {unitLabel}</Text>
             <TextInput
@@ -170,7 +212,7 @@ export default function CreateFoodPage() {
           </View>
         </View>
 
-        <View style={styles.grid}>
+        <View style={[styles.grid, compactForm && styles.gridCompact]}>
           <View style={styles.gridItem}>
             <Text style={styles.label}>Fat {unitLabel}</Text>
             <TextInput
@@ -218,6 +260,14 @@ export default function CreateFoodPage() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      <SweetFeedback
+        visible={!!feedback}
+        type={feedback?.type}
+        title={feedback?.title ?? ""}
+        message={feedback?.message}
+        autoDismissMs={feedback?.autoDismissMs}
+        onClose={closeFeedback}
+      />
     </SafeAreaView>
   );
 }
@@ -234,7 +284,15 @@ const styles = StyleSheet.create({
   },
   title: { color: "white", fontSize: 20, fontWeight: "bold" },
   closeBtn: { padding: 5 },
-  content: { padding: 20 },
+  content: {
+    padding: 20,
+    width: "100%",
+    maxWidth: 720,
+    alignSelf: "center",
+  },
+  webContent: {
+    paddingTop: 28,
+  },
   infoBanner: {
     flexDirection: "row",
     backgroundColor: "#333",
@@ -265,6 +323,10 @@ const styles = StyleSheet.create({
     borderColor: "#333",
   },
   grid: { flexDirection: "row", gap: 15 },
+  gridCompact: {
+    flexDirection: "column",
+    gap: 0,
+  },
   gridItem: { flex: 1 },
   saveBtn: {
     backgroundColor: Colors.accent,

@@ -23,6 +23,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import {
@@ -34,6 +38,13 @@ import {
 } from "@/src/lib/macros";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
+
+type FeedbackState = {
+  type: SweetFeedbackType;
+  title: string;
+  message: string;
+  autoDismissMs?: number;
+};
 
 export default function MyFoodsPage() {
   const router = useRouter();
@@ -51,6 +62,7 @@ export default function MyFoodsPage() {
 
   // ── DELETE MODAL STATE ──
   const [deleteModal, setDeleteModal] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [deletingFood, setDeletingFood] = useState<{
     id: string;
     name: string;
@@ -111,7 +123,11 @@ export default function MyFoodsPage() {
       .delete()
       .eq("id", deletingFood.id);
     if (error) {
-      alert("Error: " + error.message);
+      setFeedback({
+        type: "error",
+        title: "Could not remove food",
+        message: error.message,
+      });
     } else {
       setPersonalFoods((prev) =>
         prev.filter((f) => f.code !== deletingFood.code)
@@ -142,7 +158,7 @@ export default function MyFoodsPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      await supabase.from("food_logs").insert([
+      const { error } = await supabase.from("food_logs").insert([
         {
           user_id: user.id,
           name: selectedFood.product_name,
@@ -154,9 +170,23 @@ export default function MyFoodsPage() {
           serving_unit: selectedUnit,
         },
       ]);
-      upsertDailySummary();
-      alert("Added to your log!");
-      setSelectedFood(null);
+      if (error) {
+        setSelectedFood(null);
+        setFeedback({
+          type: "error",
+          title: "Could not log food",
+          message: error.message,
+        });
+      } else {
+        upsertDailySummary();
+        setSelectedFood(null);
+        setFeedback({
+          type: "success",
+          title: "Logged!",
+          message: "Added to today's food log.",
+          autoDismissMs: 1100,
+        });
+      }
     }
     setSubmitting(false);
   };
@@ -486,6 +516,14 @@ export default function MyFoodsPage() {
             </View>
           </View>
         </Modal>
+        <SweetFeedback
+          visible={!!feedback}
+          type={feedback?.type}
+          title={feedback?.title ?? ""}
+          message={feedback?.message}
+          autoDismissMs={feedback?.autoDismissMs}
+          onClose={() => setFeedback(null)}
+        />
       </View>
     </SafeAreaView>
   );
@@ -679,6 +717,7 @@ const localStyles = RNStyleSheet.create({
     paddingBottom: 44,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+    maxHeight: "92%",
   },
   modalDragBar: {
     width: 36,
@@ -710,8 +749,8 @@ const localStyles = RNStyleSheet.create({
   weightSection: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 20,
+    justifyContent: "space-between",
+    gap: 12,
     marginBottom: 22,
   },
   adjustBtn: {
@@ -724,18 +763,25 @@ const localStyles = RNStyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  weightInputContainer: { alignItems: "center" },
+  weightInputContainer: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+  },
   weightInput: {
     color: Colors.accent,
-    fontSize: 52,
+    fontSize: 44,
     fontWeight: "900",
     textAlign: "center",
-    letterSpacing: -2,
+    letterSpacing: 0,
+    width: "100%",
+    maxWidth: 180,
   },
   unitBarStyle: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     marginBottom: 22,
+    maxWidth: "100%",
   },
   bentoContainer: { flexDirection: "row", gap: 10, marginBottom: 22 },
   bentoMain: {

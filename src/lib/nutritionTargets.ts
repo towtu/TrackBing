@@ -101,6 +101,13 @@ export function activityLevelFromStoredValue(value: unknown): ActivityLevel {
   return match?.[0] ?? "sedentary";
 }
 
+export function activityLevelToStoredValue(
+  activityLevel: ActivityLevel,
+): string {
+  assertActivityLevel(activityLevel);
+  return ACTIVITY_MULTIPLIERS[activityLevel].toString();
+}
+
 export function isGoalMode(value: unknown): value is GoalMode {
   return (
     value === "estimated_rate" ||

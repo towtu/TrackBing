@@ -2,11 +2,11 @@ import { UnitSystemToggle } from "@/src/components/nutrition/UnitSystemToggle";
 import { TargetBreakdown } from "@/src/components/nutrition/TargetBreakdown";
 import { useResponsive } from "@/src/hooks/useResponsive";
 import {
-  ACTIVITY_MULTIPLIERS,
   CUSTOM_RATE_LIMITS,
   DEFAULT_MACRO_PERCENTAGES,
   GOAL_RATE_PRESETS,
   activityLevelFromStoredValue,
+  activityLevelToStoredValue,
   calculateMacroGrams,
   calculateNutritionTarget,
   cmToFtIn,
@@ -651,7 +651,7 @@ export function ProfileScreen() {
         height: bodyInput.heightCm,
         age: bodyInput.age,
         gender: bodyInput.sex,
-        activity_level: ACTIVITY_MULTIPLIERS[activityLevel].toString(),
+        activity_level: activityLevelToStoredValue(activityLevel),
         calorie_target: savedCalories,
         unit_system: unitSystem,
         protein_ratio: percentages.protein,

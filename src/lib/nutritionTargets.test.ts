@@ -9,6 +9,7 @@ import {
   LB_PER_KG,
   STAT_LIMITS,
   activityLevelFromStoredValue,
+  activityLevelToStoredValue,
   calculateAdultMaintenance,
   calculateMacroGrams,
   calculateNutritionTarget,
@@ -358,6 +359,14 @@ describe("stored nutrition metadata", () => {
     expect(activityLevelFromStoredValue("moderate")).toBe("moderate");
     expect(activityLevelFromStoredValue("1.725")).toBe("very_active");
     expect(activityLevelFromStoredValue("unknown")).toBe("sedentary");
+  });
+
+  it("stores activity levels as legacy multiplier strings", () => {
+    expect(activityLevelToStoredValue("sedentary")).toBe("1.2");
+    expect(activityLevelToStoredValue("moderate")).toBe("1.55");
+    expect(
+      activityLevelFromStoredValue(activityLevelToStoredValue("very_active")),
+    ).toBe("very_active");
   });
 
   it("recognizes goal modes and unit systems", () => {

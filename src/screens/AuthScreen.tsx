@@ -18,6 +18,7 @@ import {
   ACTIVITY_MULTIPLIERS,
   DEFAULT_MACRO_PERCENTAGES,
   GOAL_RATE_PRESETS,
+  activityLevelToStoredValue,
   calculateMacroGrams,
   calculateNutritionTarget,
   cmToFtIn,
@@ -406,7 +407,7 @@ export function AuthScreen() {
             height: Number(heightCm),
             age: numericAge,
             gender,
-            activity_level: activityLevel,
+            activity_level: activityLevelToStoredValue(activityLevel),
             goal_mode: savedMode,
             goal_rate:
               minor || goalRate === GOAL_RATE_PRESETS.maintain

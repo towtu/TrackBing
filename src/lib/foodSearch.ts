@@ -1,7 +1,7 @@
 // Combined food search across every source the app knows about:
-// the user's own My Foods (personal_foods), the generic gist DB, USDA, and
-// OpenFoodFacts. Both the Find Food screen and the Recipe builder use this so
-// the two stay in lockstep.
+// the user's own My Foods (personal_foods), the generic gist DB, USDA/FDC
+// data, and OpenFoodFacts. Both the Find Food screen and the Recipe builder
+// use this so the two stay in lockstep.
 
 import { supabase } from "./supabase";
 import { searchUSDA } from "./usda";

@@ -585,7 +585,7 @@ export default function AddFoodPage() {
                             ? "🍪"
                             : item.brands === "Generic"
                               ? "🥗"
-                              : item.brands === "USDA"
+                              : isUsdaFood(item)
                                 ? "🥩"
                                 : "📦"}
                         </Text>

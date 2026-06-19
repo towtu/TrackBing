@@ -53,9 +53,31 @@ type FeedbackState = {
 };
 
 const FOOD_UNITS: Unit[] = ["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"];
+type FoodSourceFilter = "all" | "recent" | "my-foods" | "packaged" | "usda";
+
+const FOOD_SOURCE_FILTERS: {
+  id: FoodSourceFilter;
+  label: string;
+}[] = [
+  { id: "all", label: "All" },
+  { id: "recent", label: "Recent" },
+  { id: "my-foods", label: "My Foods" },
+  { id: "packaged", label: "Packaged" },
+  { id: "usda", label: "USDA" },
+];
 
 const isFoodUnit = (unit: unknown): unit is Unit =>
   typeof unit === "string" && FOOD_UNITS.includes(unit as Unit);
+
+const isPersonalFood = (food: FoodItem) =>
+  food.brands === "My Food" ||
+  /^(personal|gist)-/.test(food.code ?? "");
+
+const isUsdaFood = (food: FoodItem) =>
+  food.brands === "USDA" || /^usda-/.test(food.code ?? "");
+
+const isPackagedFood = (food: FoodItem) =>
+  !isPersonalFood(food) && !isUsdaFood(food) && food.brands !== "Generic";
 
 const barcodeFromFood = (food: FoodItem | null) => {
   const code = food?.code?.trim();
@@ -95,6 +117,8 @@ export default function AddFoodPage() {
   const [results, setResults] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [activeSourceFilter, setActiveSourceFilter] =
+    useState<FoodSourceFilter>("all");
 
   const [customFoods, setCustomFoods] = useState<FoodItem[]>([]);
   const [recentBarcodeFoods, setRecentBarcodeFoods] = useState<FoodItem[]>([]);
@@ -185,8 +209,23 @@ export default function AddFoodPage() {
     });
   }, [query, recentBarcodeFoods]);
 
+  const filteredResults = useMemo(() => {
+    if (activeSourceFilter === "recent") return [];
+    if (activeSourceFilter === "all") return results;
+
+    return results.filter((item) => {
+      if (activeSourceFilter === "my-foods") return isPersonalFood(item);
+      if (activeSourceFilter === "packaged") return isPackagedFood(item);
+      if (activeSourceFilter === "usda") return isUsdaFood(item);
+      return true;
+    });
+  }, [activeSourceFilter, results]);
+
   const shouldShowRecentFoods =
-    !loading && results.length === 0 && recentSearchMatches.length > 0;
+    !loading &&
+    recentSearchMatches.length > 0 &&
+    (activeSourceFilter === "recent" ||
+      (activeSourceFilter === "all" && results.length === 0));
 
   const selectFood = (item: FoodItem) => {
     Keyboard.dismiss();
@@ -293,9 +332,82 @@ export default function AddFoodPage() {
     onClose?.();
   };
 
-  const displayList = results;
+  const displayList = filteredResults;
 
   const unitsToDisplay = getUnitsToDisplay(selectedFood ?? undefined);
+
+  const renderRecentFoodCard = (item: FoodItem) => {
+    const isBarcodeRevealed = revealedBarcodeCode === item.code;
+
+    return (
+      <View
+        key={item.code}
+        style={[
+          localStyles.recentCard,
+          isDesktop && localStyles.recentCardDesktop,
+          selectedFood?.code === item.code && localStyles.recentCardActive,
+        ]}
+      >
+        <TouchableOpacity
+          activeOpacity={0.84}
+          style={localStyles.recentCardBody}
+          onPress={() => selectFood(item)}
+        >
+          <View style={localStyles.recentCardHeader}>
+            <Text style={localStyles.recentName} numberOfLines={2}>
+              {item.product_name}
+            </Text>
+          </View>
+          <Text style={localStyles.recentMeta} numberOfLines={1}>
+            {item.brands}
+          </Text>
+          <Text style={localStyles.recentKcal}>
+            {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)} kcal
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={
+            isBarcodeRevealed
+              ? `Hide barcode for ${item.product_name}`
+              : `Show barcode for ${item.product_name}`
+          }
+          accessibilityState={{ selected: isBarcodeRevealed }}
+          activeOpacity={0.8}
+          onPress={() =>
+            setRevealedBarcodeCode((current) =>
+              current === item.code ? null : item.code,
+            )
+          }
+          style={[
+            localStyles.recentInfoButton,
+            isBarcodeRevealed && localStyles.recentInfoButtonActive,
+          ]}
+        >
+          <Info
+            size={15}
+            color={isBarcodeRevealed ? Colors.primary : Colors.accent}
+            weight="bold"
+          />
+        </TouchableOpacity>
+
+        {isBarcodeRevealed && (
+          <View style={localStyles.recentInfoRow}>
+            <Barcode size={13} color={Colors.textSecondary} weight="bold" />
+            <Text style={localStyles.recentInfoLabel}>Barcode</Text>
+            <Text
+              selectable
+              style={localStyles.recentBarcodeValue}
+              numberOfLines={1}
+            >
+              {item.code}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView
@@ -367,8 +479,42 @@ export default function AddFoodPage() {
               )}
             </View>
 
+            <View style={localStyles.filterRow}>
+              {FOOD_SOURCE_FILTERS.map((filter) => {
+                const isActive = activeSourceFilter === filter.id;
+                return (
+                  <TouchableOpacity
+                    key={filter.id}
+                    activeOpacity={0.82}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive }}
+                    onPress={() => {
+                      setActiveSourceFilter(filter.id);
+                      setRevealedBarcodeCode(null);
+                    }}
+                    style={[
+                      localStyles.filterChip,
+                      isActive && localStyles.filterChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        localStyles.filterChipText,
+                        isActive && localStyles.filterChipTextActive,
+                      ]}
+                    >
+                      {filter.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {/* Gist suggestions preview + hint */}
-            {!loading && results.length === 0 && suggestions.length > 0 && (
+            {!loading &&
+              activeSourceFilter !== "recent" &&
+              results.length === 0 &&
+              suggestions.length > 0 && (
               <View style={{ marginBottom: 12, width: "100%" }}>
                 {suggestions.map((item) => (
                   <TouchableOpacity
@@ -401,105 +547,19 @@ export default function AddFoodPage() {
                     {query.trim() ? "Recent matches" : "Recent foods"}
                   </Text>
                 </View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={localStyles.recentList}
-                >
-                  {recentSearchMatches.map((item) => {
-                    const isBarcodeRevealed =
-                      revealedBarcodeCode === item.code;
-
-                    return (
-                      <View
-                        key={item.code}
-                        style={[
-                          localStyles.recentCard,
-                          selectedFood?.code === item.code &&
-                            localStyles.recentCardActive,
-                        ]}
-                      >
-                        <TouchableOpacity
-                          activeOpacity={0.84}
-                          style={localStyles.recentCardBody}
-                          onPress={() => selectFood(item)}
-                        >
-                          <View style={localStyles.recentCardHeader}>
-                            <Text
-                              style={localStyles.recentName}
-                              numberOfLines={2}
-                            >
-                              {item.product_name}
-                            </Text>
-                          </View>
-                          <Text
-                            style={localStyles.recentMeta}
-                            numberOfLines={1}
-                          >
-                            {item.brands}
-                          </Text>
-                          <Text style={localStyles.recentKcal}>
-                            {Math.round(
-                              item.nutriments?.["energy-kcal_100g"] || 0
-                            )}{" "}
-                            kcal
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            isBarcodeRevealed
-                              ? `Hide barcode for ${item.product_name}`
-                              : `Show barcode for ${item.product_name}`
-                          }
-                          accessibilityState={{ selected: isBarcodeRevealed }}
-                          activeOpacity={0.8}
-                          onPress={() =>
-                            setRevealedBarcodeCode((current) =>
-                              current === item.code ? null : item.code
-                            )
-                          }
-                          style={[
-                            localStyles.recentInfoButton,
-                            isBarcodeRevealed &&
-                              localStyles.recentInfoButtonActive,
-                          ]}
-                        >
-                          <Info
-                            size={15}
-                            color={
-                              isBarcodeRevealed
-                                ? Colors.primary
-                                : Colors.accent
-                            }
-                            weight="bold"
-                          />
-                        </TouchableOpacity>
-
-                        {isBarcodeRevealed && (
-                          <View style={localStyles.recentInfoRow}>
-                            <Barcode
-                              size={13}
-                              color={Colors.textSecondary}
-                              weight="bold"
-                            />
-                            <Text style={localStyles.recentInfoLabel}>
-                              Barcode
-                            </Text>
-                            <Text
-                              selectable
-                              style={localStyles.recentBarcodeValue}
-                              numberOfLines={1}
-                            >
-                              {item.code}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </ScrollView>
+                {isDesktop ? (
+                  <View style={localStyles.recentGrid}>
+                    {recentSearchMatches.map(renderRecentFoodCard)}
+                  </View>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={localStyles.recentList}
+                  >
+                    {recentSearchMatches.map(renderRecentFoodCard)}
+                  </ScrollView>
+                )}
               </View>
             )}
 
@@ -547,7 +607,9 @@ export default function AddFoodPage() {
                   </View>
                 )}
                 ListEmptyComponent={
-                  !loading && query.length > 2 ? (
+                  !loading &&
+                  activeSourceFilter !== "recent" &&
+                  query.length > 2 ? (
                     <View style={{ alignItems: "center", marginTop: 30 }}>
                       <Text style={{ color: Colors.textSecondary, marginBottom: 15 }}>
                         No results for &quot;{query}&quot;
@@ -863,6 +925,36 @@ const localStyles = RNStyleSheet.create({
     elevation: 4,
   },
   input: { flex: 1, color: Colors.text, paddingHorizontal: 12, fontSize: 16 },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: -4,
+    marginBottom: 14,
+  },
+  filterChip: {
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    backgroundColor: Colors.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterChipActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  filterChipText: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+  },
+  filterChipTextActive: {
+    color: Colors.primary,
+  },
   itemRowContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -929,6 +1021,11 @@ const localStyles = RNStyleSheet.create({
     paddingRight: 4,
     gap: 8,
   },
+  recentGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
   recentCard: {
     width: 200,
     minHeight: 120,
@@ -938,6 +1035,11 @@ const localStyles = RNStyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
     position: "relative",
+  },
+  recentCardDesktop: {
+    width: "48%",
+    minWidth: 180,
+    flexGrow: 1,
   },
   recentCardActive: {
     borderColor: Colors.accent,

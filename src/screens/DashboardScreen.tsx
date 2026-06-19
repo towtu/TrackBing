@@ -438,6 +438,55 @@ export function DashboardScreen() {
     { label: "My Cookbook", icon: <BookOpen size={20} weight="bold" color={Colors.accent} />, route: "/(tabs)/cookbook" },
     { label: "Scan Barcode", icon: <Barcode size={20} weight="bold" color={Colors.accent} />, route: "/scan" },
   ];
+  const quickActions = [
+    {
+      label: "Search",
+      helper: "Find foods fast",
+      icon: <MagnifyingGlass size={20} weight="bold" color={Colors.accent} />,
+      route: "/(tabs)/add",
+    },
+    {
+      label: "Scan",
+      helper: "Use barcode",
+      icon: <Barcode size={20} weight="bold" color={Colors.accent} />,
+      route: "/scan",
+    },
+    {
+      label: "Recent",
+      helper: "Repeat food",
+      icon: <Basket size={20} weight="bold" color={Colors.accent} />,
+      route: "/(tabs)/add",
+    },
+    {
+      label: "Recipe",
+      helper: "Log serving",
+      icon: <BookOpen size={20} weight="bold" color={Colors.accent} />,
+      route: "/create-recipe",
+    },
+  ];
+
+  const renderQuickActions = () => (
+    <View style={styles.quickActionGrid}>
+      {quickActions.map((action) => (
+        <TouchableOpacity
+          key={action.label}
+          activeOpacity={0.84}
+          accessibilityRole="button"
+          accessibilityLabel={`${action.label}: ${action.helper}`}
+          style={styles.quickActionCard}
+          onPress={() => router.push(action.route as any)}
+        >
+          <View style={styles.quickActionIcon}>{action.icon}</View>
+          <View style={styles.quickActionCopy}>
+            <Text style={styles.quickActionLabel}>{action.label}</Text>
+            <Text style={styles.quickActionHelper} numberOfLines={1}>
+              {action.helper}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
@@ -548,6 +597,8 @@ export function DashboardScreen() {
                     </View>
                   </View>
                 </View>
+
+                {renderQuickActions()}
 
                 {/* ── DETAILED MACRO BENTO GRID ── */}
                 <View style={styles.bentoGrid}>
@@ -724,6 +775,8 @@ export function DashboardScreen() {
                 </View>
 
                 {/* ── DETAILED MACRO BENTO GRID ── */}
+                {renderQuickActions()}
+
                 <View style={styles.bentoGrid}>
                   {macros.map((m) => {
                     const percent = getProgress(m.v, m.g);
@@ -1108,6 +1161,58 @@ const styles = StyleSheet.create({
 
   ringValue: { fontSize: 24, fontWeight: "900", letterSpacing: -1 },
   ringLabel: { fontSize: 10, fontWeight: "800", color: Colors.textSecondary, textTransform: "uppercase", letterSpacing: 2, marginTop: 2 },
+
+  // ── QUICK ACTIONS ──
+  quickActionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 20,
+  },
+  quickActionCard: {
+    flexGrow: 1,
+    flexBasis: "22%",
+    minWidth: 132,
+    minHeight: 74,
+    backgroundColor: Colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  quickActionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: Colors.accentDim,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  quickActionCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  quickActionLabel: {
+    color: Colors.accent,
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  quickActionHelper: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
+  },
 
   // ── MACRO BENTO GRID ──
   bentoGrid: { flexDirection: "row", gap: 12, marginBottom: 24 },

@@ -247,7 +247,7 @@ export default function StatsPage() {
             width: "100%",
             paddingBottom: 40,
           },
-          isDesktop ? { maxWidth: 1200, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }
+          isDesktop ? { maxWidth: 1280, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }
         ]}
       >
         {/* ── HEADER ── */}
@@ -302,7 +302,7 @@ export default function StatsPage() {
         </View>
 
         {isDesktop ? (
-          <View style={{ flexDirection: "row", gap: 32, marginTop: 16 }}>
+          <View style={{ flexDirection: "row", gap: 24, marginTop: 16 }}>
             {/* Left side: Calorie Intake Chart */}
             <View style={{ flex: 3 }}>
               {/* ── WEEKLY BAR CHART ── */}

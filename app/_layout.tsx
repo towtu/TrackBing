@@ -20,8 +20,11 @@ export default function RootLayout() {
     if (Platform.OS === "web") {
       const style = document.createElement("style");
       style.textContent = `
-        * { scrollbar-width: none; -ms-overflow-style: none; }
-        *::-webkit-scrollbar { display: none; }
+        * { scrollbar-width: thin; scrollbar-color: ${Colors.border} transparent; }
+        *::-webkit-scrollbar { width: 8px; height: 8px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *::-webkit-scrollbar-thumb { background: ${Colors.border}; border-radius: 999px; }
+        *::-webkit-scrollbar-thumb:hover { background: ${Colors.borderLight}; }
       `;
       document.head.appendChild(style);
     }

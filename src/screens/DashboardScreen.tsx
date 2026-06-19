@@ -441,7 +441,7 @@ export function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
-      <View style={[styles.contentContainer, isDesktop && { maxWidth: 1200 }]}>
+      <View style={[styles.contentContainer, isDesktop && { maxWidth: 1280 }]}>
 
 
         {/* ── HEADER ── */}
@@ -473,7 +473,7 @@ export function DashboardScreen() {
             contentContainerStyle={{ paddingBottom: 100 }}
             refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} tintColor={Colors.accent} />}
           >
-            <View style={{ flexDirection: "row", gap: 32, marginTop: 16 }}>
+            <View style={{ flexDirection: "row", gap: 24, marginTop: 16 }}>
               {/* Left Column: Stats & Goals */}
               <View style={{ flex: 3 }}>
                 {/* ── PREMIUM HERO CARD ── */}

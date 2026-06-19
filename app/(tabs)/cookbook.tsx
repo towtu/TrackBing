@@ -223,7 +223,7 @@ export default function CookbookPage() {
         style={[
           { padding: 18, flex: 1, width: "100%" },
           isDesktop
-            ? { maxWidth: 1200, alignSelf: "center" }
+            ? { maxWidth: 1280, alignSelf: "center" }
             : { maxWidth: 520, alignSelf: "center" },
         ]}
       >

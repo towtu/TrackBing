@@ -1316,7 +1316,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   desktopContent: {
-    maxWidth: 1200,
+    maxWidth: 1280,
     alignSelf: "center",
   },
   mobileContent: {
@@ -1325,7 +1325,7 @@ const styles = StyleSheet.create({
   },
   desktopColumns: {
     flexDirection: "row",
-    gap: 32,
+    gap: 24,
     marginTop: 16,
     alignItems: "flex-start",
   },

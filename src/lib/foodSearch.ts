@@ -77,7 +77,7 @@ export async function searchPersonalFoods(query: string): Promise<FoodItem[]> {
 }
 
 /**
- * Recent barcode logs are stored as the exact serving the user logged.
+ * Recent scanned logs are stored as the exact serving the user logged.
  * `food_logs` does not keep per-100g nutrition, so these entries replay the
  * last logged serving instead of inventing conversions.
  */
@@ -118,10 +118,10 @@ export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
 
       foods.push({
         code: barcode,
-        product_name: row.name || `Barcode ${barcode}`,
+        product_name: row.name || "Scanned item",
         brands: servingLabel
-          ? `Recent barcode - ${servingLabel}`
-          : "Recent barcode",
+          ? `Recent serving - ${servingLabel}`
+          : "Recent serving",
         default_unit: "serving",
         serving_quantity: 1,
         serving_weight: 100,

@@ -3,6 +3,7 @@ import {
   Barcode,
   CaretLeft,
   ForkKnife,
+  Info,
   MagnifyingGlass,
   Minus,
   Plus,
@@ -72,8 +73,8 @@ const createRecentBarcodeFood = (
   servingUnit: Unit
 ): FoodItem => ({
   code: barcode,
-  product_name: food.product_name,
-  brands: `Recent barcode - ${servingSize}${servingUnit}`,
+  product_name: food.product_name || "Scanned item",
+  brands: `Recent serving - ${servingSize}${servingUnit}`,
   default_unit: "serving",
   serving_quantity: 1,
   serving_weight: 100,
@@ -101,6 +102,9 @@ export default function AddFoodPage() {
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
+  const [revealedBarcodeCode, setRevealedBarcodeCode] = useState<
+    string | null
+  >(null);
 
   const [inputWeight, setInputWeight] = useState("100");
   const [selectedUnit, setSelectedUnit] = useState<Unit>("g");
@@ -165,6 +169,7 @@ export default function AddFoodPage() {
   const selectFood = (item: FoodItem) => {
     Keyboard.dismiss();
     setSelectedFood(item);
+    setRevealedBarcodeCode(null);
 
     const nextUnit = isFoodUnit(item.default_unit) ? item.default_unit : "g";
     setSelectedUnit(nextUnit);
@@ -274,7 +279,7 @@ export default function AddFoodPage() {
       style={{ flex: 1, backgroundColor: Colors.primary }}
       edges={["top"]}
     >
-      <View style={[{ padding: 18, flex: 1, width: "100%" }, isDesktop ? { maxWidth: 1200, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }]}>
+      <View style={[{ padding: 18, flex: 1, width: "100%" }, isDesktop ? { maxWidth: 1280, alignSelf: "center" } : { maxWidth: 520, alignSelf: "center" }]}>
         <View style={localStyles.header}>
           {!isDesktop && (
             <TouchableOpacity
@@ -286,28 +291,32 @@ export default function AddFoodPage() {
           )}
           <Text style={localStyles.headerTitle}>Find Food</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity
-              onPress={() => router.push("/my-foods")}
-              style={localStyles.backButton}
-            >
-              <ForkKnife size={24} color={Colors.accent} />
-            </TouchableOpacity>
+            {!isDesktop && (
+              <TouchableOpacity
+                onPress={() => router.push("/my-foods")}
+                style={localStyles.backButton}
+              >
+                <ForkKnife size={24} color={Colors.accent} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => router.push("/create-food")}
               style={localStyles.backButton}
             >
               <Plus size={24} color={Colors.accent} weight="bold" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push("/scan")}
-              style={localStyles.backButton}
-            >
-              <Barcode size={24} color={Colors.accent} />
-            </TouchableOpacity>
+            {!isDesktop && (
+              <TouchableOpacity
+                onPress={() => router.push("/scan")}
+                style={localStyles.backButton}
+              >
+                <Barcode size={24} color={Colors.accent} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
-        <View style={isDesktop ? { flexDirection: "row", flex: 1, gap: 32, marginTop: 16 } : { flex: 1 }}>
+        <View style={isDesktop ? { flexDirection: "row", flex: 1, gap: 24, marginTop: 16 } : { flex: 1 }}>
           <View style={isDesktop ? { flex: 1.2 } : { flex: 1 }}>
             <View style={localStyles.searchBox}>
               <MagnifyingGlass size={20} color={Colors.textSecondary} style={{ marginLeft: 15 }} />
@@ -366,7 +375,7 @@ export default function AddFoodPage() {
                   <View style={localStyles.sectionTitleRow}>
                     <Barcode size={16} color={Colors.accent} weight="bold" />
                     <Text style={localStyles.sectionTitle}>
-                      Recent barcodes
+                      Recent foods
                     </Text>
                   </View>
                   <ScrollView
@@ -374,40 +383,99 @@ export default function AddFoodPage() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={localStyles.recentList}
                   >
-                    {recentBarcodeFoods.map((item) => (
-                      <TouchableOpacity
-                        key={item.code}
-                        style={[
-                          localStyles.recentCard,
-                          selectedFood?.code === item.code &&
-                            localStyles.recentCardActive,
-                        ]}
-                        onPress={() => selectFood(item)}
-                      >
-                        <View style={localStyles.recentCardHeader}>
-                          <Barcode
-                            size={16}
-                            color={Colors.accent}
-                            weight="bold"
-                          />
-                          <Text style={localStyles.recentBarcodeText}>
-                            {item.code}
-                          </Text>
+                    {recentBarcodeFoods.map((item) => {
+                      const isBarcodeRevealed =
+                        revealedBarcodeCode === item.code;
+
+                      return (
+                        <View
+                          key={item.code}
+                          style={[
+                            localStyles.recentCard,
+                            selectedFood?.code === item.code &&
+                              localStyles.recentCardActive,
+                          ]}
+                        >
+                          <TouchableOpacity
+                            activeOpacity={0.84}
+                            style={localStyles.recentCardBody}
+                            onPress={() => selectFood(item)}
+                          >
+                            <View style={localStyles.recentCardHeader}>
+                              <Text
+                                style={localStyles.recentName}
+                                numberOfLines={2}
+                              >
+                                {item.product_name}
+                              </Text>
+                            </View>
+                            <Text
+                              style={localStyles.recentMeta}
+                              numberOfLines={1}
+                            >
+                              {item.brands}
+                            </Text>
+                            <Text style={localStyles.recentKcal}>
+                              {Math.round(
+                                item.nutriments?.["energy-kcal_100g"] || 0
+                              )}{" "}
+                              kcal
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              isBarcodeRevealed
+                                ? `Hide barcode for ${item.product_name}`
+                                : `Show barcode for ${item.product_name}`
+                            }
+                            accessibilityState={{ selected: isBarcodeRevealed }}
+                            activeOpacity={0.8}
+                            onPress={() =>
+                              setRevealedBarcodeCode((current) =>
+                                current === item.code ? null : item.code
+                              )
+                            }
+                            style={[
+                              localStyles.recentInfoButton,
+                              isBarcodeRevealed &&
+                                localStyles.recentInfoButtonActive,
+                            ]}
+                          >
+                            <Info
+                              size={15}
+                              color={
+                                isBarcodeRevealed
+                                  ? Colors.primary
+                                  : Colors.accent
+                              }
+                              weight="bold"
+                            />
+                          </TouchableOpacity>
+
+                          {isBarcodeRevealed && (
+                            <View style={localStyles.recentInfoRow}>
+                              <Barcode
+                                size={13}
+                                color={Colors.textSecondary}
+                                weight="bold"
+                              />
+                              <Text style={localStyles.recentInfoLabel}>
+                                Barcode
+                              </Text>
+                              <Text
+                                selectable
+                                style={localStyles.recentBarcodeValue}
+                                numberOfLines={1}
+                              >
+                                {item.code}
+                              </Text>
+                            </View>
+                          )}
                         </View>
-                        <Text style={localStyles.recentName} numberOfLines={2}>
-                          {item.product_name}
-                        </Text>
-                        <Text style={localStyles.recentMeta} numberOfLines={1}>
-                          {item.brands}
-                        </Text>
-                        <Text style={localStyles.recentKcal}>
-                          {Math.round(
-                            item.nutriments?.["energy-kcal_100g"] || 0
-                          )}{" "}
-                          kcal
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                      );
+                    })}
                   </ScrollView>
                 </View>
               )}
@@ -835,32 +903,46 @@ const localStyles = RNStyleSheet.create({
     letterSpacing: 0,
   },
   recentList: {
-    paddingRight: 8,
-    gap: 10,
+    paddingRight: 4,
+    gap: 8,
   },
   recentCard: {
-    width: 210,
-    minHeight: 126,
+    width: 200,
+    minHeight: 120,
     backgroundColor: Colors.secondary,
     padding: 14,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.borderLight,
+    position: "relative",
   },
   recentCardActive: {
     borderColor: Colors.accent,
   },
+  recentCardBody: {
+    minHeight: 84,
+  },
   recentCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 10,
+    marginBottom: 0,
   },
-  recentBarcodeText: {
-    color: Colors.textMuted,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0,
+  recentInfoButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.inputBg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  recentInfoButtonActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
   },
   recentName: {
     color: Colors.text,
@@ -868,6 +950,7 @@ const localStyles = RNStyleSheet.create({
     fontWeight: "800",
     minHeight: 34,
     letterSpacing: 0,
+    paddingRight: 32,
   },
   recentMeta: {
     color: Colors.textSecondary,
@@ -879,6 +962,29 @@ const localStyles = RNStyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     marginTop: 8,
+  },
+  recentInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+  },
+  recentInfoLabel: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  recentBarcodeValue: {
+    flex: 1,
+    color: Colors.text,
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "right",
   },
   createBtn: {
     flexDirection: "row",

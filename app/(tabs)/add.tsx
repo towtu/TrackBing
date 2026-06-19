@@ -158,13 +158,35 @@ export default function AddFoodPage() {
   }, [params, router]);
 
   const suggestions = useMemo(() => {
-    if (query.length < 2) return [];
+    const normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.length < 2) return [];
     return customFoods
       .filter((f) =>
-        f.product_name?.toLowerCase().includes(query.toLowerCase()),
+        f.product_name?.toLowerCase().includes(normalizedQuery),
       )
       .slice(0, 5);
   }, [query, customFoods]);
+
+  const recentSearchMatches = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return recentBarcodeFoods;
+
+    return recentBarcodeFoods.filter((item) => {
+      const searchable = [
+        item.product_name,
+        item.brands,
+        item.code,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(normalizedQuery);
+    });
+  }, [query, recentBarcodeFoods]);
+
+  const shouldShowRecentFoods =
+    !loading && results.length === 0 && recentSearchMatches.length > 0;
 
   const selectFood = (item: FoodItem) => {
     Keyboard.dismiss();
@@ -191,7 +213,8 @@ export default function AddFoodPage() {
 
   const handleQueryChange = (text: string) => {
     setQuery(text);
-    if (!text.trim()) setResults([]);
+    setResults([]);
+    setRevealedBarcodeCode(null);
   };
 
   const macros = selectedFood
@@ -326,6 +349,9 @@ export default function AddFoodPage() {
                 placeholderTextColor={Colors.textSecondary}
                 value={query}
                 onChangeText={handleQueryChange}
+                onFocus={() => {
+                  setResults([]);
+                }}
                 onSubmitEditing={handleSearch}
               />
               {query.length > 0 && (
@@ -367,118 +393,115 @@ export default function AddFoodPage() {
               </View>
             )}
 
-            {!loading &&
-              results.length === 0 &&
-              query.trim().length < 2 &&
-              recentBarcodeFoods.length > 0 && (
-                <View style={localStyles.recentSection}>
-                  <View style={localStyles.sectionTitleRow}>
-                    <Barcode size={16} color={Colors.accent} weight="bold" />
-                    <Text style={localStyles.sectionTitle}>
-                      Recent foods
-                    </Text>
-                  </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={localStyles.recentList}
-                  >
-                    {recentBarcodeFoods.map((item) => {
-                      const isBarcodeRevealed =
-                        revealedBarcodeCode === item.code;
+            {shouldShowRecentFoods && (
+              <View style={localStyles.recentSection}>
+                <View style={localStyles.sectionTitleRow}>
+                  <Barcode size={16} color={Colors.accent} weight="bold" />
+                  <Text style={localStyles.sectionTitle}>
+                    {query.trim() ? "Recent matches" : "Recent foods"}
+                  </Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={localStyles.recentList}
+                >
+                  {recentSearchMatches.map((item) => {
+                    const isBarcodeRevealed =
+                      revealedBarcodeCode === item.code;
 
-                      return (
-                        <View
-                          key={item.code}
+                    return (
+                      <View
+                        key={item.code}
+                        style={[
+                          localStyles.recentCard,
+                          selectedFood?.code === item.code &&
+                            localStyles.recentCardActive,
+                        ]}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.84}
+                          style={localStyles.recentCardBody}
+                          onPress={() => selectFood(item)}
+                        >
+                          <View style={localStyles.recentCardHeader}>
+                            <Text
+                              style={localStyles.recentName}
+                              numberOfLines={2}
+                            >
+                              {item.product_name}
+                            </Text>
+                          </View>
+                          <Text
+                            style={localStyles.recentMeta}
+                            numberOfLines={1}
+                          >
+                            {item.brands}
+                          </Text>
+                          <Text style={localStyles.recentKcal}>
+                            {Math.round(
+                              item.nutriments?.["energy-kcal_100g"] || 0
+                            )}{" "}
+                            kcal
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            isBarcodeRevealed
+                              ? `Hide barcode for ${item.product_name}`
+                              : `Show barcode for ${item.product_name}`
+                          }
+                          accessibilityState={{ selected: isBarcodeRevealed }}
+                          activeOpacity={0.8}
+                          onPress={() =>
+                            setRevealedBarcodeCode((current) =>
+                              current === item.code ? null : item.code
+                            )
+                          }
                           style={[
-                            localStyles.recentCard,
-                            selectedFood?.code === item.code &&
-                              localStyles.recentCardActive,
+                            localStyles.recentInfoButton,
+                            isBarcodeRevealed &&
+                              localStyles.recentInfoButtonActive,
                           ]}
                         >
-                          <TouchableOpacity
-                            activeOpacity={0.84}
-                            style={localStyles.recentCardBody}
-                            onPress={() => selectFood(item)}
-                          >
-                            <View style={localStyles.recentCardHeader}>
-                              <Text
-                                style={localStyles.recentName}
-                                numberOfLines={2}
-                              >
-                                {item.product_name}
-                              </Text>
-                            </View>
-                            <Text
-                              style={localStyles.recentMeta}
-                              numberOfLines={1}
-                            >
-                              {item.brands}
-                            </Text>
-                            <Text style={localStyles.recentKcal}>
-                              {Math.round(
-                                item.nutriments?.["energy-kcal_100g"] || 0
-                              )}{" "}
-                              kcal
-                            </Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            accessibilityRole="button"
-                            accessibilityLabel={
+                          <Info
+                            size={15}
+                            color={
                               isBarcodeRevealed
-                                ? `Hide barcode for ${item.product_name}`
-                                : `Show barcode for ${item.product_name}`
+                                ? Colors.primary
+                                : Colors.accent
                             }
-                            accessibilityState={{ selected: isBarcodeRevealed }}
-                            activeOpacity={0.8}
-                            onPress={() =>
-                              setRevealedBarcodeCode((current) =>
-                                current === item.code ? null : item.code
-                              )
-                            }
-                            style={[
-                              localStyles.recentInfoButton,
-                              isBarcodeRevealed &&
-                                localStyles.recentInfoButtonActive,
-                            ]}
-                          >
-                            <Info
-                              size={15}
-                              color={
-                                isBarcodeRevealed
-                                  ? Colors.primary
-                                  : Colors.accent
-                              }
+                            weight="bold"
+                          />
+                        </TouchableOpacity>
+
+                        {isBarcodeRevealed && (
+                          <View style={localStyles.recentInfoRow}>
+                            <Barcode
+                              size={13}
+                              color={Colors.textSecondary}
                               weight="bold"
                             />
-                          </TouchableOpacity>
-
-                          {isBarcodeRevealed && (
-                            <View style={localStyles.recentInfoRow}>
-                              <Barcode
-                                size={13}
-                                color={Colors.textSecondary}
-                                weight="bold"
-                              />
-                              <Text style={localStyles.recentInfoLabel}>
-                                Barcode
-                              </Text>
-                              <Text
-                                selectable
-                                style={localStyles.recentBarcodeValue}
-                                numberOfLines={1}
-                              >
-                                {item.code}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
+                            <Text style={localStyles.recentInfoLabel}>
+                              Barcode
+                            </Text>
+                            <Text
+                              selectable
+                              style={localStyles.recentBarcodeValue}
+                              numberOfLines={1}
+                            >
+                              {item.code}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
 
             {loading ? (
               <ActivityIndicator color={Colors.accent} style={{ marginTop: 20 }} />

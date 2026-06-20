@@ -3,8 +3,9 @@ import {
   type NutritionTargetResult,
   type UnitSystem,
 } from "@/src/lib/nutritionTargets";
+import { isCompactPhoneLayout } from "@/src/lib/responsiveLayout";
 import { Colors } from "@/src/styles/colors";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 type Props = {
   result: NutritionTargetResult;
@@ -35,6 +36,8 @@ export function TargetBreakdown({
   weightKg,
   unitSystem,
 }: Props) {
+  const { width } = useWindowDimensions();
+  const isCompactPhone = isCompactPhoneLayout(width);
   const weeklyChangeKg = weightKg * (result.requestedRate ?? 0);
   const weeklyChange =
     unitSystem === "metric" ? weeklyChangeKg : kgToLb(weeklyChangeKg);
@@ -44,40 +47,54 @@ export function TargetBreakdown({
 
   return (
     <View style={styles.box}>
-      <View style={styles.row}>
-        <Text style={styles.label}>Estimated maintenance</Text>
-        <Text style={styles.value}>
+      <View style={[styles.row, isCompactPhone && styles.rowCompact]}>
+        <Text style={[styles.label, isCompactPhone && styles.labelCompact]}>
+          Estimated maintenance
+        </Text>
+        <Text style={[styles.value, isCompactPhone && styles.valueCompact]}>
           {formatCalories(result.maintenanceCalories)} kcal
         </Text>
       </View>
 
       {result.requestedRate !== null && (
-        <View style={styles.row}>
-          <Text style={styles.label}>Selected rate</Text>
-          <Text style={styles.value}>
+        <View style={[styles.row, isCompactPhone && styles.rowCompact]}>
+          <Text style={[styles.label, isCompactPhone && styles.labelCompact]}>
+            Selected rate
+          </Text>
+          <Text style={[styles.value, isCompactPhone && styles.valueCompact]}>
             {formatSigned(result.requestedRate * 100, 2)}% / week (
             {formatSigned(weeklyChange, 2)} {weeklyUnit} / week)
           </Text>
         </View>
       )}
 
-      <View style={styles.row}>
-        <Text style={styles.label}>Requested adjustment</Text>
-        <Text style={styles.value}>
+      <View style={[styles.row, isCompactPhone && styles.rowCompact]}>
+        <Text style={[styles.label, isCompactPhone && styles.labelCompact]}>
+          Requested adjustment
+        </Text>
+        <Text style={[styles.value, isCompactPhone && styles.valueCompact]}>
           {formatSigned(result.requestedAdjustment)} kcal/day
         </Text>
       </View>
 
-      <View style={styles.row}>
-        <Text style={styles.label}>Applied adjustment</Text>
-        <Text style={styles.value}>
+      <View style={[styles.row, isCompactPhone && styles.rowCompact]}>
+        <Text style={[styles.label, isCompactPhone && styles.labelCompact]}>
+          Applied adjustment
+        </Text>
+        <Text style={[styles.value, isCompactPhone && styles.valueCompact]}>
           {formatSigned(result.appliedAdjustment)} kcal/day
         </Text>
       </View>
 
-      <View style={styles.targetRow}>
-        <Text style={styles.targetLabel}>Daily target</Text>
-        <Text style={styles.target}>
+      <View
+        style={[styles.targetRow, isCompactPhone && styles.targetRowCompact]}
+      >
+        <Text
+          style={[styles.targetLabel, isCompactPhone && styles.labelCompact]}
+        >
+          Daily target
+        </Text>
+        <Text style={[styles.target, isCompactPhone && styles.targetCompact]}>
           {formatCalories(result.finalCalories)} kcal
         </Text>
       </View>
@@ -109,6 +126,11 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
   },
+  rowCompact: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 2,
+  },
   label: {
     flex: 1,
     color: Colors.textMuted,
@@ -123,6 +145,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: "right",
   },
+  labelCompact: {
+    flex: 0,
+    width: "100%",
+  },
+  valueCompact: {
+    flex: 0,
+    width: "100%",
+    textAlign: "left",
+  },
   targetRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -131,6 +162,11 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+  },
+  targetRowCompact: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 2,
   },
   targetLabel: {
     flex: 1,
@@ -143,6 +179,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "900",
     textAlign: "right",
+  },
+  targetCompact: {
+    width: "100%",
+    textAlign: "left",
   },
   notice: {
     padding: 10,

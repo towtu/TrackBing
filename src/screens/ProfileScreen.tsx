@@ -1,6 +1,7 @@
 import { UnitSystemToggle } from "@/src/components/nutrition/UnitSystemToggle";
 import { TargetBreakdown } from "@/src/components/nutrition/TargetBreakdown";
 import { useResponsive } from "@/src/hooks/useResponsive";
+import { isCompactPhoneLayout } from "@/src/lib/responsiveLayout";
 import {
   CUSTOM_RATE_LIMITS,
   DEFAULT_MACRO_PERCENTAGES,
@@ -80,7 +81,8 @@ const isPresetRate = (rate: number) =>
   GOAL_CHIPS.some((preset) => Math.abs(preset.rate - rate) < 0.000001);
 
 export function ProfileScreen() {
-  const { isDesktop } = useResponsive();
+  const { isDesktop, width } = useResponsive();
+  const isCompactPhone = isCompactPhoneLayout(width);
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -1029,7 +1031,10 @@ export function ProfileScreen() {
               <View style={styles.customBlock}>
                 <View
                   accessibilityRole="radiogroup"
-                  style={styles.customDirRow}
+                  style={[
+                    styles.customDirRow,
+                    isCompactPhone && styles.customDirRowCompact,
+                  ]}
                 >
                   {(["lose", "gain"] as const).map((direction) => {
                     const active = customDir === direction;
@@ -1042,6 +1047,7 @@ export function ProfileScreen() {
                         onPress={() => setCustomDir(direction)}
                         style={[
                           styles.customDirBtn,
+                          isCompactPhone && styles.customDirBtnCompact,
                           active && styles.customDirActive,
                         ]}
                       >
@@ -1056,7 +1062,12 @@ export function ProfileScreen() {
                       </TouchableOpacity>
                     );
                   })}
-                  <View style={styles.customPctWrap}>
+                  <View
+                    style={[
+                      styles.customPctWrap,
+                      isCompactPhone && styles.customPctWrapCompact,
+                    ]}
+                  >
                     <TextInput
                       accessibilityLabel="Custom weekly percentage"
                       value={customPercent}
@@ -1577,6 +1588,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  customDirRowCompact: {
+    flexWrap: "wrap",
+  },
   customDirBtn: {
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -1585,6 +1599,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  customDirBtnCompact: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
   },
   customDirActive: {
     backgroundColor: Colors.accent,
@@ -1602,8 +1621,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  customPctWrapCompact: {
+    flexBasis: "100%",
+    minWidth: 0,
+  },
   customPctInput: {
     flex: 1,
+    minWidth: 0,
     color: Colors.text,
     paddingVertical: 10,
     paddingHorizontal: 12,

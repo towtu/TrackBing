@@ -1,5 +1,9 @@
 import { UnitSystemToggle } from "@/src/components/nutrition/UnitSystemToggle";
 import { TargetBreakdown } from "@/src/components/nutrition/TargetBreakdown";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
 import { useResponsive } from "@/src/hooks/useResponsive";
 import { isCompactPhoneLayout } from "@/src/lib/responsiveLayout";
 import {
@@ -40,9 +44,6 @@ import {
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -87,7 +88,11 @@ export function ProfileScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    type: SweetFeedbackType;
+    title: string;
+    message: string;
+  } | null>(null);
   const [profileError, setProfileError] = useState("");
 
   // Canonical profile values remain kg/cm regardless of the selected display.
@@ -465,12 +470,12 @@ export function ProfileScreen() {
     setUnitSystem(nextUnit);
   };
 
-  const showMessage = (title: string, message: string) => {
-    if (Platform.OS === "web") {
-      alert(`${title}: ${message}`);
-    } else {
-      Alert.alert(title, message);
-    }
+  const showMessage = (
+    title: string,
+    message: string,
+    type: SweetFeedbackType = "warning",
+  ) => {
+    setFeedback({ type, title, message });
   };
 
   const selectGoalRate = (rate: number) => {
@@ -692,12 +697,16 @@ export function ProfileScreen() {
       setProteinGrams(grams.protein);
       setCarbsGrams(grams.carbs);
       setFatGrams(grams.fat);
-      setShowSuccessModal(true);
+      setFeedback({
+        type: "success",
+        title: "Profile saved",
+        message: "Your profile has been updated and your goals are ready.",
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "The profile could not be saved.";
       setProfileError(message);
-      showMessage("Save Failed", message);
+      showMessage("Save failed", message, "error");
     } finally {
       setSaving(false);
     }
@@ -1272,38 +1281,13 @@ export function ProfileScreen() {
         )}
       </ScrollView>
 
-      <Modal
-        transparent
-        visible={showSuccessModal}
-        animationType="fade"
-        onRequestClose={() => setShowSuccessModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalAccent} />
-            <View style={styles.modalBody}>
-              <CheckCircle
-                size={56}
-                color={Colors.accent}
-                weight="fill"
-                style={styles.modalIcon}
-              />
-              <Text style={styles.modalTitle}>Saved!</Text>
-              <Text style={styles.modalText}>
-                Your profile has been updated. Return to the dashboard to see
-                your new goals.
-              </Text>
-              <TouchableOpacity
-                accessibilityRole="button"
-                style={styles.modalButton}
-                onPress={() => setShowSuccessModal(false)}
-              >
-                <Text style={styles.modalButtonText}>OK</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <SweetFeedback
+        visible={feedback !== null}
+        type={feedback?.type}
+        title={feedback?.title ?? ""}
+        message={feedback?.message}
+        onClose={() => setFeedback(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -1745,61 +1729,5 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 16,
     letterSpacing: 0.2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.85)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "82%",
-    maxWidth: 340,
-    backgroundColor: Colors.secondary,
-    borderRadius: 22,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: "hidden",
-  },
-  modalAccent: {
-    height: 3,
-    width: "100%",
-    backgroundColor: Colors.accent,
-  },
-  modalBody: {
-    width: "100%",
-    alignItems: "center",
-    padding: 28,
-  },
-  modalIcon: {
-    marginBottom: 16,
-  },
-  modalTitle: {
-    color: Colors.text,
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 8,
-    letterSpacing: -0.3,
-  },
-  modalText: {
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginBottom: 24,
-    lineHeight: 22,
-    fontSize: 14,
-  },
-  modalButton: {
-    backgroundColor: Colors.accent,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 12,
-    width: "100%",
-  },
-  modalButtonText: {
-    color: Colors.textOnAccent,
-    fontWeight: "800",
-    textAlign: "center",
-    fontSize: 15,
   },
 });

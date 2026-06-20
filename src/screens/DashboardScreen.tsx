@@ -45,6 +45,10 @@ import {
 import { Colors } from "@/src/styles/colors";
 import { DailyTotals, FoodLog } from "@/src/types";
 import { useResponsive } from "@/src/hooks/useResponsive";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
 
 type GoalProfile = {
   age: number;
@@ -72,6 +76,11 @@ export function DashboardScreen() {
   const [deleteModal, setDeleteModal] = useState(false);
   const [deletingLog, setDeletingLog] = useState<{ id: string; name: string } | null>(null);
   const [streak, setStreak] = useState(0);
+  const [feedback, setFeedback] = useState<{
+    type: SweetFeedbackType;
+    title: string;
+    message: string;
+  } | null>(null);
   const router = useRouter();
 
   // ── FAB ANIMATIONS ──
@@ -240,7 +249,11 @@ export function DashboardScreen() {
   const handleSaveGoal = async () => {
     const value = Number(newGoalInput);
     if (!goalProfile) {
-      alert("Open Profile and complete your body stats before setting a target.");
+      setFeedback({
+        type: "warning",
+        title: "Complete your profile",
+        message: "Open Profile and complete your body stats before setting a target.",
+      });
       return;
     }
     if (
@@ -248,21 +261,37 @@ export function DashboardScreen() {
       goalProfile.age < 13 ||
       goalProfile.age > 100
     ) {
-      alert("Open Profile and save a valid age before setting a target.");
+      setFeedback({
+        type: "warning",
+        title: "Invalid profile age",
+        message: "Open Profile and save a valid age before setting a target.",
+      });
       return;
     }
     if (goalProfile.age < 18) {
-      alert("Custom calorie targets are unavailable for users ages 13-17.");
+      setFeedback({
+        type: "warning",
+        title: "Custom target unavailable",
+        message: "Custom calorie targets are unavailable for users ages 13-17.",
+      });
       return;
     }
     if (goalProfile.gender === null) {
-      alert("Open Profile and save a valid gender before setting a target.");
+      setFeedback({
+        type: "warning",
+        title: "Complete your profile",
+        message: "Open Profile and save a valid gender before setting a target.",
+      });
       return;
     }
 
     const floor = CALORIE_FLOORS[goalProfile.gender];
     if (!Number.isFinite(value) || value < floor) {
-      alert(`Enter at least ${floor} kcal/day for this profile.`);
+      setFeedback({
+        type: "warning",
+        title: "Target is too low",
+        message: `Enter at least ${floor} kcal/day for this profile.`,
+      });
       return;
     }
 
@@ -272,7 +301,11 @@ export function DashboardScreen() {
       fat: goalProfile.fatRatio,
     };
     if (!validateMacroPercentages(percentages)) {
-      alert("Open Profile and correct the macro percentages before saving.");
+      setFeedback({
+        type: "warning",
+        title: "Invalid macro split",
+        message: "Open Profile and correct the macro percentages before saving.",
+      });
       return;
     }
     const grams = calculateMacroGrams(value, percentages);
@@ -297,17 +330,24 @@ export function DashboardScreen() {
       .maybeSingle();
 
     if (error || !updatedGoal) {
-      alert(
-        `Unable to save calorie target: ${
+      setFeedback({
+        type: "error",
+        title: "Could not save target",
+        message: `Unable to save calorie target: ${
           error?.message ?? "the profile row was not found"
         }.`,
-      );
+      });
       return;
     }
 
     setCalorieGoal(value);
     setGoals({ p: grams.protein, c: grams.carbs, f: grams.fat });
     setEditGoalModal(false);
+    setFeedback({
+      type: "success",
+      title: "Target updated",
+      message: "Your calorie target and macro grams have been updated.",
+    });
   };
 
   const openCustomGoalEditor = () => {
@@ -328,7 +368,14 @@ export function DashboardScreen() {
     const newAmount = parseFloat(editWeightInput);
     const oldAmount = parseFloat(editingLog.serving_size || "100");
     const oldUnit = editingLog.serving_unit || "g";
-    if (isNaN(newAmount) || newAmount <= 0) return alert("Invalid amount");
+    if (isNaN(newAmount) || newAmount <= 0) {
+      setFeedback({
+        type: "warning",
+        title: "Invalid amount",
+        message: "Enter an amount greater than zero.",
+      });
+      return;
+    }
 
     let ratio = 1;
     if (editUnit === oldUnit || editUnit === "serving" || oldUnit === "serving") {
@@ -1041,6 +1088,14 @@ export function DashboardScreen() {
             </View>
           </View>
         </Modal>
+
+        <SweetFeedback
+          visible={feedback !== null}
+          type={feedback?.type}
+          title={feedback?.title ?? ""}
+          message={feedback?.message}
+          onClose={() => setFeedback(null)}
+        />
 
       </View>
     </SafeAreaView>

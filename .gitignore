@@ -44,3 +44,6 @@ app-example
 .claude/
 .playwright-cli/
 .worktrees/
+
+# verification / scratch artifacts (Playwright screenshots, UI proposals)
+output/

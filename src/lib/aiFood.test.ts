@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { supabase } from "./supabase";
+import { requestAiFood } from "./aiFood";
 
+// vitest hoists vi.mock above the imports above, so the mock still applies.
 vi.mock("./supabase", () => ({
   supabase: { functions: { invoke: vi.fn() } },
 }));
-
-import { supabase } from "./supabase";
-import { requestAiFood } from "./aiFood";
 
 const invoke = supabase.functions.invoke as unknown as ReturnType<typeof vi.fn>;
 

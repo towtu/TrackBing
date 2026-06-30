@@ -26,12 +26,12 @@ create table if not exists public.ai_usage (
 alter table public.entitlements enable row level security;
 alter table public.ai_usage     enable row level security;
 
-drop policy if exists "own entitlements - select" on public.entitlements;
-create policy "own entitlements - select" on public.entitlements
+drop policy if exists entitlements_select_own on public.entitlements;
+create policy entitlements_select_own on public.entitlements
   for select to authenticated using (auth.uid() = user_id);
 
-drop policy if exists "own ai_usage - select" on public.ai_usage;
-create policy "own ai_usage - select" on public.ai_usage
+drop policy if exists ai_usage_select_own on public.ai_usage;
+create policy ai_usage_select_own on public.ai_usage
   for select to authenticated using (auth.uid() = user_id);
 
 notify pgrst, 'reload schema';

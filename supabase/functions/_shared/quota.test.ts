@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { currentPeriod, isProActive, decideQuota } from "./quota";
+import { currentPeriod, isProActive, decideQuota, isRateLimited } from "./quota";
 
 describe("quota helpers", () => {
   it("formats period as YYYY-MM", () => {
@@ -20,6 +20,12 @@ describe("quota helpers", () => {
     expect(
       decideQuota({ isPro: false, monthCount: 6, dayCount: 0, freeMonthly: 7, proDaily: 100 }).allowed,
     ).toBe(true);
+  });
+
+  it("rate-limits once the per-minute count is reached", () => {
+    expect(isRateLimited(14, 15)).toBe(false);
+    expect(isRateLimited(15, 15)).toBe(true);
+    expect(isRateLimited(20, 15)).toBe(true);
   });
 
   it("pro user blocked only at daily cap", () => {

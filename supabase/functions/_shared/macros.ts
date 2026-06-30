@@ -2,6 +2,8 @@
 // No Deno-specific APIs, so this file is unit-testable with vitest and reused
 // by the ai-food edge function.
 
+export type FoodSource = "usda" | "openfoodfacts" | "ai_estimate";
+
 export type AiFood = {
   name: string;
   brand?: string;
@@ -13,8 +15,25 @@ export type AiFood = {
   fat: number;
   ingredients?: { name: string; kcal: number; protein: number; carbs: number; fat: number }[];
   confidence: "high" | "medium" | "low";
+  source: FoodSource;
   notes?: string;
 };
+
+export type Per100 = { kcal: number; protein: number; carbs: number; fat: number };
+
+/**
+ * Scales authoritative per-100g macros (from USDA/OpenFoodFacts) to the
+ * requested serving size, rounding for display.
+ */
+export function scaleToServing(per100: Per100, grams: number): Per100 {
+  const f = (Number.isFinite(grams) && grams > 0 ? grams : 100) / 100;
+  return {
+    kcal: Math.round(per100.kcal * f),
+    protein: Math.round(per100.protein * f * 10) / 10,
+    carbs: Math.round(per100.carbs * f * 10) / 10,
+    fat: Math.round(per100.fat * f * 10) / 10,
+  };
+}
 
 const num = (v: unknown): number => {
   const n = Number(v);
@@ -63,6 +82,10 @@ export function validateAndNormalize(raw: unknown): AiFood | null {
     carbs: Math.round(carbs * 10) / 10,
     fat: Math.round(fat * 10) / 10,
     confidence,
+    source:
+      r.source === "usda" || r.source === "openfoodfacts" || r.source === "ai_estimate"
+        ? (r.source as FoodSource)
+        : "ai_estimate",
     notes: typeof r.notes === "string" ? r.notes.trim() || undefined : undefined,
   };
 }

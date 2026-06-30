@@ -4,6 +4,8 @@ import { supabase } from "./supabase";
 // validation live server-side; this only invokes the function and maps the
 // result into a tidy discriminated union for the UI.
 
+export type FoodSource = "usda" | "openfoodfacts" | "ai_estimate";
+
 export type AiFood = {
   name: string;
   brand?: string;
@@ -15,12 +17,15 @@ export type AiFood = {
   fat: number;
   ingredients?: { name: string; kcal: number; protein: number; carbs: number; fat: number }[];
   confidence: "high" | "medium" | "low";
+  source: FoodSource;
   notes?: string;
 };
 
+export type AiFoodReason = "over_free_quota" | "over_pro_cap" | "rate_limited" | "error";
+
 export type AiFoodResult =
   | { ok: true; food: AiFood }
-  | { ok: false; reason: "over_free_quota" | "over_pro_cap" | "error" };
+  | { ok: false; reason: AiFoodReason };
 
 export async function requestAiFood(
   query: string,
@@ -33,7 +38,7 @@ export async function requestAiFood(
     );
     if (data?.food) return { ok: true, food: data.food };
     const reason = data?.error;
-    if (reason === "over_free_quota" || reason === "over_pro_cap") {
+    if (reason === "over_free_quota" || reason === "over_pro_cap" || reason === "rate_limited") {
       return { ok: false, reason };
     }
     return { ok: false, reason: "error" };

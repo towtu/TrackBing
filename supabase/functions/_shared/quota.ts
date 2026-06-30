@@ -16,6 +16,12 @@ export type QuotaDecision = {
   reason?: "over_free_quota" | "over_pro_cap";
 };
 
+// Short-window abuse throttle, independent of the monthly/daily quota. Counts
+// attempts per minute so nobody can hammer the (paid) DeepSeek API.
+export function isRateLimited(minuteCount: number, perMinute: number): boolean {
+  return minuteCount >= perMinute;
+}
+
 export function decideQuota(args: {
   isPro: boolean;
   monthCount: number;

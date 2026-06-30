@@ -34,6 +34,7 @@ import {
 } from "react-native";
 import CircularProgress from "react-native-circular-progress-indicator";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary, getLocalDateStr } from "@/src/lib/dailySummary";
 import {
@@ -714,6 +715,9 @@ export function DashboardScreen() {
                         <View style={styles.logContent}>
                           <Text style={styles.logName} numberOfLines={2}>{item.name}</Text>
                           <View style={styles.logSubRow}>
+                            {item.ai_estimated && (
+                              <AiEstimateBadge source="ai_estimate" compact />
+                            )}
                             <View style={styles.servingBadge}>
                               <Text style={styles.servingText}>{item.serving_size} {item.serving_unit || "g"}</Text>
                             </View>
@@ -887,6 +891,9 @@ export function DashboardScreen() {
                   <View style={styles.logContent}>
                     <Text style={styles.logName} numberOfLines={2}>{item.name}</Text>
                     <View style={styles.logSubRow}>
+                      {item.ai_estimated && (
+                        <AiEstimateBadge source="ai_estimate" compact />
+                      )}
                       <View style={styles.servingBadge}>
                         <Text style={styles.servingText}>{item.serving_size} {item.serving_unit || "g"}</Text>
                       </View>

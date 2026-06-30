@@ -23,6 +23,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import {
   SweetFeedback,
   type SweetFeedbackType,
@@ -88,6 +89,7 @@ export default function MyFoodsPage() {
           fat_100g: f.fat,
         },
         original_id: f.id,
+        ai_estimated: !!f.ai_estimated,
       })) || [];
     setPersonalFoods(formatted);
     setLoading(false);
@@ -168,6 +170,7 @@ export default function MyFoodsPage() {
           fat: macros.f,
           serving_size: inputWeight,
           serving_unit: selectedUnit,
+          ai_estimated: !!selectedFood.ai_estimated,
         },
       ]);
       if (error) {
@@ -300,6 +303,11 @@ export default function MyFoodsPage() {
                       {Math.round(item.nutriments?.carbohydrates_100g || 0)}g ·
                       F:{Math.round(item.nutriments?.fat_100g || 0)}g
                     </Text>
+                    {item.ai_estimated && (
+                      <View style={localStyles.aiBadgeRow}>
+                        <AiEstimateBadge source="ai_estimate" compact />
+                      </View>
+                    )}
                   </View>
                   <View style={localStyles.unitBadge}>
                     <Text style={localStyles.unitBadgeText}>
@@ -632,6 +640,9 @@ const localStyles = RNStyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 10,
     marginTop: 2,
+  },
+  aiBadgeRow: {
+    marginTop: 7,
   },
   unitBadge: {
     backgroundColor: Colors.accentDim,

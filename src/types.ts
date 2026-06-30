@@ -12,6 +12,7 @@ export interface FoodLog {
   barcode?: string;
   serving_size?: string;
   serving_unit?: string;
+  ai_estimated?: boolean;
 }
 
 export interface DailyTotals {
@@ -28,9 +29,9 @@ export interface ProductResult {
   serving_size?: string;
   image_url?: string;
 
-  // ✅ NEW: Helpers for the app logic
-  default_unit?: string; // "g", "ml", "oz"
-  original_id?: string; // Needed to delete personal foods
+  // Helpers for the app logic.
+  default_unit?: string;
+  original_id?: string;
 
   nutriments?: {
     "energy-kcal_100g"?: number;

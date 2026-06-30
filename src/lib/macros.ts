@@ -21,6 +21,7 @@ export type FoodItem = {
   cup_weight?: number;
   nutriments: Nutriments;
   original_id?: string; // personal_foods row id, when applicable
+  ai_estimated?: boolean;
 };
 
 // One ingredient as stored inside a recipe. It snapshots the food's nutriments

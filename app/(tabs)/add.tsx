@@ -24,11 +24,20 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  AiFoodSheet,
+  type AiFoodSaveOpts,
+} from "@/src/components/ai/AiFoodSheet";
+import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
+import { requestAiFood, type AiFood } from "@/src/lib/aiFood";
+import {
+  getAiFoodFeedback,
+  shouldMarkAiEstimated,
+} from "@/src/lib/aiFoodUi";
 import {
   loadGistFoods,
   loadRecentBarcodeFoods,
@@ -48,6 +57,7 @@ type FeedbackState = {
   type: SweetFeedbackType;
   title: string;
   message: string;
+  confirmText?: string;
   autoDismissMs?: number;
   onClose?: () => void;
 };
@@ -124,6 +134,8 @@ export default function AddFoodPage() {
   const [recentBarcodeFoods, setRecentBarcodeFoods] = useState<FoodItem[]>([]);
 
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [aiFoodProposal, setAiFoodProposal] = useState<AiFood | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
   const [revealedBarcodeCode, setRevealedBarcodeCode] = useState<
@@ -250,6 +262,30 @@ export default function AddFoodPage() {
     setLoading(false);
   };
 
+  const handleBeeLookup = async () => {
+    const trimmed = query.trim();
+    if (!trimmed || aiLoading) {
+      setFeedback({
+        type: "info",
+        title: "Tell Bee what's on the plate",
+        message: "Describe a food or meal first, then Bee can draft the macros.",
+      });
+      return;
+    }
+
+    Keyboard.dismiss();
+    setAiLoading(true);
+    const result = await requestAiFood(trimmed, "auto");
+    setAiLoading(false);
+
+    if (result.ok) {
+      setAiFoodProposal(result.food);
+      return;
+    }
+
+    setFeedback(getAiFoodFeedback(result.reason));
+  };
+
   const handleQueryChange = (text: string) => {
     setQuery(text);
     setResults([]);
@@ -289,6 +325,7 @@ export default function AddFoodPage() {
           serving_size: inputWeight,
           serving_unit: selectedUnit,
           barcode: foodBarcode,
+          ai_estimated: !!selectedFood.ai_estimated,
         },
       ]);
       if (error) {
@@ -324,6 +361,105 @@ export default function AddFoodPage() {
       }
     }
     setSubmitting(false);
+  };
+
+  const handleAiFoodSave = async (
+    food: AiFood,
+    opts: AiFoodSaveOpts,
+  ): Promise<void> => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setFeedback({
+        type: "warning",
+        title: "Sign in required",
+        message: "Please sign in again before Bee saves this food.",
+      });
+      return;
+    }
+
+    const aiEstimated = shouldMarkAiEstimated(food);
+    let savedToMyFoods = false;
+
+    if (opts.toMyFoods) {
+      const { error } = await supabase.from("personal_foods").insert([
+        {
+          user_id: user.id,
+          name: food.name,
+          calories: Math.round(food.kcal),
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+          default_unit: "serving",
+          ai_estimated: aiEstimated,
+        },
+      ]);
+
+      if (error) {
+        setFeedback({
+          type: "error",
+          title: "Bee couldn't save it",
+          message: error.message,
+        });
+        return;
+      }
+      savedToMyFoods = true;
+    }
+
+    if (opts.log) {
+      const { error } = await supabase.from("food_logs").insert([
+        {
+          user_id: user.id,
+          name: food.name,
+          calories: Math.round(food.kcal),
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+          serving_size: "1",
+          serving_unit: "serving",
+          barcode: null,
+          ai_estimated: aiEstimated,
+        },
+      ]);
+
+      if (error) {
+        if (savedToMyFoods) {
+          setAiFoodProposal(null);
+          setFeedback({
+            type: "warning",
+            title: "Saved, but not logged",
+            message:
+              "Bee added it to My Foods, but today's log failed. You can log it from My Foods.",
+          });
+          return;
+        }
+
+        setFeedback({
+          type: "error",
+          title: "Bee couldn't log it",
+          message: error.message,
+        });
+        return;
+      }
+
+      upsertDailySummary();
+    }
+
+    setAiFoodProposal(null);
+    setFeedback({
+      type: "success",
+      title: opts.toMyFoods && opts.log ? "Saved and logged!" : opts.log ? "Logged!" : "Saved!",
+      message:
+        opts.toMyFoods && opts.log
+          ? "Bee added it to My Foods and today's log."
+          : opts.log
+            ? "Bee added it to your daily intake."
+            : "Bee added it to My Foods.",
+      autoDismissMs: 1200,
+      onClose: opts.log ? () => router.back() : undefined,
+    });
   };
 
   const closeFeedback = () => {
@@ -623,6 +759,35 @@ export default function AddFoodPage() {
                           Create &quot;{query}&quot;
                         </Text>
                       </TouchableOpacity>
+                      <View style={localStyles.beeCard}>
+                        <View style={localStyles.beeAvatar}>
+                          <Text style={localStyles.beeAvatarText}>🐝</Text>
+                        </View>
+                        <View style={localStyles.beeCopy}>
+                          <Text style={localStyles.beeTitle}>
+                            Ask Bee to draft it
+                          </Text>
+                          <Text style={localStyles.beeText}>
+                            Bee can estimate this meal, then you review the
+                            numbers before anything is saved.
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          disabled={aiLoading}
+                          onPress={handleBeeLookup}
+                          style={[
+                            localStyles.beeButton,
+                            aiLoading && localStyles.beeButtonDisabled,
+                          ]}
+                        >
+                          {aiLoading ? (
+                            <ActivityIndicator color={Colors.textOnAccent} />
+                          ) : (
+                            <Text style={localStyles.beeButtonText}>Ask Bee</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   ) : null
                 }
@@ -881,8 +1046,15 @@ export default function AddFoodPage() {
           type={feedback?.type}
           title={feedback?.title ?? ""}
           message={feedback?.message}
+          confirmText={feedback?.confirmText}
           autoDismissMs={feedback?.autoDismissMs}
           onClose={closeFeedback}
+        />
+        <AiFoodSheet
+          visible={!!aiFoodProposal}
+          food={aiFoodProposal}
+          onClose={() => setAiFoodProposal(null)}
+          onSave={handleAiFoodSave}
         />
       </View>
     </SafeAreaView>
@@ -1121,6 +1293,66 @@ const localStyles = RNStyleSheet.create({
     gap: 10,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  beeCard: {
+    width: "100%",
+    maxWidth: 520,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  beeAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.accentDim,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.25)",
+    flexShrink: 0,
+  },
+  beeAvatarText: {
+    fontSize: 20,
+  },
+  beeCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  beeTitle: {
+    color: Colors.text,
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 3,
+  },
+  beeText: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  beeButton: {
+    backgroundColor: Colors.accent,
+    borderRadius: 14,
+    minHeight: 42,
+    minWidth: 82,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  beeButtonDisabled: {
+    opacity: 0.65,
+  },
+  beeButtonText: {
+    color: Colors.textOnAccent,
+    fontSize: 12,
+    fontWeight: "900",
   },
   modalOverlay: {
     flex: 1,

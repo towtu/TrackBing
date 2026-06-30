@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { Calculator, CheckCircle, X } from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,40 +11,64 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
+import { requestAiFood, type AiFood } from "@/src/lib/aiFood";
+import {
+  getAiFoodFeedback,
+  shouldMarkAiEstimated,
+} from "@/src/lib/aiFoodUi";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
+
+type FoodUnit = "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving";
 
 type FeedbackState = {
   type: SweetFeedbackType;
   title: string;
   message: string;
+  confirmText?: string;
   autoDismissMs?: number;
   onClose?: () => void;
+};
+
+const FOOD_UNITS: FoodUnit[] = ["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"];
+
+const formatMacroInput = (value: number) => {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 };
 
 export default function CreateFoodPage() {
   const router = useRouter();
   const { width, isDesktop } = useResponsive();
   const compactForm = width < 390;
+  const skipNextMacroAutoCalc = useRef(false);
   const [name, setName] = useState("");
   const [cal, setCal] = useState("");
   const [prot, setProt] = useState("");
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
 
-  const [unit, setUnit] = useState<
-    "g" | "ml" | "oz" | "tsp" | "tbsp" | "cup" | "serving"
-  >("g");
+  const [unit, setUnit] = useState<FoodUnit>("g");
 
   const [submitting, setSubmitting] = useState(false);
+  const [aiFillLoading, setAiFillLoading] = useState(false);
+  const [aiFillSource, setAiFillSource] = useState<AiFood["source"] | null>(
+    null,
+  );
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
   useEffect(() => {
+    if (skipNextMacroAutoCalc.current) {
+      skipNextMacroAutoCalc.current = false;
+      return;
+    }
+
     const p = parseFloat(prot) || 0;
     const c = parseFloat(carbs) || 0;
     const f = parseFloat(fat) || 0;
@@ -65,6 +89,10 @@ export default function CreateFoodPage() {
       });
       return;
     }
+
+    const aiEstimated = aiFillSource
+      ? shouldMarkAiEstimated({ source: aiFillSource })
+      : false;
 
     setSubmitting(true);
     const {
@@ -89,6 +117,7 @@ export default function CreateFoodPage() {
         carbs: parseFloat(carbs) || 0,
         fat: parseFloat(fat) || 0,
         default_unit: unit,
+        ai_estimated: aiEstimated,
       },
     ]);
 
@@ -108,6 +137,35 @@ export default function CreateFoodPage() {
         onClose: () => router.back(),
       });
     }
+  };
+
+  const handleAiFill = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || aiFillLoading) {
+      setFeedback({
+        type: "info",
+        title: "Bee needs a food name",
+        message: "Enter a food name first, then Bee can draft its macros.",
+      });
+      return;
+    }
+
+    setAiFillLoading(true);
+    const result = await requestAiFood(trimmed, "fill");
+    setAiFillLoading(false);
+
+    if (!result.ok) {
+      setFeedback(getAiFoodFeedback(result.reason));
+      return;
+    }
+
+    skipNextMacroAutoCalc.current = true;
+    setUnit("serving");
+    setCal(String(Math.round(result.food.kcal)));
+    setProt(formatMacroInput(result.food.protein));
+    setCarbs(formatMacroInput(result.food.carbs));
+    setFat(formatMacroInput(result.food.fat));
+    setAiFillSource(result.food.source);
   };
 
   const closeFeedback = () => {
@@ -153,6 +211,31 @@ export default function CreateFoodPage() {
           autoFocus
         />
 
+        <View style={styles.aiFillRow}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            disabled={aiFillLoading}
+            onPress={handleAiFill}
+            style={[
+              styles.aiFillBtn,
+              aiFillLoading && styles.aiFillBtnDisabled,
+            ]}
+          >
+            {aiFillLoading ? (
+              <ActivityIndicator color={Colors.textOnAccent} />
+            ) : (
+              <Text style={styles.aiFillBtnText}>🐝 AI fill</Text>
+            )}
+          </TouchableOpacity>
+          {aiFillSource ? (
+            <AiEstimateBadge source={aiFillSource} compact />
+          ) : (
+            <Text style={styles.aiFillHint}>
+              Bee fills per-serving macros for review.
+            </Text>
+          )}
+        </View>
+
         <Text style={styles.label}>Default Unit</Text>
         <View
           style={{
@@ -162,10 +245,10 @@ export default function CreateFoodPage() {
             flexWrap: "wrap",
           }}
         >
-          {["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"].map((u) => (
+          {FOOD_UNITS.map((u) => (
             <TouchableOpacity
               key={u}
-              onPress={() => setUnit(u as any)}
+              onPress={() => setUnit(u)}
               style={{
                 backgroundColor: unit === u ? Colors.accent : "#333",
                 paddingHorizontal: 20,
@@ -265,6 +348,7 @@ export default function CreateFoodPage() {
         type={feedback?.type}
         title={feedback?.title ?? ""}
         message={feedback?.message}
+        confirmText={feedback?.confirmText}
         autoDismissMs={feedback?.autoDismissMs}
         onClose={closeFeedback}
       />
@@ -321,6 +405,35 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: "#333",
+  },
+  aiFillRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: -8,
+    marginBottom: 20,
+  },
+  aiFillBtn: {
+    minHeight: 42,
+    borderRadius: 14,
+    backgroundColor: Colors.accent,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiFillBtnDisabled: {
+    opacity: 0.65,
+  },
+  aiFillBtnText: {
+    color: Colors.textOnAccent,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  aiFillHint: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    flexShrink: 1,
   },
   grid: { flexDirection: "row", gap: 15 },
   gridCompact: {

@@ -77,6 +77,7 @@ export async function searchPersonalFoods(query: string): Promise<FoodItem[]> {
       fat_100g: f.fat,
     },
     original_id: f.id,
+    ai_estimated: !!f.ai_estimated,
   }));
 }
 

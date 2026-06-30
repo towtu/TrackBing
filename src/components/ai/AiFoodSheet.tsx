@@ -127,6 +127,14 @@ export function AiFoodSheet({ visible, food, onClose, onSave }: Props) {
               </Pressable>
             </View>
 
+            <Pressable
+              style={[styles.btn, styles.btnCombined]}
+              disabled={saving}
+              onPress={() => handle({ toMyFoods: true, log: true })}
+            >
+              <Text style={styles.btnCombinedText}>Save + Log</Text>
+            </Pressable>
+
             <Pressable style={styles.cancel} disabled={saving} onPress={onClose}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
@@ -195,6 +203,13 @@ const styles = StyleSheet.create({
   btnPrimaryText: { color: Colors.textOnAccent, fontWeight: "900", fontSize: 15 },
   btnSecondary: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
   btnSecondaryText: { color: Colors.text, fontWeight: "800", fontSize: 14 },
+  btnCombined: {
+    marginTop: 12,
+    backgroundColor: Colors.accentDim,
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.25)",
+  },
+  btnCombinedText: { color: Colors.accent, fontWeight: "900", fontSize: 15 },
   cancel: { alignItems: "center", paddingVertical: 16 },
   cancelText: { color: Colors.textMuted, fontWeight: "700", fontSize: 14 },
 });

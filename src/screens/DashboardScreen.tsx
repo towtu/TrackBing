@@ -69,6 +69,18 @@ const getDashboardBeeSeed = (value: string) => {
   return hash;
 };
 
+const getDateDistanceInDays = (fromDate: string, toDate: string) => {
+  const parseLocalDate = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) return Number.NaN;
+    return Date.UTC(year, month - 1, day);
+  };
+  const fromMs = parseLocalDate(fromDate);
+  const toMs = parseLocalDate(toDate);
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return 0;
+  return Math.max(0, Math.round((toMs - fromMs) / 86400000));
+};
+
 export function DashboardScreen() {
   const { isDesktop } = useResponsive();
   const [logs, setLogs] = useState<FoodLog[]>([]);
@@ -87,6 +99,7 @@ export function DashboardScreen() {
   const [deleteModal, setDeleteModal] = useState(false);
   const [deletingLog, setDeletingLog] = useState<{ id: string; name: string } | null>(null);
   const [streak, setStreak] = useState(0);
+  const [daysSinceLastLog, setDaysSinceLastLog] = useState<number | undefined>(undefined);
   const [feedback, setFeedback] = useState<{
     type: SweetFeedbackType;
     title: string;
@@ -155,19 +168,31 @@ export function DashboardScreen() {
 
     // Also check if today has food_logs (might not be in daily_summaries yet)
     const todayStr = getLocalDateStr();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const { data: todayLogs } = await supabase
       .from("food_logs")
       .select("id")
       .eq("user_id", userId)
+      .gte("created_at", todayStart.toISOString())
       .limit(1);
 
     const dates = new Set<string>();
-    if (summaries) summaries.forEach((s) => dates.add(s.date));
+    if (summaries) {
+      summaries.forEach((summary) => {
+        if (typeof summary.date === "string") dates.add(summary.date);
+      });
+    }
     if (todayLogs && todayLogs.length > 0) dates.add(todayStr);
 
-    if (dates.size === 0) { setStreak(0); return; }
+    if (dates.size === 0) {
+      setStreak(0);
+      setDaysSinceLastLog(undefined);
+      return;
+    }
 
     const sorted = Array.from(dates).sort().reverse();
+    setDaysSinceLastLog(getDateDistanceInDays(sorted[0], todayStr));
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = getLocalDateStr(yesterday);
@@ -493,6 +518,7 @@ export function DashboardScreen() {
       proteinGoal: goals.p,
       streak,
       mealCount: logs.length,
+      daysSinceLastLog,
     },
     getDashboardBeeSeed(getLocalDateStr()),
   );
@@ -568,7 +594,8 @@ export function DashboardScreen() {
   const renderBeeCompanion = () => (
     <BeeGuide
       compact={!isDesktop}
-      mascotSize={isDesktop ? "medium" : "small"}
+      mascotSize={isDesktop ? "large" : "medium"}
+      mood={beeMessage.mood}
       title={beeMessage.title}
       message={beeMessage.message}
       style={styles.beeCompanionCard}

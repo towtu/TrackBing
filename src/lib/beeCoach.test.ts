@@ -14,13 +14,35 @@ describe("beeCoach", () => {
   it("coaches an empty day toward the first log", () => {
     const result = getBeeMessage({ ...baseStats, calories: 0, protein: 0, mealCount: 0 }, 7);
 
+    expect(result.mood).toBe("empty");
     expect(result.title.length).toBeGreaterThan(0);
     expect(result.message).toMatch(/first meal|unang meal|start/i);
+  });
+
+  it("welcomes users back after a week without logs", () => {
+    const result = getBeeMessage(
+      { ...baseStats, calories: 0, protein: 0, mealCount: 0, daysSinceLastLog: 8 },
+      8,
+    );
+
+    expect(result.mood).toBe("inactiveWeek");
+    expect(result.message).toMatch(/week|welcome back|first meal|moving again/i);
+  });
+
+  it("treats a month away as a fresh restart", () => {
+    const result = getBeeMessage(
+      { ...baseStats, calories: 0, protein: 0, mealCount: 0, daysSinceLastLog: 33 },
+      9,
+    );
+
+    expect(result.mood).toBe("inactiveMonth");
+    expect(result.message).toMatch(/fresh|restart|back|guilt|rhythm/i);
   });
 
   it("celebrates being under the calorie goal with remaining calories", () => {
     const result = getBeeMessage({ ...baseStats, calories: 1400, goal: 2000 }, 1);
 
+    expect(result.mood).toBe("under");
     expect(result.message).toContain("600 kcal");
     expect(result.message).toMatch(/room|pwede|left/i);
   });
@@ -28,6 +50,7 @@ describe("beeCoach", () => {
   it("handles over-goal days gently", () => {
     const result = getBeeMessage({ ...baseStats, calories: 2125, goal: 2000 }, 2);
 
+    expect(result.mood).toBe("over");
     expect(result.message).toMatch(/lagpas|over|okay lang/i);
     expect(result.message).not.toMatch(/bad|fail|guilt|shame/i);
   });
@@ -35,6 +58,7 @@ describe("beeCoach", () => {
   it("recognizes a strong protein day", () => {
     const result = getBeeMessage({ ...baseStats, protein: 112, proteinGoal: 120 }, 3);
 
+    expect(result.mood).toBe("strongProtein");
     expect(result.message).toMatch(/protein|protina/i);
     expect(result.message).toMatch(/strong|solid|nice/i);
   });
@@ -42,6 +66,7 @@ describe("beeCoach", () => {
   it("nudges low protein without shaming", () => {
     const result = getBeeMessage({ ...baseStats, protein: 18, proteinGoal: 120 }, 4);
 
+    expect(result.mood).toBe("lowProtein");
     expect(result.message).toMatch(/protein|protina/i);
     expect(result.message).toMatch(/add|dagdag|boost/i);
   });
@@ -49,6 +74,7 @@ describe("beeCoach", () => {
   it("calls out an active streak", () => {
     const result = getBeeMessage({ ...baseStats, calories: 1300, streak: 5 }, 5);
 
+    expect(result.mood).toBe("streak");
     expect(result.message).toMatch(/5-day streak|streak/i);
   });
 

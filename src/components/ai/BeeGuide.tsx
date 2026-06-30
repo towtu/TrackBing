@@ -1,21 +1,15 @@
 import type { ReactNode } from "react";
 import {
+  Image,
   StyleSheet,
   Text,
   View,
+  type ImageSourcePropType,
+  type ImageStyle,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import Svg, {
-  Circle,
-  Defs,
-  Ellipse,
-  G,
-  LinearGradient,
-  Path,
-  Rect,
-  Stop,
-} from "react-native-svg";
+import type { BeeMood } from "@/src/lib/beeCoach";
 import { Colors } from "@/src/styles/colors";
 
 type BeeMascotSize = "small" | "medium" | "large";
@@ -27,13 +21,31 @@ type BeeGuideProps = {
   footer?: ReactNode;
   compact?: boolean;
   mascotSize?: BeeMascotSize;
+  mood?: BeeMood;
   style?: StyleProp<ViewStyle>;
 };
 
-const MASCOT_SIZE: Record<BeeMascotSize, number> = {
-  small: 54,
-  medium: 70,
-  large: 86,
+type MascotFrame = {
+  width: number;
+  height: number;
+};
+
+const MASCOT_FRAME: Record<BeeMascotSize, MascotFrame> = {
+  small: { width: 50, height: 76 },
+  medium: { width: 74, height: 112 },
+  large: { width: 96, height: 144 },
+};
+
+const BEE_POWER_MASCOTS: Record<BeeMood, ImageSourcePropType> = {
+  inactiveMonth: require("../../../assets/images/bee-power-inactive-month.png"),
+  inactiveWeek: require("../../../assets/images/bee-power-inactive-week.png"),
+  empty: require("../../../assets/images/bee-power-empty.png"),
+  over: require("../../../assets/images/bee-power-over.png"),
+  strongProtein: require("../../../assets/images/bee-power-strong-protein.png"),
+  lowProtein: require("../../../assets/images/bee-power-low-protein.png"),
+  streak: require("../../../assets/images/bee-power-streak.png"),
+  under: require("../../../assets/images/bee-power-under.png"),
+  steady: require("../../../assets/images/bee-power-pose.png"),
 };
 
 export function BeeGuide({
@@ -43,11 +55,12 @@ export function BeeGuide({
   footer,
   compact = false,
   mascotSize = compact ? "small" : "medium",
+  mood = "steady",
   style,
 }: BeeGuideProps) {
   return (
     <View style={[styles.card, compact && styles.cardCompact, style]}>
-      <BeeMascot size={mascotSize} />
+      <BeeMascot mood={mood} size={mascotSize} />
       <View style={styles.content}>
         <View style={[styles.bubble, compact && styles.bubbleCompact]}>
           <View style={styles.bubbleTail} />
@@ -68,100 +81,33 @@ export function BeeGuide({
 
 export function BeeMascot({
   size = "medium",
+  mood = "steady",
   style,
 }: {
   size?: BeeMascotSize;
+  mood?: BeeMood;
   style?: StyleProp<ViewStyle>;
 }) {
-  const dimension = MASCOT_SIZE[size];
+  const frame = MASCOT_FRAME[size];
+  const source = BEE_POWER_MASCOTS[mood] ?? BEE_POWER_MASCOTS.steady;
 
   return (
-    <View style={[styles.mascotWrap, { width: dimension, height: dimension }, style]}>
-      <Svg width={dimension} height={dimension} viewBox="0 0 96 96">
-        <Defs>
-          <LinearGradient id="beeBody" x1="28" y1="18" x2="70" y2="78">
-            <Stop offset="0" stopColor="#ffe066" />
-            <Stop offset="1" stopColor={Colors.accent} />
-          </LinearGradient>
-          <LinearGradient id="wing" x1="18" y1="18" x2="74" y2="60">
-            <Stop offset="0" stopColor="#ffffff" stopOpacity="0.95" />
-            <Stop offset="1" stopColor="#ffffff" stopOpacity="0.45" />
-          </LinearGradient>
-        </Defs>
-
-        <Ellipse
-          cx="25"
-          cy="38"
-          rx="15"
-          ry="20"
-          fill="url(#wing)"
-          stroke="rgba(255,255,255,0.72)"
-          strokeWidth="2"
-          transform="rotate(-24 25 38)"
-        />
-        <Ellipse
-          cx="71"
-          cy="38"
-          rx="15"
-          ry="20"
-          fill="url(#wing)"
-          stroke="rgba(255,255,255,0.72)"
-          strokeWidth="2"
-          transform="rotate(24 71 38)"
-        />
-
-        <Path
-          d="M29 42C29 25 38 16 48 16C58 16 67 25 67 42V60C67 74 58 82 48 82C38 82 29 74 29 60V42Z"
-          fill="url(#beeBody)"
-          stroke="#0f0f12"
-          strokeWidth="3"
-        />
-        <Rect x="30" y="45" width="36" height="8" rx="4" fill="#121214" />
-        <Rect x="31" y="61" width="34" height="8" rx="4" fill="#121214" />
-
-        <Path
-          d="M34 28C38 22 43 20 48 20C53 20 58 22 62 28V36H34V28Z"
-          fill="#121214"
-        />
-        <Path
-          d="M36 28C40 24 44 23 48 23C52 23 56 24 60 28"
-          fill="none"
-          stroke={Colors.accent}
-          strokeLinecap="round"
-          strokeWidth="3"
-        />
-
-        <G>
-          <Path
-            d="M39 16C35 9 30 8 27 12"
-            fill="none"
-            stroke="#121214"
-            strokeLinecap="round"
-            strokeWidth="4"
-          />
-          <Path
-            d="M57 16C61 9 66 8 69 12"
-            fill="none"
-            stroke="#121214"
-            strokeLinecap="round"
-            strokeWidth="4"
-          />
-          <Circle cx="26" cy="12" r="4" fill={Colors.accent} stroke="#121214" strokeWidth="2" />
-          <Circle cx="70" cy="12" r="4" fill={Colors.accent} stroke="#121214" strokeWidth="2" />
-        </G>
-
-        <Circle cx="41" cy="38" r="4" fill="#121214" />
-        <Circle cx="55" cy="38" r="4" fill="#121214" />
-        <Circle cx="42.5" cy="36.5" r="1.4" fill="#ffffff" />
-        <Circle cx="56.5" cy="36.5" r="1.4" fill="#ffffff" />
-        <Path
-          d="M42 49C45 52 51 52 54 49"
-          fill="none"
-          stroke="#121214"
-          strokeLinecap="round"
-          strokeWidth="3"
-        />
-      </Svg>
+    <View
+      style={[
+        styles.mascotWrap,
+        { width: frame.width, height: frame.height },
+        style,
+      ]}
+    >
+      <Image
+        source={source}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+        style={[
+          styles.mascotImage,
+          { width: frame.width, height: frame.height },
+        ]}
+      />
     </View>
   );
 }
@@ -180,7 +126,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
   },
+  mascotImage: {
+    flexShrink: 0,
+  } satisfies ImageStyle,
   content: {
     flex: 1,
     minWidth: 0,

@@ -5,9 +5,12 @@ export type BeeStats = {
   proteinGoal?: number;
   streak: number;
   mealCount: number;
+  daysSinceLastLog?: number;
 };
 
-type BeeBucket =
+export type BeeMood =
+  | "inactiveMonth"
+  | "inactiveWeek"
   | "empty"
   | "over"
   | "strongProtein"
@@ -28,11 +31,40 @@ type NormalizedBeeStats = {
   proteinGoal?: number;
   streak: number;
   mealCount: number;
+  daysSinceLastLog?: number;
   remaining: number;
   overBy: number;
 };
 
-const BEE_MESSAGES: Record<BeeBucket, BeeMessageTemplate[]> = {
+const BEE_MESSAGES: Record<BeeMood, BeeMessageTemplate[]> = {
+  inactiveMonth: [
+    {
+      title: "Fresh restart",
+      message: () => "Long break? Okay lang. One simple log and balik rhythm tayo.",
+    },
+    {
+      title: "Welcome back",
+      message: () => "Matagal-tagal din ah. Start small today, Bee has your back.",
+    },
+    {
+      title: "Reset day",
+      message: () => "No guilt, fresh start. Log one meal and rebuild the buzz.",
+    },
+  ],
+  inactiveWeek: [
+    {
+      title: "Bee missed you",
+      message: () => "A week off happens. One meal log lang and we're moving again.",
+    },
+    {
+      title: "Back to it",
+      message: () => "Welcome back, busy bee. Small log muna, then tuloy ulit.",
+    },
+    {
+      title: "Check-in time",
+      message: () => "Medyo tahimik this week. Start with today's first meal.",
+    },
+  ],
   empty: [
     {
       title: "Plate check",
@@ -139,15 +171,16 @@ const BEE_MESSAGES: Record<BeeBucket, BeeMessageTemplate[]> = {
 export function getBeeMessage(
   stats: BeeStats,
   seed = 0,
-): { title: string; message: string } {
+): { title: string; message: string; mood: BeeMood } {
   const normalized = normalizeStats(stats);
-  const bucket = getBeeBucket(normalized);
-  const variants = BEE_MESSAGES[bucket];
-  const variant = variants[pickIndex(bucket, seed, variants.length)];
+  const mood = getBeeMood(normalized);
+  const variants = BEE_MESSAGES[mood];
+  const variant = variants[pickIndex(mood, seed, variants.length)];
 
   return {
     title: variant.title,
     message: variant.message(normalized),
+    mood,
   };
 }
 
@@ -158,6 +191,7 @@ function normalizeStats(stats: BeeStats): NormalizedBeeStats {
   const proteinGoal = positiveNumber(stats.proteinGoal);
   const streak = Math.max(0, Math.floor(positiveNumber(stats.streak)));
   const mealCount = Math.max(0, Math.floor(positiveNumber(stats.mealCount)));
+  const daysSinceLastLog = positiveNumber(stats.daysSinceLastLog);
 
   return {
     calories,
@@ -166,12 +200,17 @@ function normalizeStats(stats: BeeStats): NormalizedBeeStats {
     proteinGoal: proteinGoal > 0 ? proteinGoal : undefined,
     streak,
     mealCount,
+    daysSinceLastLog: daysSinceLastLog > 0 ? Math.floor(daysSinceLastLog) : undefined,
     remaining: Math.max(0, goal - calories),
     overBy: Math.max(0, calories - goal),
   };
 }
 
-function getBeeBucket(stats: NormalizedBeeStats): BeeBucket {
+function getBeeMood(stats: NormalizedBeeStats): BeeMood {
+  if (stats.mealCount === 0 && stats.daysSinceLastLog) {
+    if (stats.daysSinceLastLog >= 30) return "inactiveMonth";
+    if (stats.daysSinceLastLog >= 7) return "inactiveWeek";
+  }
   if (stats.mealCount === 0) return "empty";
   if (stats.goal > 0 && stats.calories > stats.goal) return "over";
 
@@ -185,9 +224,9 @@ function getBeeBucket(stats: NormalizedBeeStats): BeeBucket {
   return "steady";
 }
 
-function pickIndex(bucket: BeeBucket, seed: number, length: number) {
+function pickIndex(mood: BeeMood, seed: number, length: number) {
   const safeSeed = Number.isFinite(seed) ? Math.floor(seed) : 0;
-  return Math.abs(safeSeed + hashString(bucket)) % length;
+  return Math.abs(safeSeed + hashString(mood)) % length;
 }
 
 function hashString(value: string) {

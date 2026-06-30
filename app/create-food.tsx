@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
+import { BeeGuide } from "@/src/components/ai/BeeGuide";
 import {
   SweetFeedback,
   type SweetFeedbackType,
@@ -211,30 +212,30 @@ export default function CreateFoodPage() {
           autoFocus
         />
 
-        <View style={styles.aiFillRow}>
-          <TouchableOpacity
-            accessibilityRole="button"
-            disabled={aiFillLoading}
-            onPress={handleAiFill}
-            style={[
-              styles.aiFillBtn,
-              aiFillLoading && styles.aiFillBtnDisabled,
-            ]}
-          >
-            {aiFillLoading ? (
-              <ActivityIndicator color={Colors.textOnAccent} />
-            ) : (
-              <Text style={styles.aiFillBtnText}>🐝 AI fill</Text>
-            )}
-          </TouchableOpacity>
-          {aiFillSource ? (
-            <AiEstimateBadge source={aiFillSource} compact />
-          ) : (
-            <Text style={styles.aiFillHint}>
-              Bee fills per-serving macros for review.
-            </Text>
-          )}
-        </View>
+        <BeeGuide
+          compact
+          title="Want Bee to fill it?"
+          message="Add a name, then Bee can draft per-serving macros you can edit."
+          style={styles.aiFillCard}
+          footer={aiFillSource ? <AiEstimateBadge source={aiFillSource} compact /> : null}
+          action={
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={aiFillLoading}
+              onPress={handleAiFill}
+              style={[
+                styles.aiFillBtn,
+                aiFillLoading && styles.aiFillBtnDisabled,
+              ]}
+            >
+              {aiFillLoading ? (
+                <ActivityIndicator color={Colors.textOnAccent} />
+              ) : (
+                <Text style={styles.aiFillBtnText}>AI fill</Text>
+              )}
+            </TouchableOpacity>
+          }
+        />
 
         <Text style={styles.label}>Default Unit</Text>
         <View
@@ -406,13 +407,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
   },
-  aiFillRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 10,
+  aiFillCard: {
     marginTop: -8,
     marginBottom: 20,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   aiFillBtn: {
     minHeight: 42,
@@ -429,11 +431,6 @@ const styles = StyleSheet.create({
     color: Colors.textOnAccent,
     fontSize: 13,
     fontWeight: "900",
-  },
-  aiFillHint: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    flexShrink: 1,
   },
   grid: { flexDirection: "row", gap: 15 },
   gridCompact: {

@@ -12,6 +12,7 @@ import {
 import { Colors } from "@/src/styles/colors";
 import type { AiFood } from "@/src/lib/aiFood";
 import { AiEstimateBadge } from "./AiEstimateBadge";
+import { BeeGuide } from "./BeeGuide";
 
 export type AiFoodSaveOpts = { toMyFoods: boolean; log: boolean };
 
@@ -80,12 +81,20 @@ export function AiFoodSheet({ visible, food, onClose, onSave }: Props) {
       <Pressable style={styles.backdrop} onPress={saving ? undefined : onClose}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <ScrollView keyboardShouldPersistTaps="handled">
-            <View style={styles.headerRow}>
-              <AiEstimateBadge source={food.source} />
-              <Text style={[styles.confidence, { color: CONFIDENCE_COLOR[food.confidence] }]}>
-                {food.confidence} confidence
-              </Text>
-            </View>
+            <BeeGuide
+              compact
+              title="Review before saving"
+              message="I found a draft for this serving. Check the numbers, then choose where it goes."
+              style={styles.beeHeader}
+              footer={
+                <View style={styles.provenanceRow}>
+                  <AiEstimateBadge source={food.source} compact />
+                  <Text style={[styles.confidence, { color: CONFIDENCE_COLOR[food.confidence] }]}>
+                    {food.confidence} confidence
+                  </Text>
+                </View>
+              }
+            />
 
             <Text style={styles.label}>Name</Text>
             <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Food name"
@@ -166,6 +175,9 @@ function Field({
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   sheet: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     backgroundColor: Colors.secondary,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -174,11 +186,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  headerRow: {
+  beeHeader: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  provenanceRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    gap: 10,
+    flexWrap: "wrap",
   },
   confidence: { fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
   label: { color: Colors.textSecondary, fontSize: 11, fontWeight: "700", marginBottom: 6, marginTop: 10 },

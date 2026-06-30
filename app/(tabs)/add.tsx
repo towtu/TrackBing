@@ -27,6 +27,7 @@ import {
   AiFoodSheet,
   type AiFoodSaveOpts,
 } from "@/src/components/ai/AiFoodSheet";
+import { BeeGuide } from "@/src/components/ai/BeeGuide";
 import {
   SweetFeedback,
   type SweetFeedbackType,
@@ -759,35 +760,28 @@ export default function AddFoodPage() {
                           Create &quot;{query}&quot;
                         </Text>
                       </TouchableOpacity>
-                      <View style={localStyles.beeCard}>
-                        <View style={localStyles.beeAvatar}>
-                          <Text style={localStyles.beeAvatarText}>🐝</Text>
-                        </View>
-                        <View style={localStyles.beeCopy}>
-                          <Text style={localStyles.beeTitle}>
-                            Ask Bee to draft it
-                          </Text>
-                          <Text style={localStyles.beeText}>
-                            Bee can estimate this meal, then you review the
-                            numbers before anything is saved.
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          accessibilityRole="button"
-                          disabled={aiLoading}
-                          onPress={handleBeeLookup}
-                          style={[
-                            localStyles.beeButton,
-                            aiLoading && localStyles.beeButtonDisabled,
-                          ]}
-                        >
-                          {aiLoading ? (
-                            <ActivityIndicator color={Colors.textOnAccent} />
-                          ) : (
-                            <Text style={localStyles.beeButtonText}>Ask Bee</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
+                      <BeeGuide
+                        title="I can draft this meal"
+                        message="Describe what you ate and Bee will prepare macros for you to review before saving."
+                        style={localStyles.beeCard}
+                        action={
+                          <TouchableOpacity
+                            accessibilityRole="button"
+                            disabled={aiLoading}
+                            onPress={handleBeeLookup}
+                            style={[
+                              localStyles.beeButton,
+                              aiLoading && localStyles.beeButtonDisabled,
+                            ]}
+                          >
+                            {aiLoading ? (
+                              <ActivityIndicator color={Colors.textOnAccent} />
+                            ) : (
+                              <Text style={localStyles.beeButtonText}>Ask Bee</Text>
+                            )}
+                          </TouchableOpacity>
+                        }
+                      />
                     </View>
                   ) : null
                 }
@@ -1303,38 +1297,6 @@ const localStyles = RNStyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  beeAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: Colors.accentDim,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 204, 0, 0.25)",
-    flexShrink: 0,
-  },
-  beeAvatarText: {
-    fontSize: 20,
-  },
-  beeCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  beeTitle: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: "900",
-    marginBottom: 3,
-  },
-  beeText: {
-    color: Colors.textSecondary,
-    fontSize: 11,
-    lineHeight: 15,
   },
   beeButton: {
     backgroundColor: Colors.accent,

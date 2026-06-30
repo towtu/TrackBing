@@ -4,7 +4,7 @@ import { supabase } from "./supabase";
 // validation live server-side; this only invokes the function and maps the
 // result into a tidy discriminated union for the UI.
 
-export type FoodSource = "usda" | "openfoodfacts" | "ai_estimate";
+export type FoodSource = "my_food" | "usda" | "openfoodfacts" | "ai_estimate";
 
 export type AiFood = {
   name: string;

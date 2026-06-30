@@ -9,6 +9,7 @@ import type { FoodSource } from "@/src/lib/aiFood";
  * log rows so provenance stays visible.
  */
 const LABEL: Record<FoodSource, string> = {
+  my_food: "My Food",
   usda: "USDA",
   openfoodfacts: "OpenFoodFacts",
   ai_estimate: "✨ AI estimate",

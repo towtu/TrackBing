@@ -61,6 +61,57 @@ function usdaPer100(food: Record<string, unknown>): Per100 | null {
   return { kcal, protein, carbs, fat };
 }
 
+// Tier 0 "memory": the user's own saved foods. A match means the system
+// remembers what they logged before — return it directly (no AI cost).
+async function personalTop(
+  admin: SupabaseClient,
+  userId: string,
+  term: string,
+  grams: number,
+): Promise<AiFood | null> {
+  try {
+    const { data } = await admin
+      .from("personal_foods")
+      .select("name, calories, protein, carbs, fat, default_unit")
+      .eq("user_id", userId)
+      .ilike("name", `%${term}%`)
+      .limit(1);
+    const f = data?.[0];
+    if (!f) return null;
+
+    const unit = String(f.default_unit ?? "serving");
+    const per100: Per100 = {
+      kcal: numOr(f.calories, 0),
+      protein: numOr(f.protein, 0),
+      carbs: numOr(f.carbs, 0),
+      fat: numOr(f.fat, 0),
+    };
+    // Weight-based saved foods store per-100g and can be scaled; unit-based
+    // foods (serving/cup/...) store per-1 and are returned as a single unit.
+    const isWeight = unit === "g" || unit === "ml" || unit === "oz";
+    if (isWeight) {
+      return {
+        name: String(f.name),
+        serving_label: `${grams} ${unit}`,
+        serving_grams: grams,
+        ...scaleToServing(per100, grams),
+        confidence: "high",
+        source: "my_food",
+      };
+    }
+    return {
+      name: String(f.name),
+      serving_label: `1 ${unit}`,
+      serving_grams: 100,
+      ...per100,
+      confidence: "high",
+      source: "my_food",
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function usdaTop(
   admin: SupabaseClient,
   term: string,
@@ -194,11 +245,11 @@ Deno.serve(async (req) => {
   const servingLabel = String(interp.serving_label ?? "1 serving");
   const displayName = String(interp.name ?? term) || "Food";
 
-  // --- 2. Ground in real databases; fall back to the estimate ---
-  let food: AiFood | null = null;
-  const usda = await usdaTop(admin, term);
-  const ground = usda ?? (await offTop(term));
-  if (ground) {
+  // --- 2. Resolve: the user's own foods (memory) -> USDA/OFF -> AI estimate ---
+  let food: AiFood | null = await personalTop(admin, user.id, term, grams);
+  const usda = food ? null : await usdaTop(admin, term);
+  const ground = food ? null : usda ?? (await offTop(term));
+  if (!food && ground) {
     const scaled = scaleToServing(ground.per100, grams);
     food = {
       name: displayName,
@@ -208,7 +259,7 @@ Deno.serve(async (req) => {
       confidence: "high",
       source: usda ? "usda" : "openfoodfacts",
     };
-  } else {
+  } else if (!food) {
     const est = (interp.estimate ?? {}) as Record<string, unknown>;
     food = validateAndNormalize({
       name: displayName,

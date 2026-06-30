@@ -35,6 +35,8 @@ import {
 import CircularProgress from "react-native-circular-progress-indicator";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
+import { BeeGuide } from "@/src/components/ai/BeeGuide";
+import { getBeeMessage } from "@/src/lib/beeCoach";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary, getLocalDateStr } from "@/src/lib/dailySummary";
 import {
@@ -57,6 +59,14 @@ type GoalProfile = {
   proteinRatio: number;
   carbsRatio: number;
   fatRatio: number;
+};
+
+const getDashboardBeeSeed = (value: string) => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return hash;
 };
 
 export function DashboardScreen() {
@@ -475,6 +485,17 @@ export function DashboardScreen() {
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
+  const beeMessage = getBeeMessage(
+    {
+      calories: totals.calories,
+      goal: calorieGoal,
+      protein: totals.protein,
+      proteinGoal: goals.p,
+      streak,
+      mealCount: logs.length,
+    },
+    getDashboardBeeSeed(getLocalDateStr()),
+  );
   
   // Format time for logs
   const formatTime = (dateString?: string) => {
@@ -544,6 +565,16 @@ export function DashboardScreen() {
     </View>
   );
 
+  const renderBeeCompanion = () => (
+    <BeeGuide
+      compact={!isDesktop}
+      mascotSize={isDesktop ? "medium" : "small"}
+      title={beeMessage.title}
+      message={beeMessage.message}
+      style={styles.beeCompanionCard}
+    />
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
       <View style={[styles.contentContainer, isDesktop && { maxWidth: 1280 }]}>
@@ -578,6 +609,7 @@ export function DashboardScreen() {
             contentContainerStyle={{ paddingBottom: 100 }}
             refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} tintColor={Colors.accent} />}
           >
+            {renderBeeCompanion()}
             <View style={{ flexDirection: "row", gap: 24, marginTop: 16 }}>
               {/* Left Column: Stats & Goals */}
               <View style={{ flex: 3 }}>
@@ -760,6 +792,8 @@ export function DashboardScreen() {
             contentContainerStyle={{ paddingBottom: 160 }}
             ListHeaderComponent={
               <>
+                {renderBeeCompanion()}
+
                 {/* ── PREMIUM HERO CARD ── */}
                 <View style={styles.heroCard}>
                   <View style={styles.datePill}>
@@ -1185,6 +1219,17 @@ const styles = StyleSheet.create({
     shadowColor: Colors.accent, shadowOffset: { width:0, height:0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 4,
   },
   fireBadgeText: { color: "#000", fontSize: 10, fontWeight: "900" },
+
+  // ── BEE COMPANION ──
+  beeCompanionCard: {
+    marginTop: 4,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.24)",
+  },
 
   // ── PREMIUM HERO CARD ──
   heroCard: {

@@ -6,6 +6,7 @@ import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
+import { BeeQuickLog } from "@/src/components/ai/BeeQuickLog";
 import ErrorBoundary from "@/src/components/ErrorBoundary";
 import AuthRoute from "./auth";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -84,6 +85,7 @@ export default function RootLayout() {
                 </Stack>
               )}
             </View>
+            {session && <BeeQuickLog />}
           </View>
         </SafeAreaView>
       </SafeAreaProvider>

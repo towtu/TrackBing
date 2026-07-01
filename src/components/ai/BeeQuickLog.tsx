@@ -1,0 +1,592 @@
+import {
+  ChatCircleText,
+  PaperPlaneTilt,
+  X,
+} from "phosphor-react-native";
+import React, { useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
+import { BeeMascot } from "@/src/components/ai/BeeGuide";
+import {
+  SweetFeedback,
+  type SweetFeedbackType,
+} from "@/src/components/feedback/SweetFeedback";
+import { requestAiFood, type AiFood } from "@/src/lib/aiFood";
+import { getAiFoodFeedback } from "@/src/lib/aiFoodUi";
+import {
+  buildAiFoodLogInsert,
+  getBeeQuickLogClarification,
+  mergeBeeQuickLogClarification,
+  type BeeQuickLogClarification,
+} from "@/src/lib/beeQuickLog";
+import { upsertDailySummary } from "@/src/lib/dailySummary";
+import { supabase } from "@/src/lib/supabase";
+import { Colors } from "@/src/styles/colors";
+import { useResponsive } from "@/src/hooks/useResponsive";
+
+type ChatMessage = {
+  id: string;
+  role: "bee" | "user";
+  text: string;
+  food?: AiFood;
+};
+
+type FeedbackState = {
+  type: SweetFeedbackType;
+  title: string;
+  message: string;
+  confirmText?: string;
+  autoDismissMs?: number;
+};
+
+const STARTER_MESSAGES: ChatMessage[] = [
+  {
+    id: "starter",
+    role: "bee",
+    text:
+      'Tell Bee what you ate, like "600g chicken breast". If details matter, I\'ll ask before logging.',
+  },
+];
+
+export function BeeQuickLog() {
+  const { isDesktop } = useResponsive();
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>(STARTER_MESSAGES);
+  const [pendingClarification, setPendingClarification] =
+    useState<BeeQuickLogClarification | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+
+  const open = () => setVisible(true);
+  const close = () => {
+    if (!loading) setVisible(false);
+  };
+
+  const appendMessages = (
+    nextMessages: ChatMessage[],
+    options?: { replaceStarter?: boolean },
+  ) => {
+    setMessages((current) => {
+      const shouldReplaceStarter =
+        options?.replaceStarter &&
+        current.length === 1 &&
+        current[0]?.id === "starter";
+      return [...(shouldReplaceStarter ? [] : current), ...nextMessages];
+    });
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
+  const submitText = async (text: string) => {
+    const trimmed = text.trim().replace(/\s+/g, " ");
+    if (!trimmed || loading) return;
+
+    setInput("");
+    appendMessages(
+      [{ id: createId("user"), role: "user", text: trimmed }],
+      { replaceStarter: true },
+    );
+
+    if (pendingClarification) {
+      const clarifiedQuery = mergeBeeQuickLogClarification(
+        pendingClarification,
+        trimmed,
+      );
+      setPendingClarification(null);
+      await resolveAndLog(clarifiedQuery);
+      return;
+    }
+
+    const clarification = getBeeQuickLogClarification(trimmed);
+    if (clarification) {
+      setPendingClarification(clarification);
+      appendMessages([
+        {
+          id: createId("bee"),
+          role: "bee",
+          text: clarification.question,
+        },
+      ]);
+      return;
+    }
+
+    await resolveAndLog(trimmed);
+  };
+
+  const resolveAndLog = async (query: string) => {
+    setLoading(true);
+    appendMessages([
+      {
+        id: createId("bee"),
+        role: "bee",
+        text: "Checking the best match and logging it now...",
+      },
+    ]);
+
+    const result = await requestAiFood(query, "auto");
+    if (!result.ok) {
+      const aiFeedback = getAiFoodFeedback(result.reason);
+      setLoading(false);
+      appendMessages([
+        {
+          id: createId("bee"),
+          role: "bee",
+          text: aiFeedback.message,
+        },
+      ]);
+      setFeedback(aiFeedback);
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setLoading(false);
+      setFeedback({
+        type: "warning",
+        title: "Sign in required",
+        message: "Please sign in again before Bee logs this food.",
+      });
+      return;
+    }
+
+    const logRow = buildAiFoodLogInsert(user.id, result.food);
+    const { error } = await supabase.from("food_logs").insert([logRow]);
+    setLoading(false);
+
+    if (error) {
+      appendMessages([
+        {
+          id: createId("bee"),
+          role: "bee",
+          text: "I found the food, but logging failed. Please try again.",
+        },
+      ]);
+      setFeedback({
+        type: "error",
+        title: "Bee couldn't log it",
+        message: "Please try again in a moment.",
+      });
+      return;
+    }
+
+    void upsertDailySummary();
+    appendMessages([
+      {
+        id: createId("bee"),
+        role: "bee",
+        food: result.food,
+        text: `Logged ${result.food.serving_label} of ${result.food.name}.`,
+      },
+    ]);
+    setFeedback({
+      type: "success",
+      title: "Bee logged it",
+      message: `${result.food.name} was added to today's log.`,
+      autoDismissMs: 1200,
+    });
+  };
+
+  const options = pendingClarification?.options ?? [];
+
+  return (
+    <>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Open Bee quick log"
+        activeOpacity={0.86}
+        onPress={open}
+        style={[
+          styles.floatingButton,
+          isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile,
+        ]}
+      >
+        <View style={styles.launcherMascotViewport}>
+          <BeeMascot size="small" mood="under" style={styles.launcherMascot} />
+        </View>
+        <View style={styles.floatingBadge}>
+          <ChatCircleText size={13} color={Colors.textOnAccent} weight="fill" />
+        </View>
+      </TouchableOpacity>
+
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
+        <Pressable style={styles.backdrop} onPress={close}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.keyboardAvoid}
+          >
+            <Pressable
+              style={[styles.sheet, isDesktop && styles.sheetDesktop]}
+              onPress={(event) => event.stopPropagation()}
+            >
+              <View style={styles.header}>
+                <View style={styles.headerAvatar}>
+                  <BeeMascot size="small" mood={pendingClarification ? "empty" : "under"} />
+                </View>
+                <View style={styles.headerCopy}>
+                  <Text style={styles.title}>Bee quick log</Text>
+                  <Text style={styles.subtitle}>
+                    Describe it. I will ask if I need one detail.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Close Bee quick log"
+                  onPress={close}
+                  disabled={loading}
+                  style={styles.closeButton}
+                >
+                  <X size={18} color={Colors.textSecondary} weight="bold" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                ref={scrollRef}
+                style={styles.messages}
+                contentContainerStyle={styles.messagesContent}
+                keyboardShouldPersistTaps="handled"
+                onContentSizeChange={() =>
+                  scrollRef.current?.scrollToEnd({ animated: true })
+                }
+              >
+                {messages.map((message) => (
+                  <View
+                    key={message.id}
+                    style={[
+                      styles.messageBubble,
+                      message.role === "user"
+                        ? styles.userBubble
+                        : styles.beeBubble,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.messageText,
+                        message.role === "user"
+                          ? styles.userMessageText
+                          : styles.beeMessageText,
+                      ]}
+                    >
+                      {message.text}
+                    </Text>
+                    {message.food ? (
+                      <View style={styles.badgeRow}>
+                        <AiEstimateBadge source={message.food.source} compact />
+                        <Text style={styles.confidenceText}>
+                          {message.food.confidence} confidence
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+              </ScrollView>
+
+              {options.length > 0 ? (
+                <View style={styles.optionWrap}>
+                  {options.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      activeOpacity={0.82}
+                      disabled={loading}
+                      onPress={() => submitText(option)}
+                      style={styles.optionChip}
+                    >
+                      <Text style={styles.optionText}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+
+              <View style={styles.inputRow}>
+                <TextInput
+                  value={input}
+                  onChangeText={setInput}
+                  editable={!loading}
+                  placeholder="I ate 600g chicken breast"
+                  placeholderTextColor={Colors.textMuted}
+                  returnKeyType="send"
+                  onSubmitEditing={() => submitText(input)}
+                  style={styles.input}
+                />
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Send to Bee"
+                  activeOpacity={0.86}
+                  disabled={loading || input.trim().length === 0}
+                  onPress={() => submitText(input)}
+                  style={[
+                    styles.sendButton,
+                    (loading || input.trim().length === 0) &&
+                      styles.sendButtonDisabled,
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={Colors.textOnAccent} size="small" />
+                  ) : (
+                    <PaperPlaneTilt
+                      size={18}
+                      color={Colors.textOnAccent}
+                      weight="fill"
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {feedback && (
+        <SweetFeedback
+          visible
+          type={feedback.type}
+          title={feedback.title}
+          message={feedback.message}
+          confirmText={feedback.confirmText}
+          autoDismissMs={feedback.autoDismissMs}
+          onClose={() => setFeedback(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function createId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+const styles = StyleSheet.create({
+  floatingButton: {
+    position: "absolute",
+    zIndex: 50,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.42)",
+    shadowColor: Colors.accent,
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 14,
+    overflow: "visible",
+  },
+  launcherMascotViewport: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  launcherMascot: {
+    transform: [{ translateY: 10 }],
+  },
+  floatingButtonMobile: {
+    right: 16,
+    bottom: 112,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  floatingButtonDesktop: {
+    right: 24,
+    bottom: 24,
+  },
+  floatingBadge: {
+    position: "absolute",
+    right: -1,
+    bottom: -1,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.accent,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.58)",
+    justifyContent: "flex-end",
+  },
+  keyboardAvoid: {
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    width: "100%",
+    minHeight: 400,
+    maxHeight: "86%",
+    backgroundColor: Colors.secondary,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+  },
+  sheetDesktop: {
+    width: 460,
+    maxHeight: 640,
+    borderRadius: 24,
+    alignSelf: "flex-end",
+    marginRight: 24,
+    marginBottom: 92,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  headerAvatar: {
+    width: 46,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  title: {
+    color: Colors.text,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  subtitle: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  messages: {
+    maxHeight: 360,
+  },
+  messagesContent: {
+    gap: 10,
+    paddingTop: 14,
+    paddingBottom: 22,
+  },
+  messageBubble: {
+    maxWidth: "88%",
+    borderRadius: 16,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+  },
+  beeBubble: {
+    alignSelf: "flex-start",
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  userBubble: {
+    alignSelf: "flex-end",
+    backgroundColor: Colors.accent,
+  },
+  messageText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  beeMessageText: {
+    color: Colors.text,
+  },
+  userMessageText: {
+    color: Colors.textOnAccent,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 9,
+  },
+  confidenceText: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  optionWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  optionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255, 204, 0, 0.35)",
+    backgroundColor: Colors.accentDim,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  optionText: {
+    color: Colors.accent,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  input: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.inputBg,
+    color: Colors.text,
+    paddingHorizontal: 14,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  sendButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.accent,
+  },
+  sendButtonDisabled: {
+    opacity: 0.55,
+  },
+});

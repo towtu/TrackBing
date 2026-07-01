@@ -32,9 +32,33 @@ export function getAiFoodFeedback(reason: AiFoodReason): AiFoodFeedback {
     };
   }
 
+  if (reason === "ai_unavailable") {
+    return {
+      type: "warning",
+      title: "Bee could not reach the AI",
+      message: "DeepSeek did not finish that request. Please try again in a moment.",
+    };
+  }
+
+  if (reason === "unauthorized") {
+    return {
+      type: "warning",
+      title: "Sign in required",
+      message: "Please sign in again before Bee checks that food.",
+    };
+  }
+
+  if (reason === "bad_request") {
+    return {
+      type: "warning",
+      title: "Bee needs a food to check",
+      message: "Try a food name with an amount, like 60g white rice.",
+    };
+  }
+
   return {
     type: "error",
     title: "Bee couldn't read that yet",
-    message: "Try again with a shorter food or meal description.",
+    message: "Try again in a moment, or use Find Food while Bee reconnects.",
   };
 }

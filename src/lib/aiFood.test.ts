@@ -24,6 +24,26 @@ describe("requestAiFood", () => {
     expect(r).toEqual({ ok: false, reason: "over_free_quota" });
   });
 
+  it("maps an AI availability error carried in the body", async () => {
+    invoke.mockResolvedValue({ data: { error: "ai_unavailable" }, error: null });
+    const r = await requestAiFood("egg");
+    expect(r).toEqual({ ok: false, reason: "ai_unavailable" });
+  });
+
+  it("maps an AI availability error carried by an HTTP function error", async () => {
+    invoke.mockResolvedValue({
+      data: null,
+      error: {
+        message: "Edge Function returned a non-2xx status code",
+        context: {
+          json: async () => ({ error: "ai_unavailable" }),
+        },
+      },
+    });
+    const r = await requestAiFood("egg");
+    expect(r).toEqual({ ok: false, reason: "ai_unavailable" });
+  });
+
   it("returns error when the function rejects", async () => {
     invoke.mockResolvedValue({ data: null, error: { message: "boom" } });
     const r = await requestAiFood("egg");

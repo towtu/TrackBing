@@ -1,7 +1,7 @@
 // ai-food: turns a food/meal description into macros, GROUNDED in real
 // nutrition databases.
 //
-// Flow: DeepSeek interprets the query (food name + portion + a fallback
+// Flow: DeepSeek thinking mode interprets the query (food name + portion + a fallback
 // estimate) -> we look the food up in USDA and OpenFoodFacts -> if found we
 // return those real per-100g macros scaled to the portion (source: usda/
 // openfoodfacts); if not found we fall back to DeepSeek's estimate, clearly
@@ -25,6 +25,14 @@ const FREE_MONTHLY = 7;
 const PRO_DAILY = 100;
 const RATE_PER_MIN = 15;
 const MAX_QUERY = 200;
+const DEEPSEEK_MODEL = "deepseek-v4-flash";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 const SYSTEM_PROMPT =
   `You convert a food or meal description into JSON for a nutrition-database lookup. ` +
@@ -39,7 +47,7 @@ const SYSTEM_PROMPT =
 function json(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 }
 
@@ -159,6 +167,10 @@ async function offTop(term: string): Promise<{ per100: Per100; name: string } | 
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: CORS_HEADERS });
+  }
+
   if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
 
   const authHeader = req.headers.get("Authorization") ?? "";
@@ -223,11 +235,12 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${Deno.env.get("DEEPSEEK_API_KEY")!}`,
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: DEEPSEEK_MODEL,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: query },
         ],
+        thinking: { type: "enabled", reasoning_effort: "medium" },
         response_format: { type: "json_object" },
         temperature: 0.2,
       }),

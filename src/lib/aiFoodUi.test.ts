@@ -20,6 +20,13 @@ describe("aiFoodUi", () => {
     });
   });
 
+  it("uses accurate copy when the AI provider is unavailable", () => {
+    expect(getAiFoodFeedback("ai_unavailable")).toMatchObject({
+      type: "warning",
+      title: "Bee could not reach the AI",
+    });
+  });
+
   it("marks only low-confidence AI fallback estimates as ai_estimated", () => {
     expect(shouldMarkAiEstimated({ source: "ai_estimate" })).toBe(true);
     expect(shouldMarkAiEstimated({ source: "usda" })).toBe(false);

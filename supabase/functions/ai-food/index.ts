@@ -20,6 +20,7 @@
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { validateAndNormalize, scaleToServing, type AiFood, type Per100 } from "../_shared/macros.ts";
 import { currentPeriod, isProActive, decideQuota, isRateLimited } from "../_shared/quota.ts";
+import { buildUsdaSearchTerms } from "../_shared/foodSearch.ts";
 
 const FREE_MONTHLY = 7;
 const PRO_DAILY = 100;
@@ -125,13 +126,15 @@ async function usdaTop(
   term: string,
 ): Promise<{ per100: Per100; name: string } | null> {
   try {
-    const { data } = await admin.functions.invoke<{ foods?: unknown }>("usda-search", {
-      body: { query: term, pageSize: 5 },
-    });
-    const foods = Array.isArray(data?.foods) ? (data!.foods as Record<string, unknown>[]) : [];
-    for (const food of foods) {
-      const per100 = usdaPer100(food);
-      if (per100) return { per100, name: String(food.description ?? term) };
+    for (const query of buildUsdaSearchTerms(term)) {
+      const { data } = await admin.functions.invoke<{ foods?: unknown }>("usda-search", {
+        body: { query, pageSize: 5 },
+      });
+      const foods = Array.isArray(data?.foods) ? (data!.foods as Record<string, unknown>[]) : [];
+      for (const food of foods) {
+        const per100 = usdaPer100(food);
+        if (per100) return { per100, name: String(food.description ?? term) };
+      }
     }
   } catch {
     // fall through to OpenFoodFacts

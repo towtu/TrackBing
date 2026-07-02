@@ -54,3 +54,32 @@ describe("scaleToServing", () => {
     expect(scaleToServing(per100, 0)).toEqual({ kcal: 155, protein: 13, carbs: 1.1, fat: 11 });
   });
 });
+
+describe("source_detail passthrough", () => {
+  it("keeps a trimmed source_detail", () => {
+    const food = validateAndNormalize({
+      name: "Cheesedog", serving_label: "1 piece", serving_grams: 35,
+      kcal: 105, protein: 4, carbs: 3, fat: 8.5,
+      source: "web", source_detail: "  tenderjuicy.com.ph  ",
+    });
+    expect(food?.source_detail).toBe("tenderjuicy.com.ph");
+  });
+
+  it("omits source_detail when absent or not a string", () => {
+    const food = validateAndNormalize({
+      name: "Egg", serving_label: "1 large", serving_grams: 50,
+      kcal: 72, protein: 6.3, carbs: 0.4, fat: 4.8,
+      source: "usda", source_detail: 42,
+    });
+    expect(food?.source_detail).toBeUndefined();
+  });
+
+  it("caps source_detail at 120 chars", () => {
+    const food = validateAndNormalize({
+      name: "Egg", serving_label: "1 large", serving_grams: 50,
+      kcal: 72, protein: 6.3, carbs: 0.4, fat: 4.8,
+      source: "usda", source_detail: "x".repeat(300),
+    });
+    expect(food?.source_detail).toHaveLength(120);
+  });
+});

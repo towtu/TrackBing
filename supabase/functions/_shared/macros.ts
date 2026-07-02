@@ -16,6 +16,7 @@ export type AiFood = {
   ingredients?: { name: string; kcal: number; protein: number; carbs: number; fat: number }[];
   confidence: "high" | "medium" | "low";
   source: FoodSource;
+  source_detail?: string;
   notes?: string;
 };
 
@@ -90,6 +91,10 @@ export function validateAndNormalize(raw: unknown): AiFood | null {
       r.source === "ai_estimate"
         ? (r.source as FoodSource)
         : "ai_estimate",
+    source_detail:
+      typeof r.source_detail === "string"
+        ? r.source_detail.trim().slice(0, 120) || undefined
+        : undefined,
     notes: typeof r.notes === "string" ? r.notes.trim() || undefined : undefined,
   };
 }

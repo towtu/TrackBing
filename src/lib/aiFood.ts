@@ -18,6 +18,7 @@ export type AiFood = {
   ingredients?: { name: string; kcal: number; protein: number; carbs: number; fat: number }[];
   confidence: "high" | "medium" | "low";
   source: FoodSource;
+  source_detail?: string;
   notes?: string;
 };
 

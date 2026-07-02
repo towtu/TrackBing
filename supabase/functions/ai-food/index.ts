@@ -205,6 +205,7 @@ async function tavilySearch(query: string): Promise<TavilyResult[]> {
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({ query, max_results: 6, search_depth: "basic" }),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -300,6 +301,7 @@ Deno.serve(async (req) => {
         response_format: { type: "json_object" },
         temperature: 0.2,
       }),
+      signal: AbortSignal.timeout(45_000),
     });
     if (!dsRes.ok) return json(502, { error: "ai_unavailable" });
     const dsJson = await dsRes.json();
@@ -343,9 +345,15 @@ Deno.serve(async (req) => {
                   `Request: ${query}\nPortion: ${servingLabel} (${grams} g)\n\nSearch results:\n${snippets}`,
               },
             ],
+            // Extraction over provided snippets needs no long thinking phase;
+            // an unbounded reasoning chain here blows past the gateway's 150s
+            // idle timeout.
+            thinking: { type: "disabled" },
             response_format: { type: "json_object" },
             temperature: 0.2,
+            max_tokens: 1200,
           }),
+          signal: AbortSignal.timeout(90_000),
         });
         if (dsRes.ok) {
           const dsJson = await dsRes.json();

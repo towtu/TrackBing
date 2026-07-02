@@ -31,20 +31,29 @@ export type AiFoodReason =
   | "unauthorized"
   | "error";
 
+export type AiFoodMode = "auto" | "fill" | "web";
+
 export type AiFoodResult =
-  | { ok: true; food: AiFood }
+  | { ok: true; food: AiFood; alternatives: AiFood[] }
   | { ok: false; reason: AiFoodReason };
 
 export async function requestAiFood(
   query: string,
-  mode: "auto" | "fill" = "auto",
+  mode: AiFoodMode = "auto",
 ): Promise<AiFoodResult> {
   try {
-    const { data, error } = await supabase.functions.invoke<{ food?: AiFood; error?: string }>(
-      "ai-food",
-      { body: { query, mode } },
-    );
-    if (data?.food) return { ok: true, food: data.food };
+    const { data, error } = await supabase.functions.invoke<{
+      food?: AiFood;
+      alternatives?: AiFood[];
+      error?: string;
+    }>("ai-food", { body: { query, mode } });
+    if (data?.food) {
+      return {
+        ok: true,
+        food: data.food,
+        alternatives: Array.isArray(data.alternatives) ? data.alternatives : [],
+      };
+    }
     const bodyReason = toAiFoodReason(data?.error);
     if (bodyReason) return { ok: false, reason: bodyReason };
 

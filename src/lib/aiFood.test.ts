@@ -15,7 +15,30 @@ describe("requestAiFood", () => {
   it("returns the food on success", async () => {
     invoke.mockResolvedValue({ data: { food: { name: "Egg", kcal: 72 } }, error: null });
     const r = await requestAiFood("egg");
-    expect(r).toEqual({ ok: true, food: { name: "Egg", kcal: 72 } });
+    expect(r).toEqual({ ok: true, food: { name: "Egg", kcal: 72 }, alternatives: [] });
+  });
+
+  it("returns alternatives from the response, defaulting to []", async () => {
+    const food = { name: "Rice, white, cooked", kcal: 130 };
+    const alt = { name: "Rice, white, raw", kcal: 365 };
+    invoke.mockResolvedValueOnce({
+      data: { food, alternatives: [alt] },
+      error: null,
+    });
+    const r = await requestAiFood("60g white rice");
+    expect(r).toEqual({ ok: true, food, alternatives: [alt] });
+
+    invoke.mockResolvedValueOnce({ data: { food }, error: null });
+    const r2 = await requestAiFood("60g white rice");
+    expect(r2.ok && r2.alternatives).toEqual([]);
+  });
+
+  it("sends mode web to the edge function", async () => {
+    invoke.mockResolvedValueOnce({ data: { food: { name: "Cheesedog" } }, error: null });
+    await requestAiFood("tender juicy cheesedog", "web");
+    expect(invoke).toHaveBeenCalledWith("ai-food", {
+      body: { query: "tender juicy cheesedog", mode: "web" },
+    });
   });
 
   it("maps a quota error carried in the body", async () => {

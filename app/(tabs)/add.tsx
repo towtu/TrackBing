@@ -136,6 +136,8 @@ export default function AddFoodPage() {
 
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [aiFoodProposal, setAiFoodProposal] = useState<AiFood | null>(null);
+  const [aiAlternatives, setAiAlternatives] = useState<AiFood[]>([]);
+  const [aiQuery, setAiQuery] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
@@ -280,10 +282,23 @@ export default function AddFoodPage() {
     setAiLoading(false);
 
     if (result.ok) {
+      setAiQuery(trimmed);
       setAiFoodProposal(result.food);
+      setAiAlternatives(result.alternatives);
       return;
     }
 
+    setFeedback(getAiFoodFeedback(result.reason));
+  };
+
+  const handleAiFindMore = async () => {
+    if (!aiQuery) return;
+    const result = await requestAiFood(aiQuery, "web");
+    if (result.ok) {
+      setAiFoodProposal(result.food);
+      setAiAlternatives(result.alternatives);
+      return;
+    }
     setFeedback(getAiFoodFeedback(result.reason));
   };
 
@@ -1047,7 +1062,13 @@ export default function AddFoodPage() {
         <AiFoodSheet
           visible={!!aiFoodProposal}
           food={aiFoodProposal}
-          onClose={() => setAiFoodProposal(null)}
+          alternatives={aiAlternatives}
+          onSelectAlternative={(alt) => setAiFoodProposal(alt)}
+          onFindMore={handleAiFindMore}
+          onClose={() => {
+            setAiFoodProposal(null);
+            setAiAlternatives([]);
+          }}
           onSave={handleAiFoodSave}
         />
       </View>

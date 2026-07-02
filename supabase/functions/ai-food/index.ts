@@ -22,12 +22,16 @@ import { validateAndNormalize, scaleToServing, type AiFood, type Per100 } from "
 import { currentPeriod, isProActive, decideQuota, isRateLimited } from "../_shared/quota.ts";
 import { buildUsdaSearchTerms } from "../_shared/foodSearch.ts";
 import { pickCandidates } from "../_shared/candidates.ts";
+import { buildTavilyQuery, parseWebCandidates } from "../_shared/webNutrition.ts";
 
 const FREE_MONTHLY = 7;
 const PRO_DAILY = 100;
 const RATE_PER_MIN = 15;
 const MAX_QUERY = 200;
 const DEEPSEEK_MODEL = "deepseek-v4-flash";
+// Web-mode ("Find more") uses the bigger model: judgment over messy web
+// snippets is where it earns its ~4x cost. One-line A/B switch.
+const DEEPSEEK_WEB_MODEL = "deepseek-v4-pro";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +49,16 @@ const SYSTEM_PROMPT =
   `e.g. "egg", "chicken adobo". serving_label + serving_grams: the portion the user asked for ` +
   `(grams for the whole serving). estimate: your best PER-SERVING macro estimate, used only as a ` +
   `fallback if the databases have nothing.`;
+
+const WEB_SYSTEM_PROMPT =
+  `You extract nutrition candidates for a food from web search results. ` +
+  `Return ONLY JSON: {"candidates":[{"name":string,"url":string,"serving_label":string,` +
+  `"serving_grams":number,"kcal":number,"protein":number,"carbs":number,"fat":number,` +
+  `"notes"?:string}]} with up to 4 candidates ordered best-match-first for the user's request. ` +
+  `Use ONLY nutrition numbers present in the search results, scaled to the requested portion. ` +
+  `"url" MUST be the exact URL of the search result the numbers came from. ` +
+  `Prefer official brand sites and established nutrition databases when results disagree. ` +
+  `If no result contains usable nutrition data, return {"candidates":[]}.`;
 
 function json(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -178,6 +192,35 @@ async function offCandidates(term: string): Promise<{ per100: Per100; name: stri
   }
 }
 
+type TavilyResult = { url: string; title: string; content: string };
+
+async function tavilySearch(query: string): Promise<TavilyResult[]> {
+  const key = Deno.env.get("TAVILY_API_KEY");
+  if (!key) return [];
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({ query, max_results: 6, search_depth: "basic" }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const results = Array.isArray(data?.results) ? data.results : [];
+    return results
+      .map((r: Record<string, unknown>) => ({
+        url: String(r?.url ?? ""),
+        title: String(r?.title ?? ""),
+        content: String(r?.content ?? ""),
+      }))
+      .filter((r: TavilyResult) => r.url && r.content);
+  } catch {
+    return [];
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: CORS_HEADERS });
@@ -194,7 +237,7 @@ Deno.serve(async (req) => {
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return json(401, { error: "unauthorized" });
 
-  let body: { query?: unknown };
+  let body: { query?: unknown; mode?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -202,6 +245,7 @@ Deno.serve(async (req) => {
   }
   const query = typeof body.query === "string" ? body.query.trim().slice(0, MAX_QUERY) : "";
   if (!query) return json(400, { error: "bad_request" });
+  const webMode = body.mode === "web";
 
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -270,53 +314,121 @@ Deno.serve(async (req) => {
   const servingLabel = String(interp.serving_label ?? "1 serving");
   const displayName = String(interp.name ?? term) || "Food";
 
-  // --- 2. Resolve: collect candidates across tiers, best first ---
-  // Personal foods (memory) -> USDA -> OpenFoodFacts. The best candidate keeps
-  // the AI's clean display name; alternatives keep the database entry name so
-  // the user can tell them apart (e.g. cooked vs raw rice).
-  const candidates: AiFood[] = [];
-  const personal = await personalTop(admin, user.id, term, grams);
-  if (personal) candidates.push(personal);
-
-  const usda = await usdaCandidates(admin, term);
-  const off = usda.length < 3 ? await offCandidates(term) : [];
-  const grounded = [
-    ...usda.map((hit) => ({ hit, source: "usda" as const })),
-    ...off.map((hit) => ({ hit, source: "openfoodfacts" as const })),
-  ];
-  for (const { hit, source } of grounded) {
-    const isBest = candidates.length === 0;
-    candidates.push({
-      name: isBest ? displayName : hit.name,
-      serving_label: servingLabel,
-      serving_grams: grams,
-      ...scaleToServing(hit.per100, grams),
-      confidence: "high",
-      source,
-      source_detail: hit.name,
-    });
-  }
-
   let food: AiFood | null = null;
   let alternatives: AiFood[] = [];
-  const picked = pickCandidates(candidates);
-  if (picked) {
-    food = picked.food;
-    alternatives = picked.alternatives;
+
+  if (webMode) {
+    // --- 2w. Web escalation ("Find more"): one Tavily search + v4-pro
+    // extraction over the results. User-triggered only. ---
+    const results = await tavilySearch(buildTavilyQuery(term));
+    if (results.length > 0) {
+      const snippets = results
+        .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content}`)
+        .join("\n\n")
+        .slice(0, 8000);
+      try {
+        const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("DEEPSEEK_API_KEY")!}`,
+          },
+          body: JSON.stringify({
+            model: DEEPSEEK_WEB_MODEL,
+            messages: [
+              { role: "system", content: WEB_SYSTEM_PROMPT },
+              {
+                role: "user",
+                content:
+                  `Request: ${query}\nPortion: ${servingLabel} (${grams} g)\n\nSearch results:\n${snippets}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.2,
+          }),
+        });
+        if (dsRes.ok) {
+          const dsJson = await dsRes.json();
+          const parsed = JSON.parse(dsJson.choices?.[0]?.message?.content ?? "null");
+          const webCands = parseWebCandidates(parsed, {
+            grams,
+            servingLabel,
+            resultUrls: results.map((r) => r.url),
+          });
+          const picked = pickCandidates(webCands);
+          if (picked) {
+            food = picked.food;
+            alternatives = picked.alternatives;
+          }
+        }
+      } catch {
+        // fall through to the estimate fallback below
+      }
+    }
+    if (!food) {
+      // The user spent a quota credit — give them a reviewable estimate
+      // rather than a hard error.
+      const est = (interp.estimate ?? {}) as Record<string, unknown>;
+      food = validateAndNormalize({
+        name: displayName,
+        serving_label: servingLabel,
+        serving_grams: grams,
+        kcal: est.kcal,
+        protein: est.protein,
+        carbs: est.carbs,
+        fat: est.fat,
+        confidence: "low",
+        source: "ai_estimate",
+        notes: "Web search found nothing usable — estimated.",
+      });
+    }
   } else {
-    const est = (interp.estimate ?? {}) as Record<string, unknown>;
-    food = validateAndNormalize({
-      name: displayName,
-      serving_label: servingLabel,
-      serving_grams: grams,
-      kcal: est.kcal,
-      protein: est.protein,
-      carbs: est.carbs,
-      fat: est.fat,
-      confidence: "low",
-      source: "ai_estimate",
-      notes: "Not found in nutrition databases — estimated.",
-    });
+    // --- 2. Resolve: collect candidates across tiers, best first ---
+    // Personal foods (memory) -> USDA -> OpenFoodFacts. The best candidate
+    // keeps the AI's clean display name; alternatives keep the database entry
+    // name so the user can tell them apart (e.g. cooked vs raw rice).
+    const candidates: AiFood[] = [];
+    const personal = await personalTop(admin, user.id, term, grams);
+    if (personal) candidates.push(personal);
+
+    const usda = await usdaCandidates(admin, term);
+    const off = usda.length < 3 ? await offCandidates(term) : [];
+    const grounded = [
+      ...usda.map((hit) => ({ hit, source: "usda" as const })),
+      ...off.map((hit) => ({ hit, source: "openfoodfacts" as const })),
+    ];
+    for (const { hit, source } of grounded) {
+      const isBest = candidates.length === 0;
+      candidates.push({
+        name: isBest ? displayName : hit.name,
+        serving_label: servingLabel,
+        serving_grams: grams,
+        ...scaleToServing(hit.per100, grams),
+        confidence: "high",
+        source,
+        source_detail: hit.name,
+      });
+    }
+
+    const picked = pickCandidates(candidates);
+    if (picked) {
+      food = picked.food;
+      alternatives = picked.alternatives;
+    } else {
+      const est = (interp.estimate ?? {}) as Record<string, unknown>;
+      food = validateAndNormalize({
+        name: displayName,
+        serving_label: servingLabel,
+        serving_grams: grams,
+        kcal: est.kcal,
+        protein: est.protein,
+        carbs: est.carbs,
+        fat: est.fat,
+        confidence: "low",
+        source: "ai_estimate",
+        notes: "Not found in nutrition databases — estimated.",
+      });
+    }
   }
   if (!food) return json(502, { error: "ai_unavailable" });
 

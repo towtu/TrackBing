@@ -37,6 +37,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
 import { getBeeMessage } from "@/src/lib/beeCoach";
+import { subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary, getLocalDateStr } from "@/src/lib/dailySummary";
 import {
@@ -497,6 +498,12 @@ export function DashboardScreen() {
   };
 
   useFocusEffect(useCallback(() => { fetchData(); setMenuOpen(false); }, [fetchData]));
+
+  useEffect(() => {
+    return subscribeFoodLogChanged(() => {
+      void fetchData();
+    });
+  }, [fetchData]);
 
   const getProgress = (current: number, goal: number) => Math.min((current / goal) * 100, 100);
   const rawDiff = calorieGoal - totals.calories;

@@ -28,10 +28,12 @@ import { getAiFoodFeedback } from "@/src/lib/aiFoodUi";
 import {
   buildAiFoodLogInsert,
   getBeeQuickLogClarification,
+  isBeeQuickLogConfirmation,
   mergeBeeQuickLogClarification,
   type BeeQuickLogClarification,
 } from "@/src/lib/beeQuickLog";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
+import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -68,6 +70,7 @@ export function BeeQuickLog() {
   const [messages, setMessages] = useState<ChatMessage[]>(STARTER_MESSAGES);
   const [pendingClarification, setPendingClarification] =
     useState<BeeQuickLogClarification | null>(null);
+  const [pendingFood, setPendingFood] = useState<AiFood | null>(null);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
@@ -100,13 +103,31 @@ export function BeeQuickLog() {
       { replaceStarter: true },
     );
 
+    if (pendingFood) {
+      if (isBeeQuickLogConfirmation(trimmed)) {
+        await logFood(pendingFood);
+        return;
+      }
+
+      setPendingFood(null);
+      appendMessages([
+        {
+          id: createId("bee"),
+          role: "bee",
+          text: "Got it. I will check that instead before logging.",
+        },
+      ]);
+      await resolveAndReview(trimmed);
+      return;
+    }
+
     if (pendingClarification) {
       const clarifiedQuery = mergeBeeQuickLogClarification(
         pendingClarification,
         trimmed,
       );
       setPendingClarification(null);
-      await resolveAndLog(clarifiedQuery);
+      await resolveAndReview(clarifiedQuery);
       return;
     }
 
@@ -123,16 +144,16 @@ export function BeeQuickLog() {
       return;
     }
 
-    await resolveAndLog(trimmed);
+    await resolveAndReview(trimmed);
   };
 
-  const resolveAndLog = async (query: string) => {
+  const resolveAndReview = async (query: string) => {
     setLoading(true);
     appendMessages([
       {
         id: createId("bee"),
         role: "bee",
-        text: "Checking the best match and logging it now...",
+        text: "Checking the best match before logging...",
       },
     ]);
 
@@ -151,6 +172,26 @@ export function BeeQuickLog() {
       return;
     }
 
+    setLoading(false);
+    setPendingFood(result.food);
+    appendMessages([
+      {
+        id: createId("bee"),
+        role: "bee",
+        food: result.food,
+        text: `I found ${result.food.serving_label} of ${result.food.name}: ${Math.round(
+          result.food.kcal,
+        )} kcal, P${Math.round(result.food.protein)} C${Math.round(
+          result.food.carbs,
+        )} F${Math.round(result.food.fat)}. Does this look right?`,
+      },
+    ]);
+  };
+
+  const logFood = async (food: AiFood) => {
+    if (loading) return;
+    setLoading(true);
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -165,7 +206,7 @@ export function BeeQuickLog() {
       return;
     }
 
-    const logRow = buildAiFoodLogInsert(user.id, result.food);
+    const logRow = buildAiFoodLogInsert(user.id, food);
     const { error } = await supabase.from("food_logs").insert([logRow]);
     setLoading(false);
 
@@ -185,24 +226,30 @@ export function BeeQuickLog() {
       return;
     }
 
-    void upsertDailySummary();
+    setPendingFood(null);
+    await upsertDailySummary();
+    emitFoodLogChanged();
     appendMessages([
       {
         id: createId("bee"),
         role: "bee",
-        food: result.food,
-        text: `Logged ${result.food.serving_label} of ${result.food.name}.`,
+        food,
+        text: `Logged ${food.serving_label} of ${food.name}.`,
       },
     ]);
     setFeedback({
       type: "success",
       title: "Bee logged it",
-      message: `${result.food.name} was added to today's log.`,
+      message: `${food.name} was added to today's log.`,
       autoDismissMs: 1200,
     });
   };
 
   const options = pendingClarification?.options ?? [];
+  const reviewOptions = pendingFood ? ["Log it", "Not right"] : [];
+  const inputPlaceholder = pendingFood
+    ? "Type a correction, or tap Log it"
+    : "I ate 600g chicken breast";
 
   return (
     <>
@@ -312,12 +359,44 @@ export function BeeQuickLog() {
                 </View>
               ) : null}
 
+              {reviewOptions.length > 0 ? (
+                <View style={styles.optionWrap}>
+                  <TouchableOpacity
+                    activeOpacity={0.82}
+                    disabled={loading}
+                    onPress={() => pendingFood && logFood(pendingFood)}
+                    style={[styles.optionChip, styles.optionChipPrimary]}
+                  >
+                    <Text style={[styles.optionText, styles.optionTextPrimary]}>
+                      Log it
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.82}
+                    disabled={loading}
+                    onPress={() => {
+                      setPendingFood(null);
+                      appendMessages([
+                        {
+                          id: createId("bee"),
+                          role: "bee",
+                          text: "No problem. Type the correction and I will search again.",
+                        },
+                      ]);
+                    }}
+                    style={styles.optionChip}
+                  >
+                    <Text style={styles.optionText}>Not right</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
               <View style={styles.inputRow}>
                 <TextInput
                   value={input}
                   onChangeText={setInput}
                   editable={!loading}
-                  placeholder="I ate 600g chicken breast"
+                  placeholder={inputPlaceholder}
                   placeholderTextColor={Colors.textMuted}
                   returnKeyType="send"
                   onSubmitEditing={() => submitText(input)}
@@ -553,10 +632,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
+  optionChipPrimary: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
   optionText: {
     color: Colors.accent,
     fontSize: 12,
     fontWeight: "900",
+  },
+  optionTextPrimary: {
+    color: Colors.textOnAccent,
   },
   inputRow: {
     flexDirection: "row",

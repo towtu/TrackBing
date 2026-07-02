@@ -2,7 +2,7 @@ import type { AiFood } from "./aiFood";
 import { shouldMarkAiEstimated } from "./aiFoodUi";
 
 export type BeeQuickLogClarification = {
-  kind: "chickenBreastPrep";
+  kind: "chickenBreastPrep" | "tenderJuicyVariant";
   originalQuery: string;
   question: string;
   options: string[];
@@ -24,6 +24,11 @@ export type FoodLogInsert = {
 const CHICKEN_BREAST_PATTERN = /\b(chicken\s+breast|breast\s+chicken)\b/i;
 const CHICKEN_PREP_PATTERN =
   /\b(grilled|fried|air\s*fried|boiled|steamed|roasted|baked|skinless|with\s+skin|skin-on|skin\s+on|breaded|sauced)\b/i;
+const TENDER_JUICY_PATTERN = /\b(tender|tnder)\s+juicy\b/i;
+const TENDER_JUICY_VARIANT_PATTERN =
+  /\b(hotdog|hot\s*dog|cheesedog|cheese\s*dog|jumbo|cocktail)\b/i;
+const CONFIRMATION_PATTERN =
+  /^(yes|yep|yeah|correct|right|looks\s+right|ok|okay|log\s+it|log|save|confirm|go\s+ahead)$/i;
 
 export function getBeeQuickLogClarification(
   query: string,
@@ -44,6 +49,22 @@ export function getBeeQuickLogClarification(
         "Fried",
         "Boiled or steamed",
         "Roasted with skin",
+      ],
+    };
+  }
+
+  if (
+    TENDER_JUICY_PATTERN.test(normalized) &&
+    !TENDER_JUICY_VARIANT_PATTERN.test(normalized)
+  ) {
+    return {
+      kind: "tenderJuicyVariant",
+      originalQuery: normalized,
+      question: "Which Tender Juicy product is it: hotdog or cheesedog?",
+      options: [
+        "Tender Juicy Hotdog",
+        "Tender Juicy Cheesedog",
+        "Tender Juicy Jumbo Hotdog",
       ],
     };
   }
@@ -76,6 +97,10 @@ export function buildAiFoodLogInsert(
     barcode: null,
     ai_estimated: shouldMarkAiEstimated(food),
   };
+}
+
+export function isBeeQuickLogConfirmation(text: string) {
+  return CONFIRMATION_PATTERN.test(text.trim().replace(/\s+/g, " "));
 }
 
 function formatServingGrams(value: number) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAiFoodLogInsert,
   getBeeQuickLogClarification,
+  isBeeQuickLogConfirmation,
   mergeBeeQuickLogClarification,
 } from "./beeQuickLog";
 import type { AiFood } from "./aiFood";
@@ -24,6 +25,23 @@ describe("beeQuickLog", () => {
     expect(
       getBeeQuickLogClarification("I ate 600g chicken breast grilled skinless"),
     ).toBeNull();
+  });
+
+  it("asks which Tender Juicy product the user means instead of guessing cheesedog", () => {
+    const clarification = getBeeQuickLogClarification("i ate 1 tnder juicy");
+
+    expect(clarification).toMatchObject({
+      kind: "tenderJuicyVariant",
+      originalQuery: "i ate 1 tnder juicy",
+    });
+    expect(clarification?.question).toMatch(/hotdog|cheesedog/i);
+    expect(clarification?.options).toContain("Tender Juicy Hotdog");
+    expect(clarification?.options).toContain("Tender Juicy Cheesedog");
+  });
+
+  it("does not ask which Tender Juicy product when the variant is already present", () => {
+    expect(getBeeQuickLogClarification("1 tender juicy cheesedog")).toBeNull();
+    expect(getBeeQuickLogClarification("1 tender juicy hotdog")).toBeNull();
   });
 
   it("merges the user's clarification into the original food query", () => {
@@ -85,5 +103,12 @@ describe("beeQuickLog", () => {
       serving_size: "350",
       serving_unit: "g",
     });
+  });
+
+  it("detects short confirmation replies before logging a reviewed food", () => {
+    expect(isBeeQuickLogConfirmation("yes")).toBe(true);
+    expect(isBeeQuickLogConfirmation("log it")).toBe(true);
+    expect(isBeeQuickLogConfirmation("looks right")).toBe(true);
+    expect(isBeeQuickLogConfirmation("change to cooked rice")).toBe(false);
   });
 });

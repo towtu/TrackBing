@@ -10,6 +10,7 @@ import type { FoodSource } from "@/src/lib/aiFood";
  */
 const LABEL: Record<FoodSource, string> = {
   my_food: "My Food",
+  web: "🔎 Web",
   usda: "USDA",
   openfoodfacts: "OpenFoodFacts",
   ai_estimate: "✨ AI estimate",

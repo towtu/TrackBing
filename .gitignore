@@ -47,3 +47,4 @@ app-example
 
 # verification / scratch artifacts (Playwright screenshots, UI proposals)
 output/
+supabase/.temp/

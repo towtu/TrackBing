@@ -71,6 +71,8 @@ export function BeeQuickLog() {
   const [pendingClarification, setPendingClarification] =
     useState<BeeQuickLogClarification | null>(null);
   const [pendingFood, setPendingFood] = useState<AiFood | null>(null);
+  const [pendingAlternatives, setPendingAlternatives] = useState<AiFood[]>([]);
+  const [lastQuery, setLastQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
@@ -110,6 +112,7 @@ export function BeeQuickLog() {
       }
 
       setPendingFood(null);
+      setPendingAlternatives([]);
       appendMessages([
         {
           id: createId("bee"),
@@ -174,6 +177,8 @@ export function BeeQuickLog() {
 
     setLoading(false);
     setPendingFood(result.food);
+    setPendingAlternatives(result.alternatives);
+    setLastQuery(query);
     appendMessages([
       {
         id: createId("bee"),
@@ -184,6 +189,44 @@ export function BeeQuickLog() {
         )} kcal, P${Math.round(result.food.protein)} C${Math.round(
           result.food.carbs,
         )} F${Math.round(result.food.fat)}. Does this look right?`,
+      },
+    ]);
+  };
+
+  const findMoreOnWeb = async () => {
+    if (!lastQuery || loading) return;
+    setLoading(true);
+    setPendingFood(null);
+    setPendingAlternatives([]);
+    appendMessages([
+      {
+        id: createId("bee"),
+        role: "bee",
+        text: "Searching the web for a better match (this uses 1 AI credit)...",
+      },
+    ]);
+
+    const result = await requestAiFood(lastQuery, "web");
+    setLoading(false);
+    if (!result.ok) {
+      const aiFeedback = getAiFoodFeedback(result.reason);
+      appendMessages([{ id: createId("bee"), role: "bee", text: aiFeedback.message }]);
+      setFeedback(aiFeedback);
+      return;
+    }
+
+    setPendingFood(result.food);
+    setPendingAlternatives(result.alternatives);
+    appendMessages([
+      {
+        id: createId("bee"),
+        role: "bee",
+        food: result.food,
+        text: `From the web: ${result.food.serving_label} of ${result.food.name} — ${Math.round(
+          result.food.kcal,
+        )} kcal, P${Math.round(result.food.protein)} C${Math.round(
+          result.food.carbs,
+        )} F${Math.round(result.food.fat)}. Better?`,
       },
     ]);
   };
@@ -227,6 +270,7 @@ export function BeeQuickLog() {
     }
 
     setPendingFood(null);
+    setPendingAlternatives([]);
     await upsertDailySummary();
     emitFoodLogChanged();
     appendMessages([
@@ -246,7 +290,6 @@ export function BeeQuickLog() {
   };
 
   const options = pendingClarification?.options ?? [];
-  const reviewOptions = pendingFood ? ["Log it", "Not right"] : [];
   const inputPlaceholder = pendingFood
     ? "Type a correction, or tap Log it"
     : "I ate 600g chicken breast";
@@ -337,6 +380,12 @@ export function BeeQuickLog() {
                         <Text style={styles.confidenceText}>
                           {message.food.confidence} confidence
                         </Text>
+                        {message.food.source_detail ? (
+                          <Text style={styles.sourceDetailText} numberOfLines={1}>
+                            {message.food.source === "web" ? "from " : "matched: "}
+                            {message.food.source_detail}
+                          </Text>
+                        ) : null}
                       </View>
                     ) : null}
                   </View>
@@ -359,7 +408,7 @@ export function BeeQuickLog() {
                 </View>
               ) : null}
 
-              {reviewOptions.length > 0 ? (
+              {pendingFood ? (
                 <View style={styles.optionWrap}>
                   <TouchableOpacity
                     activeOpacity={0.82}
@@ -371,11 +420,47 @@ export function BeeQuickLog() {
                       Log it
                     </Text>
                   </TouchableOpacity>
+                  {pendingAlternatives.map((alt) => (
+                    <TouchableOpacity
+                      key={`${alt.source}-${alt.name}`}
+                      activeOpacity={0.82}
+                      disabled={loading}
+                      onPress={() => {
+                        setPendingFood(alt);
+                        appendMessages([
+                          {
+                            id: createId("bee"),
+                            role: "bee",
+                            food: alt,
+                            text: `Swapped to ${alt.name}: ${Math.round(alt.kcal)} kcal, P${Math.round(
+                              alt.protein,
+                            )} C${Math.round(alt.carbs)} F${Math.round(alt.fat)}. Log it?`,
+                          },
+                        ]);
+                      }}
+                      style={styles.optionChip}
+                    >
+                      <Text style={styles.optionText} numberOfLines={1}>
+                        {alt.name} · {Math.round(alt.kcal)} kcal
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {lastQuery ? (
+                    <TouchableOpacity
+                      activeOpacity={0.82}
+                      disabled={loading}
+                      onPress={findMoreOnWeb}
+                      style={styles.optionChip}
+                    >
+                      <Text style={styles.optionText}>🔎 Find more</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     activeOpacity={0.82}
                     disabled={loading}
                     onPress={() => {
                       setPendingFood(null);
+                      setPendingAlternatives([]);
                       appendMessages([
                         {
                           id: createId("bee"),
@@ -616,6 +701,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
     textTransform: "uppercase",
+  },
+  sourceDetailText: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    flexShrink: 1,
   },
   optionWrap: {
     flexDirection: "row",

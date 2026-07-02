@@ -21,6 +21,7 @@ import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { validateAndNormalize, scaleToServing, type AiFood, type Per100 } from "../_shared/macros.ts";
 import { currentPeriod, isProActive, decideQuota, isRateLimited } from "../_shared/quota.ts";
 import { buildUsdaSearchTerms } from "../_shared/foodSearch.ts";
+import { pickCandidates } from "../_shared/candidates.ts";
 
 const FREE_MONTHLY = 7;
 const PRO_DAILY = 100;
@@ -121,28 +122,31 @@ async function personalTop(
   }
 }
 
-async function usdaTop(
+async function usdaCandidates(
   admin: SupabaseClient,
   term: string,
-): Promise<{ per100: Per100; name: string } | null> {
+): Promise<{ per100: Per100; name: string }[]> {
   try {
     for (const query of buildUsdaSearchTerms(term)) {
       const { data } = await admin.functions.invoke<{ foods?: unknown }>("usda-search", {
         body: { query, pageSize: 5 },
       });
       const foods = Array.isArray(data?.foods) ? (data!.foods as Record<string, unknown>[]) : [];
+      const out: { per100: Per100; name: string }[] = [];
       for (const food of foods) {
         const per100 = usdaPer100(food);
-        if (per100) return { per100, name: String(food.description ?? term) };
+        if (per100) out.push({ per100, name: String(food.description ?? term) });
+        if (out.length >= 3) break;
       }
+      if (out.length > 0) return out;
     }
   } catch {
     // fall through to OpenFoodFacts
   }
-  return null;
+  return [];
 }
 
-async function offTop(term: string): Promise<{ per100: Per100; name: string } | null> {
+async function offCandidates(term: string): Promise<{ per100: Per100; name: string }[]> {
   try {
     const res = await fetch(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
@@ -151,6 +155,7 @@ async function offTop(term: string): Promise<{ per100: Per100; name: string } | 
     );
     const data = await res.json();
     const products = Array.isArray(data?.products) ? data.products : [];
+    const out: { per100: Per100; name: string }[] = [];
     for (const p of products) {
       const n = p?.nutriments ?? {};
       const per100: Per100 = {
@@ -160,13 +165,17 @@ async function offTop(term: string): Promise<{ per100: Per100; name: string } | 
         fat: numOr(n["fat_100g"], 0),
       };
       if (per100.kcal > 0 || per100.protein > 0 || per100.carbs > 0 || per100.fat > 0) {
-        return { per100, name: String(p.product_name || term) };
+        const brand = typeof p.brands === "string" && p.brands.trim()
+          ? ` (${p.brands.split(",")[0].trim()})`
+          : "";
+        out.push({ per100, name: `${String(p.product_name || term)}${brand}` });
+        if (out.length >= 2) break;
       }
     }
+    return out;
   } catch {
-    // fall through to estimate
+    return [];
   }
-  return null;
 }
 
 Deno.serve(async (req) => {
@@ -261,21 +270,40 @@ Deno.serve(async (req) => {
   const servingLabel = String(interp.serving_label ?? "1 serving");
   const displayName = String(interp.name ?? term) || "Food";
 
-  // --- 2. Resolve: the user's own foods (memory) -> USDA/OFF -> AI estimate ---
-  let food: AiFood | null = await personalTop(admin, user.id, term, grams);
-  const usda = food ? null : await usdaTop(admin, term);
-  const ground = food ? null : usda ?? (await offTop(term));
-  if (!food && ground) {
-    const scaled = scaleToServing(ground.per100, grams);
-    food = {
-      name: displayName,
+  // --- 2. Resolve: collect candidates across tiers, best first ---
+  // Personal foods (memory) -> USDA -> OpenFoodFacts. The best candidate keeps
+  // the AI's clean display name; alternatives keep the database entry name so
+  // the user can tell them apart (e.g. cooked vs raw rice).
+  const candidates: AiFood[] = [];
+  const personal = await personalTop(admin, user.id, term, grams);
+  if (personal) candidates.push(personal);
+
+  const usda = await usdaCandidates(admin, term);
+  const off = usda.length < 3 ? await offCandidates(term) : [];
+  const grounded = [
+    ...usda.map((hit) => ({ hit, source: "usda" as const })),
+    ...off.map((hit) => ({ hit, source: "openfoodfacts" as const })),
+  ];
+  for (const { hit, source } of grounded) {
+    const isBest = candidates.length === 0;
+    candidates.push({
+      name: isBest ? displayName : hit.name,
       serving_label: servingLabel,
       serving_grams: grams,
-      ...scaled,
+      ...scaleToServing(hit.per100, grams),
       confidence: "high",
-      source: usda ? "usda" : "openfoodfacts",
-    };
-  } else if (!food) {
+      source,
+      source_detail: hit.name,
+    });
+  }
+
+  let food: AiFood | null = null;
+  let alternatives: AiFood[] = [];
+  const picked = pickCandidates(candidates);
+  if (picked) {
+    food = picked.food;
+    alternatives = picked.alternatives;
+  } else {
     const est = (interp.estimate ?? {}) as Record<string, unknown>;
     food = validateAndNormalize({
       name: displayName,
@@ -296,5 +324,5 @@ Deno.serve(async (req) => {
   await admin.rpc("increment_ai_usage", { p_user: user.id, p_period: period });
   await admin.rpc("increment_ai_usage", { p_user: user.id, p_period: dayPeriod });
 
-  return json(200, { food });
+  return json(200, { food, alternatives });
 });

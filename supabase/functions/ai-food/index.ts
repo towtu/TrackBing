@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
         response_format: { type: "json_object" },
         temperature: 0.2,
       }),
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(55_000),
     });
     if (!dsRes.ok) return json(502, { error: "ai_unavailable" });
     const dsJson = await dsRes.json();
@@ -353,7 +353,7 @@ Deno.serve(async (req) => {
             temperature: 0.2,
             max_tokens: 1200,
           }),
-          signal: AbortSignal.timeout(90_000),
+          signal: AbortSignal.timeout(80_000),
         });
         if (dsRes.ok) {
           const dsJson = await dsRes.json();

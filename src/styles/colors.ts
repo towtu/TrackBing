@@ -1,26 +1,32 @@
 // src/styles/colors.ts
 export const Colors = {
-  primary: "#09090b",
-  secondary: "#121214",
-  surface: "#18181b",
-  surfaceHover: "#27272a",
-  accent: "#ffcc00",
-  accentGlow: "rgba(255, 204, 0, 0.15)",
-  accentDim: "rgba(255, 204, 0, 0.10)",
-  accentBlue: "#6E88B0",
+  primary: "#0e0d0b",
+  secondary: "#12100c",
+  surface: "#16140f",
+  surfaceHover: "#1f1c15",
+  accent: "#e8b93c",
+  accentGlow: "rgba(232, 185, 60, 0.12)",
+  accentDim: "rgba(232, 185, 60, 0.10)",
+  accentBlue: "#76869e",
   textOnAccent: "#000000",
-  text: "#ffffff",
-  textSecondary: "#a1a1aa",
-  textMuted: "#a1a1aa",
-  border: "#27272a",
-  borderLight: "rgba(255, 255, 255, 0.05)",
-  inputBg: "#121214",
+  text: "#f0ede6",
+  textSecondary: "#9b958a",
+  textMuted: "#9b958a",
+  border: "#262218",
+  borderLight: "#1f1c15",
+  inputBg: "#12100c",
 
-  error: "#ef4444",
-  success: "#4ADE80",
+  error: "#b5544a",
+  success: "#7da26e",
   white: "#ffffff",
 
-  protein: "#ff4d4d", // Punchy Red
-  carbs: "#ffaa00",   // Warm Orange
-  fat: "#00d0ff",     // Electric Blue
+  protein: "#c96b5a", // clay
+  carbs: "#d0a24f",   // wheat
+  fat: "#8fa87e",     // sage
+};
+
+export const Radii = {
+  card: 14,
+  inner: 10,
+  pill: 999,
 };

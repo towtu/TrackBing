@@ -3,16 +3,9 @@ import {
   Barcode,
   Basket,
   BookOpen,
-  BowlFood,
-  CalendarBlank,
   ChartBar,
-  Drop,
-  Egg,
-  Fire,
   Gear,
-  Grains,
   House,
-  Lightning,
   MagnifyingGlass,
   PencilSimple,
   Plus,
@@ -46,7 +39,7 @@ import {
   calculateMacroGrams,
   validateMacroPercentages,
 } from "@/src/lib/nutritionTargets";
-import { Colors } from "@/src/styles/colors";
+import { Colors, Radii } from "@/src/styles/colors";
 import { DailyTotals, FoodLog } from "@/src/types";
 import { useResponsive } from "@/src/hooks/useResponsive";
 import {
@@ -538,9 +531,9 @@ export function DashboardScreen() {
   };
 
   const macros = [
-    { id: "protein", l: "Protein", c: Colors.protein, v: totals.protein, g: goals.p, icon: <Egg weight="fill" color={Colors.protein} size={18} /> },
-    { id: "carbs",   l: "Carbs",   c: Colors.carbs,   v: totals.carbs,   g: goals.c, icon: <Grains weight="fill" color={Colors.carbs} size={18} /> },
-    { id: "fat",     l: "Fat",     c: Colors.fat,     v: totals.fat,     g: goals.f, icon: <Drop weight="fill" color={Colors.fat} size={18} /> },
+    { id: "protein", l: "Protein", c: Colors.protein, v: totals.protein, g: goals.p },
+    { id: "carbs",   l: "Carbs",   c: Colors.carbs,   v: totals.carbs,   g: goals.c },
+    { id: "fat",     l: "Fat",     c: Colors.fat,     v: totals.fat,     g: goals.f },
   ];
 
   const menuItems = [
@@ -629,12 +622,11 @@ export function DashboardScreen() {
               <Text style={styles.headerTitle}>Ready to fuel up?</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.fireBtn}>
-            <Fire size={18} weight="fill" color="#FF6B35" />
-            <View style={styles.fireBadge}>
-              <Text style={styles.fireBadgeText}>{streak}</Text>
-            </View>
-          </TouchableOpacity>
+          {streak > 0 && (
+            <Text style={styles.streakText}>
+              <Text style={styles.streakCount}>{streak}-day</Text> streak
+            </Text>
+          )}
         </View>
 
         {isDesktop ? (
@@ -649,17 +641,14 @@ export function DashboardScreen() {
               <View style={{ flex: 3 }}>
                 {/* ── PREMIUM HERO CARD ── */}
                 <View style={styles.heroCard}>
-                  <View style={styles.datePill}>
-                    <CalendarBlank size={14} color={Colors.accent} weight="fill" />
-                    <Text style={styles.datePillText}>
-                      <Text style={{ opacity: 0.8, fontWeight: "400" }}>Today, </Text>{dateStr}
-                    </Text>
-                  </View>
+                  <Text style={styles.dateText}>
+                    <Text style={styles.dateTextDim}>Today, </Text>{dateStr}
+                  </Text>
 
                   <View style={styles.heroContent}>
                     <View style={styles.heroLeft}>
                       <View style={{ marginBottom: 24 }}>
-                        <Text style={styles.heroSmallLabel}>CONSUMED</Text>
+                        <Text style={styles.heroSmallLabel}>Consumed</Text>
                         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 4 }}>
                           <Text style={styles.heroBigValue}>{Math.round(totals.calories)}</Text>
                           <Text style={styles.heroUnit}>kcal</Text>
@@ -676,7 +665,7 @@ export function DashboardScreen() {
                           style={styles.goalEditTrigger}
                         >
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
-                            <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
+                            <Text style={styles.heroSmallLabel}>Daily target</Text>
                             {!isMinorProfile && (
                               <PencilSimple size={12} color={Colors.accent} weight="fill" />
                             )}
@@ -702,18 +691,17 @@ export function DashboardScreen() {
                           maxValue={calorieGoal}
                           showProgressValue={false}
                           activeStrokeColor={isOver ? Colors.error : Colors.accent}
-                          activeStrokeWidth={12}
+                          activeStrokeWidth={9}
                           inActiveStrokeColor={Colors.border}
-                          inActiveStrokeWidth={12}
+                          inActiveStrokeWidth={9}
                           inActiveStrokeOpacity={1}
                           title={""}
                         />
                         <View style={styles.ringInner}>
-                          <Lightning size={24} color="#FFD700" weight="fill" />
                           <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>
                             {displayDiff}
                           </Text>
-                          <Text style={styles.ringLabel}>{isOver ? "OVER" : "LEFT"}</Text>
+                          <Text style={styles.ringLabel}>{isOver ? "kcal over" : "kcal left"}</Text>
                         </View>
                       </View>
                     </View>
@@ -723,28 +711,18 @@ export function DashboardScreen() {
                 {renderQuickActions()}
 
                 {/* ── DETAILED MACRO BENTO GRID ── */}
-                <View style={styles.bentoGrid}>
-                  {macros.map((m) => {
+                <View style={styles.macroRow}>
+                  {macros.map((m, i) => {
                     const percent = getProgress(m.v, m.g);
                     return (
-                      <View key={m.id} style={styles.bentoCard}>
-                        <View style={[styles.bentoGlow, { backgroundColor: m.c }]} />
-                        
-                        <View style={styles.bentoTop}>
-                          <View style={[styles.macroIconWrap, { backgroundColor: `${m.c}33` }]}>
-                            {m.icon}
-                          </View>
-                          <Text style={styles.bentoLabel}>{m.l}</Text>
-                        </View>
-                        
-                        <View style={styles.bentoBottom}>
-                          <View style={styles.bentoValueRow}>
-                            <Text style={styles.bentoValue}>{Math.round(m.v)}</Text>
-                            <Text style={styles.bentoGoal}>/{m.g}g</Text>
-                          </View>
-                          <View style={styles.bentoTrack}>
-                            <View style={[styles.bentoFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
-                          </View>
+                      <View key={m.id} style={[styles.macroCell, i > 0 && styles.macroCellDivider]}>
+                        <Text style={styles.macroLabel}>{m.l}</Text>
+                        <Text style={styles.macroValue}>
+                          {Math.round(m.v)}
+                          <Text style={styles.macroGoal}> / {m.g} g</Text>
+                        </Text>
+                        <View style={styles.macroTrack}>
+                          <View style={[styles.macroFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
                         </View>
                       </View>
                     );
@@ -756,10 +734,8 @@ export function DashboardScreen() {
               <View style={{ flex: 2 }}>
                 {/* ── TIMELINE HEADER ── */}
                 <View style={styles.timelineHeader}>
-                  <Text style={styles.timelineTitle}>Today&apos;s Log</Text>
-                  <View style={styles.itemCountBadge}>
-                    <Text style={styles.itemCountText}>{logs.length} items</Text>
-                  </View>
+                  <Text style={styles.timelineTitle}>Today&apos;s log</Text>
+                  <Text style={styles.itemCountText}>{logs.length} items</Text>
                 </View>
 
                 {logs.length > 0 ? (
@@ -774,10 +750,6 @@ export function DashboardScreen() {
                       
                       {/* Log Card */}
                       <TouchableOpacity style={styles.logCard} onPress={() => handleEditLogStart(item)}>
-                        <View style={[styles.logIconBox, { backgroundColor: `${Colors.accent}33` }]}>
-                          <BowlFood size={24} color={Colors.accent} weight="fill" />
-                        </View>
-                        
                         <View style={styles.logContent}>
                           <Text style={styles.logName} numberOfLines={2}>{item.name}</Text>
                           <View style={styles.logSubRow}>
@@ -797,7 +769,7 @@ export function DashboardScreen() {
 
                         <View style={styles.logCaloriesCol}>
                           <Text style={styles.logCalories}>{Math.round(item.calories)}</Text>
-                          <Text style={styles.logKcal}>KCAL</Text>
+                          <Text style={styles.logKcal}>kcal</Text>
                         </View>
 
                         <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteLog(item.id!, item.name)}>
@@ -830,17 +802,14 @@ export function DashboardScreen() {
 
                 {/* ── PREMIUM HERO CARD ── */}
                 <View style={styles.heroCard}>
-                  <View style={styles.datePill}>
-                    <CalendarBlank size={14} color={Colors.accent} weight="fill" />
-                    <Text style={styles.datePillText}>
-                      <Text style={{ opacity: 0.8, fontWeight: "400" }}>Today, </Text>{dateStr}
-                    </Text>
-                  </View>
+                  <Text style={styles.dateText}>
+                    <Text style={styles.dateTextDim}>Today, </Text>{dateStr}
+                  </Text>
 
                   <View style={styles.heroContent}>
                     <View style={styles.heroLeft}>
                       <View style={{ marginBottom: 24 }}>
-                        <Text style={styles.heroSmallLabel}>CONSUMED</Text>
+                        <Text style={styles.heroSmallLabel}>Consumed</Text>
                         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 4 }}>
                           <Text style={styles.heroBigValue}>{Math.round(totals.calories)}</Text>
                           <Text style={styles.heroUnit}>kcal</Text>
@@ -857,7 +826,7 @@ export function DashboardScreen() {
                           style={styles.goalEditTrigger}
                         >
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.8 }}>
-                            <Text style={styles.heroSmallLabel}>DAILY TARGET</Text>
+                            <Text style={styles.heroSmallLabel}>Daily target</Text>
                             {!isMinorProfile && (
                               <PencilSimple size={12} color={Colors.accent} weight="fill" />
                             )}
@@ -883,18 +852,17 @@ export function DashboardScreen() {
                           maxValue={calorieGoal}
                           showProgressValue={false}
                           activeStrokeColor={isOver ? Colors.error : Colors.accent}
-                          activeStrokeWidth={12}
+                          activeStrokeWidth={9}
                           inActiveStrokeColor={Colors.border}
-                          inActiveStrokeWidth={12}
+                          inActiveStrokeWidth={9}
                           inActiveStrokeOpacity={1}
                           title={""}
                         />
                         <View style={styles.ringInner}>
-                          <Lightning size={24} color="#FFD700" weight="fill" />
                           <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>
                             {displayDiff}
                           </Text>
-                          <Text style={styles.ringLabel}>{isOver ? "OVER" : "LEFT"}</Text>
+                          <Text style={styles.ringLabel}>{isOver ? "kcal over" : "kcal left"}</Text>
                         </View>
                       </View>
                     </View>
@@ -904,28 +872,18 @@ export function DashboardScreen() {
                 {/* ── DETAILED MACRO BENTO GRID ── */}
                 {renderQuickActions()}
 
-                <View style={styles.bentoGrid}>
-                  {macros.map((m) => {
+                <View style={styles.macroRow}>
+                  {macros.map((m, i) => {
                     const percent = getProgress(m.v, m.g);
                     return (
-                      <View key={m.id} style={styles.bentoCard}>
-                        <View style={[styles.bentoGlow, { backgroundColor: m.c }]} />
-                        
-                        <View style={styles.bentoTop}>
-                          <View style={[styles.macroIconWrap, { backgroundColor: `${m.c}33` }]}>
-                            {m.icon}
-                          </View>
-                          <Text style={styles.bentoLabel}>{m.l}</Text>
-                        </View>
-                        
-                        <View style={styles.bentoBottom}>
-                          <View style={styles.bentoValueRow}>
-                            <Text style={styles.bentoValue}>{Math.round(m.v)}</Text>
-                            <Text style={styles.bentoGoal}>/{m.g}g</Text>
-                          </View>
-                          <View style={styles.bentoTrack}>
-                            <View style={[styles.bentoFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
-                          </View>
+                      <View key={m.id} style={[styles.macroCell, i > 0 && styles.macroCellDivider]}>
+                        <Text style={styles.macroLabel}>{m.l}</Text>
+                        <Text style={styles.macroValue}>
+                          {Math.round(m.v)}
+                          <Text style={styles.macroGoal}> / {m.g} g</Text>
+                        </Text>
+                        <View style={styles.macroTrack}>
+                          <View style={[styles.macroFill, { width: `${percent}%` as any, backgroundColor: m.v > m.g ? Colors.error : m.c }]} />
                         </View>
                       </View>
                     );
@@ -934,10 +892,8 @@ export function DashboardScreen() {
 
                 {/* ── TIMELINE HEADER ── */}
                 <View style={styles.timelineHeader}>
-                  <Text style={styles.timelineTitle}>Today&apos;s Log</Text>
-                  <View style={styles.itemCountBadge}>
-                    <Text style={styles.itemCountText}>{logs.length} items</Text>
-                  </View>
+                  <Text style={styles.timelineTitle}>Today&apos;s log</Text>
+                  <Text style={styles.itemCountText}>{logs.length} items</Text>
                 </View>
               </>
             }
@@ -952,10 +908,6 @@ export function DashboardScreen() {
                 
                 {/* Log Card */}
                 <TouchableOpacity style={styles.logCard} onPress={() => handleEditLogStart(item)}>
-                  <View style={[styles.logIconBox, { backgroundColor: `${Colors.accent}33` }]}>
-                    <BowlFood size={24} color={Colors.accent} weight="fill" />
-                  </View>
-                  
                   <View style={styles.logContent}>
                     <Text style={styles.logName} numberOfLines={2}>{item.name}</Text>
                     <View style={styles.logSubRow}>
@@ -975,7 +927,7 @@ export function DashboardScreen() {
 
                   <View style={styles.logCaloriesCol}>
                     <Text style={styles.logCalories}>{Math.round(item.calories)}</Text>
-                    <Text style={styles.logKcal}>KCAL</Text>
+                    <Text style={styles.logKcal}>kcal</Text>
                   </View>
 
                   <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteLog(item.id!, item.name)}>
@@ -1114,7 +1066,7 @@ export function DashboardScreen() {
                 <View style={styles.modalInputDivider}>
                   <View style={styles.modalInputDividerActive} />
                 </View>
-                <Text style={styles.modalInputUnit}>KCAL</Text>
+                <Text style={styles.modalInputUnit}>kcal</Text>
               </View>
 
               <View style={styles.modalBtnRow}>
@@ -1224,71 +1176,45 @@ const styles = StyleSheet.create({
   },
   headerGreeting: {
     color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    fontSize: 13,
+    fontWeight: "500",
     marginBottom: 2,
   },
   headerTitle: {
     color: Colors.text,
-    fontSize: 20,
-    fontWeight: "800",
-    letterSpacing: -0.5,
+    fontSize: 19,
+    fontWeight: "600",
+    letterSpacing: -0.3,
   },
-  fireBtn: {
-    width: 40, height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surface,
-    borderWidth: 1, borderColor: Colors.borderLight,
-    alignItems: "center", justifyContent: "center",
-    position: "relative",
-  },
-  fireBadge: {
-    position: "absolute", top: -4, right: -4,
-    backgroundColor: Colors.accent,
-    width: 16, height: 16,
-    borderRadius: 8,
-    alignItems: "center", justifyContent: "center",
-    shadowColor: Colors.accent, shadowOffset: { width:0, height:0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 4,
-  },
-  fireBadgeText: { color: "#000", fontSize: 10, fontWeight: "900" },
+  streakText: { color: Colors.textSecondary, fontSize: 13 },
+  streakCount: { color: Colors.accent, fontWeight: "600" },
 
   // ── BEE COMPANION ──
   beeCompanionCard: {
     marginTop: 4,
     marginBottom: 16,
     padding: 14,
-    borderRadius: 22,
+    borderRadius: Radii.card,
     backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: "rgba(255, 204, 0, 0.24)",
+    borderColor: Colors.border,
   },
 
-  // ── PREMIUM HERO CARD ──
+  // ── HERO CARD ──
   heroCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 32,
-    padding: 24,
-    borderWidth: 1, borderColor: Colors.borderLight,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.6, shadowRadius: 30, elevation: 15,
-    marginTop: 16, marginBottom: 20,
-    position: "relative", overflow: "hidden",
+    borderRadius: Radii.card,
+    padding: 20,
+    borderWidth: 1, borderColor: Colors.border,
+    marginTop: 16, marginBottom: 14,
   },
-  datePill: {
-    position: "absolute", top: 16, left: 16,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.05)",
-    flexDirection: "row", alignItems: "center", gap: 6,
-  },
-  datePillText: { color: Colors.text, fontSize: 12, fontWeight: "600", letterSpacing: 0.5 },
-  heroContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 28 },
+  dateText: { color: Colors.text, fontSize: 15, fontWeight: "600", letterSpacing: -0.2 },
+  dateTextDim: { color: Colors.textSecondary, fontWeight: "400" },
+  heroContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 20 },
   heroLeft: { flex: 1, justifyContent: "center" },
-  heroSmallLabel: { color: Colors.textSecondary, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 2 },
-  heroBigValue: { color: Colors.text, fontSize: 44, fontWeight: "900", letterSpacing: -2 },
-  heroUnit: { color: Colors.textSecondary, fontSize: 14, fontWeight: "600" },
+  heroSmallLabel: { color: Colors.textSecondary, fontSize: 12, fontWeight: "500" },
+  heroBigValue: { color: Colors.text, fontSize: 42, fontWeight: "600", letterSpacing: -1, fontVariant: ["tabular-nums"] },
+  heroUnit: { color: Colors.textSecondary, fontSize: 14, fontWeight: "400" },
   goalButtonGroup: { width: '100%' },
   goalEditTrigger: {
     minHeight: 44,
@@ -1301,15 +1227,15 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   goalValueRow: { borderBottomWidth: 1, borderStyle: "dashed", borderBottomColor: Colors.border, paddingBottom: 2, flexDirection: "row", alignItems: "baseline", gap: 4, alignSelf: "flex-start", marginTop: 2 },
-  goalValueText: { color: Colors.text, fontSize: 20, fontWeight: "800", letterSpacing: -0.5 },
-  goalUnitText: { color: Colors.textSecondary, fontSize: 13, fontWeight: "600" },
-  
+  goalValueText: { color: Colors.text, fontSize: 19, fontWeight: "600", letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
+  goalUnitText: { color: Colors.textSecondary, fontSize: 13, fontWeight: "400" },
+
   heroRight: { width: 130, height: 130, alignItems: "center", justifyContent: "center", position: "relative" },
   progressRingWrapper: { alignItems: "center", justifyContent: "center" },
   ringInner: { position: "absolute", alignItems: "center", justifyContent: "center" },
 
-  ringValue: { fontSize: 24, fontWeight: "900", letterSpacing: -1 },
-  ringLabel: { fontSize: 10, fontWeight: "800", color: Colors.textSecondary, textTransform: "uppercase", letterSpacing: 2, marginTop: 2 },
+  ringValue: { fontSize: 24, fontWeight: "600", letterSpacing: -0.5, fontVariant: ["tabular-nums"] },
+  ringLabel: { fontSize: 11, fontWeight: "500", color: Colors.textSecondary, marginTop: 2 },
 
   // ── QUICK ACTIONS ──
   quickActionGrid: {
@@ -1324,23 +1250,18 @@ const styles = StyleSheet.create({
     minWidth: 132,
     minHeight: 74,
     backgroundColor: Colors.surface,
-    borderRadius: 18,
+    borderRadius: Radii.card,
     borderWidth: 1,
-    borderColor: Colors.borderLight,
+    borderColor: Colors.border,
     padding: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 5,
   },
   quickActionIcon: {
     width: 38,
     height: 38,
-    borderRadius: 13,
+    borderRadius: Radii.inner,
     backgroundColor: Colors.accentDim,
     alignItems: "center",
     justifyContent: "center",
@@ -1351,81 +1272,69 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   quickActionLabel: {
-    color: Colors.accent,
+    color: Colors.text,
     fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 0,
+    fontWeight: "600",
+    letterSpacing: -0.1,
   },
   quickActionHelper: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "400",
     marginTop: 3,
   },
 
-  // ── MACRO BENTO GRID ──
-  bentoGrid: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  bentoCard: {
-    flex: 1,
+  // ── MACRO ROW ──
+  macroRow: {
+    flexDirection: "row",
     backgroundColor: Colors.surface,
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1, borderColor: Colors.borderLight,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
-    height: 128, justifyContent: "space-between",
-    position: "relative", overflow: "hidden",
+    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: Radii.card,
+    overflow: "hidden",
+    marginBottom: 24,
   },
-  bentoGlow: {
-    position: "absolute", top: -20, right: -20,
-    width: 64, height: 64,
-    borderRadius: 32, opacity: 0.15,
-  },
-  bentoTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", zIndex: 2 },
-  macroIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  bentoLabel: { fontSize: 10, fontWeight: "800", textTransform: "uppercase", color: Colors.textSecondary, letterSpacing: 1 },
-  bentoBottom: { zIndex: 2 },
-  bentoValueRow: { flexDirection: "row", alignItems: "baseline", gap: 2, marginBottom: 8 },
-  bentoValue: { fontSize: 20, fontWeight: "800", color: Colors.text, letterSpacing: -0.5 },
-  bentoGoal: { fontSize: 12, color: Colors.textSecondary, fontWeight: "500" },
-  bentoTrack: { height: 6, backgroundColor: Colors.secondary, borderRadius: 3, overflow: "hidden" },
-  bentoFill: { height: "100%", borderRadius: 3 },
+  macroCell: { flex: 1, paddingVertical: 14, paddingHorizontal: 14 },
+  macroCellDivider: { borderLeftWidth: 1, borderLeftColor: Colors.border },
+  macroLabel: { color: Colors.textSecondary, fontSize: 12, fontWeight: "500" },
+  macroValue: { color: Colors.text, fontSize: 18, fontWeight: "600", marginTop: 3, marginBottom: 10, fontVariant: ["tabular-nums"] },
+  macroGoal: { color: Colors.textSecondary, fontSize: 11, fontWeight: "400" },
+  macroTrack: { height: 3, backgroundColor: Colors.border, borderRadius: 2, overflow: "hidden" },
+  macroFill: { height: "100%", borderRadius: 2 },
 
   // ── TIMELINE ──
-  timelineHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
-  timelineTitle: { color: Colors.text, fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
-  itemCountBadge: { backgroundColor: Colors.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: Colors.borderLight },
-  itemCountText: { color: Colors.textSecondary, fontSize: 12, fontWeight: "700" },
+  timelineHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 },
+  timelineTitle: { color: Colors.text, fontSize: 16, fontWeight: "600", letterSpacing: -0.2 },
+  itemCountText: { color: Colors.textSecondary, fontSize: 13 },
 
-  timelineItemRow: { flexDirection: "row", width: "100%", marginBottom: 16 },
-  timelineColumn: { width: 56, alignItems: "center", paddingTop: 8, position: "relative" },
-  timelineTime: { fontSize: 10, fontWeight: "800", color: Colors.textSecondary, marginBottom: 8 },
-  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.accent, borderWidth: 2, borderColor: Colors.surface, shadowColor: Colors.accent, shadowOffset: {width:0,height:0}, shadowOpacity: 0.6, shadowRadius: 8, elevation: 4 },
-  timelineLine: { position: "absolute", top: 40, bottom: -20, left: "50%", width: 2, marginLeft: -1, backgroundColor: Colors.border },
-  
+  timelineItemRow: { flexDirection: "row", width: "100%" },
+  timelineColumn: { width: 52, alignItems: "center", paddingTop: 16, position: "relative" },
+  timelineTime: { fontSize: 11, fontWeight: "500", color: Colors.textSecondary, marginBottom: 8 },
+  timelineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accent },
+  timelineLine: { position: "absolute", top: 44, bottom: -12, left: "50%", width: 1, backgroundColor: Colors.borderLight },
+
   logCard: {
-    flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.borderLight, borderRadius: 24,
-    padding: 14, paddingRight: 16, flexDirection: "row", alignItems: "center",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 6,
-    position: "relative",
+    flex: 1,
+    paddingVertical: 13, paddingRight: 4,
+    flexDirection: "row", alignItems: "center",
+    borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
   },
-  logIconBox: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", marginRight: 12 },
   logContent: { flex: 1, marginRight: 12 },
-  logName: { color: Colors.text, fontSize: 15, fontWeight: "800", letterSpacing: -0.2, marginBottom: 4 },
+  logName: { color: Colors.text, fontSize: 14.5, fontWeight: "600", letterSpacing: -0.1, marginBottom: 3 },
   logSubRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   servingBadge: { backgroundColor: Colors.secondary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  servingText: { color: Colors.textSecondary, fontSize: 10, fontWeight: "600" },
-  logMacros: { fontSize: 10, fontWeight: "700" },
-  
-  logCaloriesCol: { alignItems: "flex-end", borderLeftWidth: 1, borderLeftColor: Colors.borderLight, paddingLeft: 16 },
-  logCalories: { fontSize: 18, fontWeight: "900", color: Colors.text, letterSpacing: -0.5, lineHeight: 20 },
-  logKcal: { fontSize: 9, fontWeight: "800", color: Colors.textSecondary, textTransform: "uppercase", letterSpacing: 2, marginTop: 4 },
+  servingText: { color: Colors.textSecondary, fontSize: 11, fontWeight: "500" },
+  logMacros: { fontSize: 12, fontWeight: "500", fontVariant: ["tabular-nums"] },
 
-  deleteBtn: { padding: 8, borderRadius: 10, marginLeft: 4 },
-  
-  emptyState: { backgroundColor: Colors.surface, borderRadius: 24, padding: 32, borderWidth: 1, borderColor: Colors.border, borderStyle: "dashed", alignItems: "center", marginTop: 16 },
+  logCaloriesCol: { alignItems: "flex-end", paddingLeft: 12 },
+  logCalories: { fontSize: 15, fontWeight: "600", color: Colors.text, letterSpacing: -0.2, lineHeight: 18, fontVariant: ["tabular-nums"] },
+  logKcal: { fontSize: 11, fontWeight: "400", color: Colors.textSecondary, marginTop: 2 },
+
+  deleteBtn: { padding: 8, borderRadius: Radii.inner, marginLeft: 4 },
+
+  emptyState: { backgroundColor: Colors.surface, borderRadius: Radii.card, padding: 32, borderWidth: 1, borderColor: Colors.border, borderStyle: "dashed", alignItems: "center", marginTop: 16 },
   emptyIconBox: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.secondary, alignItems: "center", justifyContent: "center", marginBottom: 16 },
-  emptyTitle: { color: Colors.text, fontSize: 16, fontWeight: "800", marginBottom: 4 },
-  emptySubtext: { color: Colors.textSecondary, fontSize: 12, textAlign: "center" },
+  emptyTitle: { color: Colors.text, fontSize: 16, fontWeight: "600", marginBottom: 4 },
+  emptySubtext: { color: Colors.textSecondary, fontSize: 13, textAlign: "center" },
 
   // ── BOTTOM NAV ──
   bottomBar: {
@@ -1433,11 +1342,11 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
   bottomBarInner: {
-    backgroundColor: "rgba(18, 18, 20, 0.95)",
+    backgroundColor: "rgba(14, 13, 11, 0.97)",
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopColor: Colors.borderLight,
+    borderTopLeftRadius: Radii.card,
+    borderTopRightRadius: Radii.card,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -1446,48 +1355,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   navItem: { flex: 1, alignItems: "center", gap: 4 },
-  navLabel: { fontSize: 10, fontWeight: "700", color: Colors.textSecondary },
+  navLabel: { fontSize: 11, fontWeight: "500", color: Colors.textSecondary },
 
   // ── FAB & MENU ──
   fabBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 40 },
-  menuContainer: { position: "absolute", bottom: 130, alignSelf: "center", width: 200, gap: 12, zIndex: 60 },
-  menuItemBtn: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.surface, padding: 10, borderRadius: 20, borderWidth: 1, borderColor: Colors.border, elevation: 8 },
-  menuIconBg: { width: 40, height: 40, borderRadius: 14, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center", marginRight: 12 },
-  menuItemText: { color: Colors.text, fontSize: 14, fontWeight: "700", letterSpacing: 0.2 },
+  menuContainer: { position: "absolute", bottom: 130, alignSelf: "center", width: 200, gap: 10, zIndex: 60 },
+  menuItemBtn: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.surface, padding: 10, borderRadius: Radii.card, borderWidth: 1, borderColor: Colors.border, elevation: 2 },
+  menuIconBg: { width: 40, height: 40, borderRadius: Radii.inner, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center", marginRight: 12 },
+  menuItemText: { color: Colors.text, fontSize: 14, fontWeight: "500" },
   fabFixed: { position: "absolute", bottom: 48, alignSelf: "center", width: 62, height: 62, borderRadius: 31, zIndex: 50 },
-  mainFab: { width: 62, height: 62, borderRadius: 31, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center", elevation: 10, borderWidth: 4, borderColor: "rgba(18, 18, 20, 0.95)" },
+  mainFab: { width: 62, height: 62, borderRadius: 31, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center", elevation: 2, borderWidth: 4, borderColor: Colors.primary },
   mainFabActive: { backgroundColor: Colors.surface, borderColor: Colors.border },
 
-  // ── MODALS (Glassmorphism look) ──
+  // ── MODALS ──
   modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" },
-  glassModal: { width: "100%", maxWidth: 480, alignSelf: "center", backgroundColor: "rgba(18, 18, 20, 0.8)", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 48 },
-  modalDrag: { width: 48, height: 6, backgroundColor: "rgba(255,255,255,0.2)", borderRadius: 3, alignSelf: "center", marginBottom: 24 },
-  modalTitle: { color: Colors.text, fontSize: 24, fontWeight: "800", textAlign: "center", marginBottom: 4, letterSpacing: -0.5 },
-  modalSubtitle: { color: Colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 32 },
-  modalAccentSubtitle: { color: Colors.accent, fontSize: 14, fontWeight: "700", textAlign: "center", marginBottom: 24 },
+  glassModal: { width: "100%", maxWidth: 480, alignSelf: "center", backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.border, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 48 },
+  modalDrag: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: "center", marginBottom: 24 },
+  modalTitle: { color: Colors.text, fontSize: 20, fontWeight: "600", textAlign: "center", marginBottom: 4, letterSpacing: -0.3 },
+  modalSubtitle: { color: Colors.textSecondary, fontSize: 14, textAlign: "center", marginBottom: 28 },
+  modalAccentSubtitle: { color: Colors.accent, fontSize: 14, fontWeight: "500", textAlign: "center", marginBottom: 24 },
 
-  modalInputWrap: { alignItems: "center", marginBottom: 40 },
-  modalInputBig: { color: Colors.accent, fontSize: 56, fontWeight: "900", textAlign: "center", letterSpacing: -2, width: 200, padding: 0 },
+  modalInputWrap: { alignItems: "center", marginBottom: 36 },
+  modalInputBig: { color: Colors.text, fontSize: 52, fontWeight: "600", textAlign: "center", letterSpacing: -1, width: 200, padding: 0, fontVariant: ["tabular-nums"] },
   modalInputDivider: { height: 2, backgroundColor: Colors.border, width: "100%", maxWidth: 200, borderRadius: 1 },
   modalInputDividerActive: { height: "100%", width: "50%", backgroundColor: Colors.accent, alignSelf: "center" },
-  modalInputUnit: { color: Colors.textSecondary, fontSize: 11, fontWeight: "800", letterSpacing: 2, marginTop: 12 },
+  modalInputUnit: { color: Colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 12 },
 
-  editInputWrapper: { alignItems: "center", marginBottom: 32 },
-  editInputBox: { backgroundColor: "rgba(24,24,27,0.5)", color: Colors.text, fontSize: 36, fontWeight: "900", padding: 16, borderRadius: 24, textAlign: "center", width: 140, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
-  
-  unitGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginBottom: 32 },
-  unitPill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)", backgroundColor: "rgba(24,24,27,0.5)" },
+  editInputWrapper: { alignItems: "center", marginBottom: 28 },
+  editInputBox: { backgroundColor: Colors.inputBg, color: Colors.text, fontSize: 32, fontWeight: "600", padding: 16, borderRadius: Radii.card, textAlign: "center", width: 140, borderWidth: 1, borderColor: Colors.border, fontVariant: ["tabular-nums"] },
+
+  unitGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginBottom: 28 },
+  unitPill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radii.inner, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.inputBg },
   unitPillActive: { backgroundColor: Colors.accentGlow, borderColor: Colors.accent },
-  unitPillText: { fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1, color: Colors.textSecondary },
-  unitPillTextActive: { color: Colors.accent },
+  unitPillText: { fontSize: 13, fontWeight: "500", color: Colors.textSecondary },
+  unitPillTextActive: { color: Colors.accent, fontWeight: "600" },
 
   modalBtnRow: { flexDirection: "row", gap: 12 },
-  btnCancel: { flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", paddingVertical: 18, borderRadius: 20, alignItems: "center" },
-  btnCancelText: { color: Colors.text, fontSize: 16, fontWeight: "800" },
-  btnSave: { flex: 1, backgroundColor: Colors.accent, paddingVertical: 18, borderRadius: 20, alignItems: "center", shadowColor: Colors.accent, shadowOffset:{width:0,height:0}, shadowOpacity:0.4, shadowRadius:12, elevation:6 },
-  btnSaveText: { color: "#000", fontSize: 16, fontWeight: "800" },
-  
-  deleteModalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(239,68,68,0.15)", alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 16 },
-  btnDelete: { flex: 1, backgroundColor: Colors.error, paddingVertical: 18, borderRadius: 20, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, elevation: 6 },
-  btnDeleteText: { color: Colors.white, fontSize: 16, fontWeight: "800" },
+  btnCancel: { flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, paddingVertical: 16, borderRadius: Radii.inner, alignItems: "center" },
+  btnCancelText: { color: Colors.text, fontSize: 15, fontWeight: "600" },
+  btnSave: { flex: 1, backgroundColor: Colors.accent, paddingVertical: 16, borderRadius: Radii.inner, alignItems: "center" },
+  btnSaveText: { color: Colors.textOnAccent, fontSize: 15, fontWeight: "600" },
+
+  deleteModalIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: `${Colors.error}26`, alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 16 },
+  btnDelete: { flex: 1, backgroundColor: Colors.error, paddingVertical: 16, borderRadius: Radii.inner, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, elevation: 2 },
+  btnDeleteText: { color: Colors.white, fontSize: 15, fontWeight: "600" },
 });

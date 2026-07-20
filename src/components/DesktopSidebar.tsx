@@ -17,9 +17,8 @@ import {
   User,
   Barcode,
   SignOut,
-  Fire,
 } from "phosphor-react-native";
-import { Colors } from "../styles/colors";
+import { Colors, Radii } from "../styles/colors";
 import { supabase } from "../lib/supabase";
 
 export default function DesktopSidebar() {
@@ -140,14 +139,11 @@ export default function DesktopSidebar() {
         <Text style={styles.brandName}>TrackBing</Text>
       </View>
 
-      {/* Streak Panel */}
+      {/* Streak */}
       {streak > 0 && (
-        <View style={styles.streakPanel}>
-          <Fire size={18} weight="fill" color="#FF6B35" />
-          <Text style={styles.streakText}>
-            <Text style={styles.streakCount}>{streak}</Text> Day Streak!
-          </Text>
-        </View>
+        <Text style={styles.streakLine}>
+          <Text style={styles.streakCount}>{streak}-day</Text> streak
+        </Text>
       )}
 
       {/* Navigation items */}
@@ -169,13 +165,11 @@ export default function DesktopSidebar() {
                   hovered && !item.isActive && styles.navItemHover,
                 ]}
               >
-                <View style={[styles.iconContainer, item.isActive && styles.iconActive]}>
-                  <Icon
-                    size={20}
-                    weight={item.isActive ? "fill" : "bold"}
-                    color={item.isActive ? Colors.accent : Colors.textSecondary}
-                  />
-                </View>
+                <Icon
+                  size={18}
+                  weight={item.isActive ? "fill" : "regular"}
+                  color={item.isActive ? Colors.accent : Colors.textSecondary}
+                />
                 <Text style={[styles.navLabel, item.isActive && styles.navLabelActive]}>
                   {item.label}
                 </Text>
@@ -207,7 +201,7 @@ export default function DesktopSidebar() {
             hovered && styles.logoutBtnHover,
           ]}
         >
-          <SignOut size={18} weight="bold" color={Colors.error} />
+          <SignOut size={18} weight="regular" color={Colors.textSecondary} />
           <Text style={styles.logoutText}>Sign Out</Text>
         </Pressable>
       </View>
@@ -218,9 +212,9 @@ export default function DesktopSidebar() {
 const styles = StyleSheet.create({
   sidebar: {
     width: 240,
-    backgroundColor: Colors.secondary,
+    backgroundColor: Colors.primary,
     borderRightWidth: 1,
-    borderRightColor: Colors.border,
+    borderRightColor: Colors.borderLight,
     paddingTop: 32,
     paddingBottom: 18,
     paddingHorizontal: 16,
@@ -235,46 +229,33 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   logoBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 34,
+    height: 34,
+    borderRadius: Radii.inner,
     backgroundColor: Colors.accentDim,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   logoImage: {
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 24,
   },
   brandName: {
     color: Colors.text,
-    fontSize: 21,
-    fontWeight: "900",
-    letterSpacing: -0.5,
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: -0.3,
   },
-  streakPanel: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 107, 53, 0.08)",
-    paddingVertical: 9,
+  streakLine: {
+    color: Colors.textSecondary,
+    fontSize: 13,
     paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255, 107, 53, 0.15)",
-    marginBottom: 18,
-    gap: 8,
+    marginBottom: 16,
     flexShrink: 0,
   },
-  streakText: {
-    color: Colors.text,
-    fontSize: 13,
-    fontWeight: "700",
-  },
   streakCount: {
-    color: "#FF6B35",
-    fontWeight: "900",
+    color: Colors.accent,
+    fontWeight: "600",
   },
   navContainer: {
     flex: 1,
@@ -293,36 +274,25 @@ const styles = StyleSheet.create({
   navItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 9,
     paddingHorizontal: 12,
-    borderRadius: 16,
-    gap: 10,
+    borderRadius: Radii.inner,
+    gap: 11,
   },
   navItemHover: {
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: Colors.surfaceHover,
   },
   navItemActive: {
     backgroundColor: Colors.accentDim,
-    borderWidth: 1,
-    borderColor: "rgba(255, 204, 0, 0.15)",
-  },
-  iconContainer: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconActive: {
-    backgroundColor: "rgba(255, 204, 0, 0.08)",
   },
   navLabel: {
     color: Colors.textSecondary,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   navLabelActive: {
     color: Colors.accent,
+    fontWeight: "600",
   },
   footer: {
     borderTopWidth: 1,
@@ -338,50 +308,47 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.accent,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarLetter: {
-    color: Colors.primary,
-    fontWeight: "900",
-    fontSize: 16,
+    color: Colors.accent,
+    fontWeight: "600",
+    fontSize: 15,
   },
   profileDetails: {
     flex: 1,
     overflow: "hidden",
   },
   profileEmail: {
-    color: Colors.text,
-    fontSize: 14,
-    fontWeight: "800",
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "500",
   },
   profileSub: {
     color: Colors.textSecondary,
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 9,
     paddingHorizontal: 12,
-    borderRadius: 16,
+    borderRadius: Radii.inner,
     gap: 10,
-    backgroundColor: "rgba(239, 68, 68, 0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.1)",
-    minHeight: 42,
+    minHeight: 40,
   },
   logoutBtnHover: {
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    backgroundColor: Colors.surfaceHover,
   },
   logoutText: {
-    color: Colors.error,
-    fontSize: 14,
-    fontWeight: "800",
+    color: Colors.textSecondary,
+    fontSize: 13.5,
+    fontWeight: "500",
   },
 });

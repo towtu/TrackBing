@@ -5,6 +5,7 @@
 
 import { supabase } from "./supabase";
 import { searchUSDA } from "./usda";
+import { parseBarcode } from "./barcodes";
 import type { FoodItem } from "./macros";
 
 const CUSTOM_DB_URL =
@@ -186,6 +187,27 @@ export type BarcodeResult =
   | { ok: true; food: FoodItem; hasNutrition: boolean }
   | { ok: false; reason: "not-found" | "unreachable" };
 
+type PersonalBarcodeResult =
+  | { ok: true; food: FoodItem | null }
+  | { ok: false; reason: "auth-required" | "unreachable" };
+
+export type BarcodeSourceLookup = {
+  findPersonal: (barcode: string) => Promise<PersonalBarcodeResult>;
+  findPublic: (barcode: string) => Promise<BarcodeResult>;
+};
+
+export type ResolvedBarcode =
+  | {
+      ok: true;
+      source: "personal" | "open-food-facts";
+      food: FoodItem;
+      hasNutrition: boolean;
+    }
+  | {
+      ok: false;
+      reason: "invalid" | "auth-required" | "not-found" | "unreachable";
+    };
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -256,6 +278,98 @@ export async function lookupBarcode(code: string): Promise<BarcodeResult> {
     }
   }
   return { ok: false, reason: "unreachable" };
+}
+
+export async function resolveBarcodeWithSources(
+  rawCode: string,
+  sources: BarcodeSourceLookup,
+): Promise<ResolvedBarcode> {
+  const parsed = parseBarcode(rawCode);
+  if (!parsed.ok || !parsed.barcode) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  const personal = await sources.findPersonal(parsed.barcode);
+  if (!personal.ok) return personal;
+  if (personal.food) {
+    return {
+      ok: true,
+      source: "personal",
+      food: personal.food,
+      hasNutrition: true,
+    };
+  }
+
+  const publicResult = await sources.findPublic(parsed.barcode);
+  if (!publicResult.ok) return publicResult;
+  return {
+    ok: true,
+    source: "open-food-facts",
+    food: publicResult.food,
+    hasNutrition: publicResult.hasNutrition,
+  };
+}
+
+type PersonalBarcodeRow = {
+  id: string;
+  name: string;
+  calories: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  default_unit: string | null;
+  ai_estimated: boolean | null;
+};
+
+async function findPersonalFoodByBarcode(
+  barcode: string,
+): Promise<PersonalBarcodeResult> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, reason: "auth-required" };
+
+  const { data, error } = await supabase
+    .from("personal_foods")
+    .select("id,name,calories,protein,carbs,fat,default_unit,ai_estimated")
+    .eq("user_id", user.id)
+    .eq("barcode", barcode)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Personal barcode lookup failed");
+    return { ok: false, reason: "unreachable" };
+  }
+  if (!data) return { ok: true, food: null };
+
+  const row = data as PersonalBarcodeRow;
+  const defaultUnit = row.default_unit || "g";
+  return {
+    ok: true,
+    food: {
+      code: barcode,
+      product_name: row.name,
+      brands: "My Food",
+      default_unit: defaultUnit,
+      serving_quantity:
+        defaultUnit === "g" || defaultUnit === "ml" ? 100 : 1,
+      nutriments: {
+        "energy-kcal_100g": numberOrZero(row.calories),
+        proteins_100g: numberOrZero(row.protein),
+        carbohydrates_100g: numberOrZero(row.carbs),
+        fat_100g: numberOrZero(row.fat),
+      },
+      original_id: row.id,
+      ai_estimated: !!row.ai_estimated,
+    },
+  };
+}
+
+export function resolveBarcode(code: string): Promise<ResolvedBarcode> {
+  return resolveBarcodeWithSources(code, {
+    findPersonal: findPersonalFoodByBarcode,
+    findPublic: lookupBarcode,
+  });
 }
 
 /**

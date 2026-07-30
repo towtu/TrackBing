@@ -25,6 +25,7 @@ import {
 } from "@/src/components/feedback/SweetFeedback";
 import { requestAiFood, type AiFood } from "@/src/lib/aiFood";
 import { getAiFoodFeedback } from "@/src/lib/aiFoodUi";
+import type { BeeSituation } from "@/src/lib/beeCompanion";
 import {
   buildAiFoodLogInsert,
   getBeeQuickLogClarification,
@@ -43,6 +44,7 @@ type ChatMessage = {
   role: "bee" | "user";
   text: string;
   food?: AiFood;
+  situation?: BeeSituation;
 };
 
 type FeedbackState = {
@@ -57,6 +59,7 @@ const STARTER_MESSAGES: ChatMessage[] = [
   {
     id: "starter",
     role: "bee",
+    situation: "greeting",
     text:
       'Tell Bee what you ate, like "600g chicken breast". If details matter, I\'ll ask before logging.',
   },
@@ -117,6 +120,7 @@ export function BeeQuickLog() {
         {
           id: createId("bee"),
           role: "bee",
+          situation: "searching",
           text: "Got it. I will check that instead before logging.",
         },
       ]);
@@ -141,6 +145,7 @@ export function BeeQuickLog() {
         {
           id: createId("bee"),
           role: "bee",
+          situation: "needsClarification",
           text: clarification.question,
         },
       ]);
@@ -156,6 +161,7 @@ export function BeeQuickLog() {
       {
         id: createId("bee"),
         role: "bee",
+        situation: "searching",
         text: "Checking the best match before logging...",
       },
     ]);
@@ -168,6 +174,7 @@ export function BeeQuickLog() {
         {
           id: createId("bee"),
           role: "bee",
+          situation: "lookupError",
           text: aiFeedback.message,
         },
       ]);
@@ -183,6 +190,7 @@ export function BeeQuickLog() {
       {
         id: createId("bee"),
         role: "bee",
+        situation: "reviewingMatch",
         food: result.food,
         text: `I found ${result.food.serving_label} of ${result.food.name}: ${Math.round(
           result.food.kcal,
@@ -202,6 +210,7 @@ export function BeeQuickLog() {
       {
         id: createId("bee"),
         role: "bee",
+        situation: "searching",
         text: "Searching the web for a better match (this uses 1 AI credit)...",
       },
     ]);
@@ -210,7 +219,14 @@ export function BeeQuickLog() {
     setLoading(false);
     if (!result.ok) {
       const aiFeedback = getAiFoodFeedback(result.reason);
-      appendMessages([{ id: createId("bee"), role: "bee", text: aiFeedback.message }]);
+      appendMessages([
+        {
+          id: createId("bee"),
+          role: "bee",
+          situation: "lookupError",
+          text: aiFeedback.message,
+        },
+      ]);
       setFeedback(aiFeedback);
       return;
     }
@@ -221,6 +237,7 @@ export function BeeQuickLog() {
       {
         id: createId("bee"),
         role: "bee",
+        situation: "reviewingMatch",
         food: result.food,
         text: `From the web: ${result.food.serving_label} of ${result.food.name} — ${Math.round(
           result.food.kcal,
@@ -258,6 +275,7 @@ export function BeeQuickLog() {
         {
           id: createId("bee"),
           role: "bee",
+          situation: "lookupError",
           text: "I found the food, but logging failed. Please try again.",
         },
       ]);
@@ -277,6 +295,7 @@ export function BeeQuickLog() {
       {
         id: createId("bee"),
         role: "bee",
+        situation: "logSuccess",
         food,
         text: `Logged ${food.serving_label} of ${food.name}.`,
       },
@@ -293,6 +312,13 @@ export function BeeQuickLog() {
   const inputPlaceholder = pendingFood
     ? "Type a correction, or tap Log it"
     : "I ate 600g chicken breast";
+  const headerSituation: BeeSituation = loading
+    ? "searching"
+    : pendingClarification
+      ? "needsClarification"
+      : pendingFood
+        ? "reviewingMatch"
+        : "greeting";
 
   return (
     <>
@@ -307,7 +333,7 @@ export function BeeQuickLog() {
         ]}
       >
         <View style={styles.launcherMascotViewport}>
-          <BeeMascot size="small" mood="under" style={styles.launcherMascot} />
+          <BeeMascot size="small" situation="greeting" />
         </View>
         <View style={styles.floatingBadge}>
           <ChatCircleText size={13} color={Colors.textOnAccent} weight="fill" />
@@ -326,7 +352,7 @@ export function BeeQuickLog() {
             >
               <View style={styles.header}>
                 <View style={styles.headerAvatar}>
-                  <BeeMascot size="small" mood={pendingClarification ? "empty" : "under"} />
+                  <BeeMascot size="small" situation={headerSituation} />
                 </View>
                 <View style={styles.headerCopy}>
                   <Text style={styles.title}>Bee quick log</Text>
@@ -358,36 +384,52 @@ export function BeeQuickLog() {
                   <View
                     key={message.id}
                     style={[
-                      styles.messageBubble,
+                      styles.messageRow,
                       message.role === "user"
-                        ? styles.userBubble
-                        : styles.beeBubble,
+                        ? styles.userMessageRow
+                        : styles.beeMessageRow,
                     ]}
                   >
-                    <Text
+                    {message.role === "bee" ? (
+                      <BeeMascot
+                        size="small"
+                        situation={message.situation ?? "greeting"}
+                        style={styles.messageMascot}
+                      />
+                    ) : null}
+                    <View
                       style={[
-                        styles.messageText,
+                        styles.messageBubble,
                         message.role === "user"
-                          ? styles.userMessageText
-                          : styles.beeMessageText,
+                          ? styles.userBubble
+                          : styles.beeBubble,
                       ]}
                     >
-                      {message.text}
-                    </Text>
-                    {message.food ? (
-                      <View style={styles.badgeRow}>
-                        <AiEstimateBadge source={message.food.source} compact />
-                        <Text style={styles.confidenceText}>
-                          {message.food.confidence} confidence
-                        </Text>
-                        {message.food.source_detail ? (
-                          <Text style={styles.sourceDetailText} numberOfLines={1}>
-                            {message.food.source === "web" ? "from " : "matched: "}
-                            {message.food.source_detail}
+                      <Text
+                        style={[
+                          styles.messageText,
+                          message.role === "user"
+                            ? styles.userMessageText
+                            : styles.beeMessageText,
+                        ]}
+                      >
+                        {message.text}
+                      </Text>
+                      {message.food ? (
+                        <View style={styles.badgeRow}>
+                          <AiEstimateBadge source={message.food.source} compact />
+                          <Text style={styles.confidenceText}>
+                            {message.food.confidence} confidence
                           </Text>
-                        ) : null}
-                      </View>
-                    ) : null}
+                          {message.food.source_detail ? (
+                            <Text style={styles.sourceDetailText} numberOfLines={1}>
+                              {message.food.source === "web" ? "from " : "matched: "}
+                              {message.food.source_detail}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                 ))}
               </ScrollView>
@@ -431,6 +473,7 @@ export function BeeQuickLog() {
                           {
                             id: createId("bee"),
                             role: "bee",
+                            situation: "reviewingMatch",
                             food: alt,
                             text: `Swapped to ${alt.name}: ${Math.round(alt.kcal)} kcal, P${Math.round(
                               alt.protein,
@@ -465,6 +508,7 @@ export function BeeQuickLog() {
                         {
                           id: createId("bee"),
                           role: "bee",
+                          situation: "needsClarification",
                           text: "No problem. Type the correction and I will search again.",
                         },
                       ]);
@@ -545,12 +589,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: "rgba(255, 204, 0, 0.42)",
-    shadowColor: Colors.accent,
-    shadowOpacity: 0.24,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 14,
+    borderColor: Colors.border,
+    elevation: 4,
     overflow: "visible",
   },
   launcherMascotViewport: {
@@ -560,9 +600,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-  },
-  launcherMascot: {
-    transform: [{ translateY: 10 }],
   },
   floatingButtonMobile: {
     right: 16,
@@ -636,7 +673,7 @@ const styles = StyleSheet.create({
   title: {
     color: Colors.text,
     fontSize: 18,
-    fontWeight: "900",
+    fontWeight: "700",
   },
   subtitle: {
     color: Colors.textSecondary,
@@ -662,26 +699,41 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 22,
   },
-  messageBubble: {
+  messageRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  beeMessageRow: {
+    alignSelf: "stretch",
+    gap: 6,
+  },
+  userMessageRow: {
+    alignSelf: "flex-end",
+    justifyContent: "flex-end",
     maxWidth: "88%",
+  },
+  messageMascot: {
+    marginTop: 1,
+  },
+  messageBubble: {
     borderRadius: 16,
     paddingHorizontal: 13,
     paddingVertical: 11,
   },
   beeBubble: {
-    alignSelf: "flex-start",
+    flex: 1,
+    minWidth: 0,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   userBubble: {
-    alignSelf: "flex-end",
     backgroundColor: Colors.accent,
   },
   messageText: {
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   beeMessageText: {
     color: Colors.text,
@@ -699,13 +751,13 @@ const styles = StyleSheet.create({
   confidenceText: {
     color: Colors.textSecondary,
     fontSize: 10,
-    fontWeight: "900",
+    fontWeight: "700",
     textTransform: "uppercase",
   },
   sourceDetailText: {
     color: Colors.textMuted,
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "600",
     flexShrink: 1,
   },
   optionWrap: {
@@ -718,7 +770,7 @@ const styles = StyleSheet.create({
   optionChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255, 204, 0, 0.35)",
+    borderColor: Colors.border,
     backgroundColor: Colors.accentDim,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -730,7 +782,7 @@ const styles = StyleSheet.create({
   optionText: {
     color: Colors.accent,
     fontSize: 12,
-    fontWeight: "900",
+    fontWeight: "700",
   },
   optionTextPrimary: {
     color: Colors.textOnAccent,
@@ -753,7 +805,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     paddingHorizontal: 14,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   sendButton: {
     width: 48,

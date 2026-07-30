@@ -89,6 +89,17 @@ describe("resolveBarcodeWithSources", () => {
     expect(findPublic).not.toHaveBeenCalled();
   });
 
+  it("turns an unexpected source exception into a retryable failure", async () => {
+    await expect(
+      resolveBarcodeWithSources("01234567", {
+        findPersonal: async () => {
+          throw new Error("network");
+        },
+        findPublic: vi.fn(),
+      }),
+    ).resolves.toEqual({ ok: false, reason: "unreachable" });
+  });
+
   it("rejects invalid scanner payloads before either lookup", async () => {
     const findPersonal = vi.fn();
     const findPublic = vi.fn();

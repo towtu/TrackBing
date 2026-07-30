@@ -289,25 +289,30 @@ export async function resolveBarcodeWithSources(
     return { ok: false, reason: "invalid" };
   }
 
-  const personal = await sources.findPersonal(parsed.barcode);
-  if (!personal.ok) return personal;
-  if (personal.food) {
+  try {
+    const personal = await sources.findPersonal(parsed.barcode);
+    if (!personal.ok) return personal;
+    if (personal.food) {
+      return {
+        ok: true,
+        source: "personal",
+        food: personal.food,
+        hasNutrition: true,
+      };
+    }
+
+    const publicResult = await sources.findPublic(parsed.barcode);
+    if (!publicResult.ok) return publicResult;
     return {
       ok: true,
-      source: "personal",
-      food: personal.food,
-      hasNutrition: true,
+      source: "open-food-facts",
+      food: publicResult.food,
+      hasNutrition: publicResult.hasNutrition,
     };
+  } catch {
+    console.warn("Barcode source lookup failed");
+    return { ok: false, reason: "unreachable" };
   }
-
-  const publicResult = await sources.findPublic(parsed.barcode);
-  if (!publicResult.ok) return publicResult;
-  return {
-    ok: true,
-    source: "open-food-facts",
-    food: publicResult.food,
-    hasNutrition: publicResult.hasNutrition,
-  };
 }
 
 type PersonalBarcodeRow = {

@@ -4,19 +4,28 @@ import { Colors } from "@/src/styles/colors";
 
 interface NotFoundSheetProps {
   visible: boolean;
+  title: string;
   message: string;
+  canCreate: boolean;
   onScanAgain: () => void;
   onCreateManually: () => void;
 }
 
 export default function NotFoundSheet({
   visible,
+  title,
   message,
+  canCreate,
   onScanAgain,
   onCreateManually,
 }: NotFoundSheetProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onScanAgain}
+    >
       <View style={styles.overlay}>
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
@@ -28,18 +37,35 @@ export default function NotFoundSheet({
           <View style={styles.icon}>
             <MagnifyingGlass size={32} color={Colors.accent} weight="fill" />
           </View>
-          <Text style={styles.title}>Product Not Found</Text>
+          <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{message}</Text>
           <View style={styles.btnRow}>
-            <TouchableOpacity style={styles.btnSecondary} onPress={onScanAgain}>
-              <Text style={styles.btnSecondaryText}>Scan Again</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.btnPrimary}
-              onPress={onCreateManually}
-            >
-              <Text style={styles.btnPrimaryText}>Create Manually</Text>
-            </TouchableOpacity>
+            {canCreate ? (
+              <>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  style={styles.btnSecondary}
+                  onPress={onScanAgain}
+                >
+                  <Text style={styles.btnSecondaryText}>Scan again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  style={styles.btnPrimary}
+                  onPress={onCreateManually}
+                >
+                  <Text style={styles.btnPrimaryText}>Create this food</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                accessibilityRole="button"
+                style={styles.btnPrimary}
+                onPress={onScanAgain}
+              >
+                <Text style={styles.btnPrimaryText}>Try again</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>

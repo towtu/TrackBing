@@ -45,10 +45,13 @@ export default function ManualEntrySheet({
             </TouchableOpacity>
           </View>
           <TextInput
+            accessibilityLabel="Barcode number"
+            accessibilityHint="Enter 4 to 32 digits to look up a product"
             style={styles.input}
             placeholder="e.g. 4800016..."
             placeholderTextColor="#666"
             keyboardType="numeric"
+            maxLength={32}
             value={value}
             onChangeText={onChange}
             autoFocus

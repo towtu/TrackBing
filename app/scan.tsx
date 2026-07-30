@@ -14,6 +14,8 @@ import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
 import NotFoundSheet from "@/src/components/scan/NotFoundSheet";
 import ManualEntrySheet from "@/src/components/scan/ManualEntrySheet";
+import { sanitizeBarcodeInput } from "@/src/lib/barcodes";
+import { resolveBarcode } from "@/src/lib/foodSearch";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -22,7 +24,10 @@ export default function ScanPage() {
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [notFoundModalVisible, setNotFoundModalVisible] = useState(false);
+  const [notFoundTitle, setNotFoundTitle] = useState("");
   const [notFoundMessage, setNotFoundMessage] = useState("");
+  const [notFoundBarcode, setNotFoundBarcode] = useState<string | null>(null);
+  const [canCreateMissingFood, setCanCreateMissingFood] = useState(false);
 
   const isWeb = Platform.OS === "web";
 
@@ -33,59 +38,60 @@ export default function ScanPage() {
     }, [])
   );
 
-  const processBarcode = async (code: string) => {
+  const processBarcode = async (rawCode: string) => {
     if (loading) return;
     setLoading(true);
     setManualModalVisible(false);
 
-    try {
-      const response = await fetch(
-        `https://world.openfoodfacts.org/api/v0/product/${code}.json`,
-      );
-      const json = await response.json();
+    const result = await resolveBarcode(rawCode);
+    if (result.ok) {
+      const food = result.food;
+      const nutriments = food.nutriments || {};
+      const initialUnit = food.default_unit || "g";
+      const initialWeight =
+        food.serving_quantity ||
+        (initialUnit === "g" || initialUnit === "ml" ? 100 : 1);
 
-      if (json.status === 1 && json.product) {
-        const p = json.product;
-        const n = p.nutriments || {};
-
-        const calories =
-          n["energy-kcal_100g"] || n["energy-kcal"] || n["energy_value"] || 0;
-        const protein = n.proteins_100g || n.proteins || 0;
-        const carbs = n.carbohydrates_100g || n.carbohydrates || 0;
-        const fat = n.fat_100g || n.fat || 0;
-
-        const servingQty = p.serving_quantity || 100;
-
-        const isLiquid =
-          p.product_quantity_unit === "ml" ||
-          p.product_quantity_unit === "cl" ||
-          p.product_quantity_unit === "l";
-        const initialUnit = isLiquid ? "ml" : "g";
-
-        router.replace({
-          pathname: "/(tabs)/add",
-          params: {
-            code: code,
-            initialName: p.product_name || "Unknown Product",
-            initialCal: calories,
-            initialProt: protein,
-            initialCarbs: carbs,
-            initialFat: fat,
-            brand: p.brands || "Packaged Item",
-            initialWeight: servingQty.toString(),
-            initialUnit: initialUnit,
-          },
-        });
-      } else {
-        setNotFoundMessage("We couldn't find this barcode in our database.");
-        setNotFoundModalVisible(true);
-        setLoading(false);
-      }
-    } catch (error) {
-      setNotFoundMessage("Could not reach server. Check your connection.");
-      setNotFoundModalVisible(true);
-      setLoading(false);
+      router.replace({
+        pathname: "/(tabs)/add",
+        params: {
+          code: food.code,
+          initialName: food.product_name || "Unknown Product",
+          initialCal: nutriments["energy-kcal_100g"] || 0,
+          initialProt: nutriments.proteins_100g || 0,
+          initialCarbs: nutriments.carbohydrates_100g || 0,
+          initialFat: nutriments.fat_100g || 0,
+          brand: food.brands || "Packaged Item",
+          initialWeight: String(initialWeight),
+          initialUnit,
+        },
+      });
+      return;
     }
+
+    const barcode = sanitizeBarcodeInput(rawCode);
+    setNotFoundBarcode(result.reason === "not-found" ? barcode : null);
+    setCanCreateMissingFood(result.reason === "not-found");
+    setNotFoundTitle(
+      result.reason === "not-found"
+        ? "Product not found"
+        : result.reason === "invalid"
+          ? "Check barcode"
+          : result.reason === "auth-required"
+            ? "Sign in required"
+            : "Lookup unavailable",
+    );
+    setNotFoundMessage(
+      result.reason === "not-found"
+        ? "This barcode is not in Open Food Facts or your My Foods yet."
+        : result.reason === "invalid"
+          ? "Use a barcode containing 4 to 32 digits."
+          : result.reason === "auth-required"
+            ? "Sign in again before looking up personal foods."
+            : "Could not reach the food database. Check your connection and retry.",
+    );
+    setNotFoundModalVisible(true);
+    setLoading(false);
   };
 
   const handleBarcode = useCallback(
@@ -142,21 +148,27 @@ export default function ScanPage() {
       <ManualEntrySheet
         visible={manualModalVisible}
         value={manualCode}
-        onChange={setManualCode}
+        onChange={(value) => setManualCode(sanitizeBarcodeInput(value))}
         onClose={() => setManualModalVisible(false)}
         onSubmit={() => processBarcode(manualCode)}
       />
 
       <NotFoundSheet
         visible={notFoundModalVisible}
+        title={notFoundTitle}
         message={notFoundMessage}
+        canCreate={canCreateMissingFood}
         onScanAgain={() => {
           setNotFoundModalVisible(false);
           setScanned(false);
         }}
         onCreateManually={() => {
+          if (!notFoundBarcode) return;
           setNotFoundModalVisible(false);
-          router.replace("/create-food");
+          router.replace({
+            pathname: "/create-food",
+            params: { barcode: notFoundBarcode },
+          });
         }}
       />
     </View>

@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Calculator, CheckCircle, X } from "phosphor-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -22,6 +22,10 @@ import {
   getAiFoodFeedback,
   shouldMarkAiEstimated,
 } from "@/src/lib/aiFoodUi";
+import {
+  parseBarcode,
+  sanitizeBarcodeInput,
+} from "@/src/lib/barcodes";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -46,6 +50,7 @@ const formatMacroInput = (value: number) => {
 
 export default function CreateFoodPage() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ barcode?: string | string[] }>();
   const { width, isDesktop } = useResponsive();
   const compactForm = width < 390;
   const skipNextMacroAutoCalc = useRef(false);
@@ -54,6 +59,7 @@ export default function CreateFoodPage() {
   const [prot, setProt] = useState("");
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
+  const [barcode, setBarcode] = useState("");
 
   const [unit, setUnit] = useState<FoodUnit>("g");
 
@@ -63,6 +69,26 @@ export default function CreateFoodPage() {
     null,
   );
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+
+  useEffect(() => {
+    const routeBarcode = Array.isArray(params.barcode)
+      ? params.barcode[0]
+      : params.barcode;
+    if (!routeBarcode) return;
+
+    const parsed = parseBarcode(routeBarcode);
+    if (parsed.ok && parsed.barcode) {
+      setBarcode(parsed.barcode);
+      return;
+    }
+
+    setBarcode("");
+    setFeedback({
+      type: "warning",
+      title: "Barcode not carried over",
+      message: "Use a barcode containing 4 to 32 digits.",
+    });
+  }, [params.barcode]);
 
   useEffect(() => {
     if (skipNextMacroAutoCalc.current) {
@@ -82,6 +108,16 @@ export default function CreateFoodPage() {
 
   const handleSave = async () => {
     if (submitting) return;
+    const parsedBarcode = parseBarcode(barcode, { optional: true });
+    if (!parsedBarcode.ok) {
+      setFeedback({
+        type: "warning",
+        title: "Check the barcode",
+        message: parsedBarcode.reason,
+      });
+      return;
+    }
+
     if (!name || !cal) {
       setFeedback({
         type: "warning",
@@ -118,26 +154,32 @@ export default function CreateFoodPage() {
         carbs: parseFloat(carbs) || 0,
         fat: parseFloat(fat) || 0,
         default_unit: unit,
+        barcode: parsedBarcode.barcode,
         ai_estimated: aiEstimated,
       },
     ]);
 
     if (error) {
+      const duplicateBarcode =
+        error.code === "23505" && parsedBarcode.barcode !== null;
       setFeedback({
         type: "error",
-        title: "Could not save food",
-        message: error.message,
+        title: duplicateBarcode ? "Barcode already saved" : "Could not save food",
+        message: duplicateBarcode
+          ? "This barcode is already saved in My Foods."
+          : "Please try again. Your food details are still here.",
       });
       setSubmitting(false);
-    } else {
-      setFeedback({
-        type: "success",
-        title: "Saved!",
-        message: "Food added to My Foods.",
-        autoDismissMs: 1100,
-        onClose: () => router.back(),
-      });
+      return;
     }
+
+    setFeedback({
+      type: "success",
+      title: "Saved!",
+      message: "Food added to My Foods.",
+      autoDismissMs: 1100,
+      onClose: () => router.back(),
+    });
   };
 
   const handleAiFill = async () => {
@@ -211,6 +253,23 @@ export default function CreateFoodPage() {
           onChangeText={setName}
           autoFocus
         />
+
+        <Text style={styles.label}>Barcode number (optional)</Text>
+        <TextInput
+          accessibilityLabel="Barcode number"
+          accessibilityHint="Optional. Used to recognize this food on future scans."
+          inputMode="numeric"
+          keyboardType="numeric"
+          maxLength={32}
+          onChangeText={(value) => setBarcode(sanitizeBarcodeInput(value))}
+          placeholder="e.g. 4800016123456"
+          placeholderTextColor={Colors.textSecondary}
+          style={styles.input}
+          value={barcode}
+        />
+        <Text style={styles.inputHelper}>
+          Optional. Lets TrackBing recognize this food on future scans.
+        </Text>
 
         <BeeGuide
           compact
@@ -406,6 +465,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: "#333",
+  },
+  inputHelper: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: -12,
+    marginBottom: 20,
   },
   aiFillCard: {
     marginTop: -8,

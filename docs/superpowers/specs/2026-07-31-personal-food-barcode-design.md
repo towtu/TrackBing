@@ -124,6 +124,7 @@ Lookup results distinguish:
 - `not-found` — neither source has the barcode
 - `unreachable` — the public service could not be checked
 - `invalid` — the scan/manual value is not a supported numeric barcode
+- `auth-required` — no signed-in user is available for the owner-first lookup
 
 Only `not-found` enables **Create this food**.
 

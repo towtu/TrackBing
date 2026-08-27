@@ -273,6 +273,14 @@ export default function CreateFoodPage() {
 
         <BeeGuide
           compact
+          interactive
+          situation={
+            aiFillLoading
+              ? "searching"
+              : aiFillSource
+                ? "reviewingMatch"
+                : "emptyCollection"
+          }
           title="Want Bee to fill it?"
           message="Add a name, then Bee can draft per-serving macros you can edit."
           style={styles.aiFillCard}

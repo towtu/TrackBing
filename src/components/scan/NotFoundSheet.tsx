@@ -1,5 +1,5 @@
-import { MagnifyingGlass, X } from "phosphor-react-native";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { BeeGuide } from "@/src/components/ai/BeeGuide";
 import { Colors } from "@/src/styles/colors";
 
 interface NotFoundSheetProps {
@@ -34,11 +34,14 @@ export default function NotFoundSheet({
         />
         <View style={styles.sheet}>
           <View style={styles.drag} />
-          <View style={styles.icon}>
-            <MagnifyingGlass size={32} color={Colors.accent} weight="fill" />
-          </View>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{message}</Text>
+          <BeeGuide
+            compact
+            interactive
+            message={message}
+            situation={canCreate ? "barcodeNotFound" : "lookupError"}
+            style={styles.beeGuide}
+            title={title}
+          />
           <View style={styles.btnRow}>
             {canCreate ? (
               <>
@@ -99,28 +102,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 24,
   },
-  icon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.accentGlow,
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  title: {
-    color: Colors.text,
-    fontSize: 24,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    textAlign: "center",
+  beeGuide: {
     marginBottom: 32,
   },
   btnRow: {

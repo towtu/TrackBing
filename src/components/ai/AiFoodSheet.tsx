@@ -89,6 +89,8 @@ export function AiFoodSheet({
           <ScrollView keyboardShouldPersistTaps="handled">
             <BeeGuide
               compact
+              interactive
+              situation={findingMore ? "searching" : "reviewingMatch"}
               title="Review before saving"
               message="I found a draft for this serving. Check the numbers, then choose where it goes."
               style={styles.beeHeader}

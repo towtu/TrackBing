@@ -38,7 +38,7 @@ export default function ScanPage() {
     }, [])
   );
 
-  const processBarcode = async (rawCode: string) => {
+  const processBarcode = useCallback(async (rawCode: string) => {
     if (loading) return;
     setLoading(true);
     setManualModalVisible(false);
@@ -92,16 +92,16 @@ export default function ScanPage() {
     );
     setNotFoundModalVisible(true);
     setLoading(false);
-  };
+  }, [loading, router]);
 
   const handleBarcode = useCallback(
     (data: string) => {
       if (!scanned && !loading) {
         setScanned(true);
-        processBarcode(data);
+        void processBarcode(data);
       }
     },
-    [scanned, loading]
+    [loading, processBarcode, scanned],
   );
 
   return (

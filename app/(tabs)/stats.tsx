@@ -368,10 +368,10 @@ export default function StatsPage() {
         <View style={styles.summaryRow}>
           <View style={styles.streakCard}>
             <View style={styles.streakIconWrap}>
-              <Fire size={24} color="#FF6B35" weight="fill" />
+              <Fire size={24} color={Colors.accent} weight="fill" />
             </View>
             <Text style={styles.streakValue}>{streak}</Text>
-            <Text style={styles.streakLabel}>DAY STREAK</Text>
+            <Text style={styles.streakLabel}>Day streak</Text>
           </View>
 
           <View style={styles.streakCard}>
@@ -381,23 +381,23 @@ export default function StatsPage() {
                 { backgroundColor: `${Colors.accent}22` },
               ]}
             >
-              <Lightning size={24} color="#FFD700" weight="fill" />
+              <Lightning size={24} color={Colors.accent} weight="fill" />
             </View>
             <Text style={styles.streakValue}>{avgCalories}</Text>
-            <Text style={styles.streakLabel}>AVG KCAL</Text>
+            <Text style={styles.streakLabel}>Avg kcal</Text>
           </View>
 
           <View style={styles.streakCard}>
             <View
               style={[
                 styles.streakIconWrap,
-                { backgroundColor: "rgba(74,222,128,0.12)" },
+                { backgroundColor: "rgba(125, 162, 110, 0.14)" },
               ]}
             >
               <TrendUp size={24} color={Colors.success} weight="bold" />
             </View>
             <Text style={styles.streakValue}>{totalLogged}</Text>
-            <Text style={styles.streakLabel}>MEALS</Text>
+            <Text style={styles.streakLabel}>Meals</Text>
           </View>
         </View>
 
@@ -440,22 +440,15 @@ export default function StatsPage() {
                                   ? Colors.error
                                   : isToday
                                   ? Colors.accent
-                                  : "rgba(255, 204, 0, 0.5)",
-                              },
-                              isToday && {
-                                shadowColor: Colors.accent,
-                                shadowOffset: { width: 0, height: 0 },
-                                shadowOpacity: 0.6,
-                                shadowRadius: 8,
-                                elevation: 4,
-                              },
+                                  : "rgba(232, 185, 60, 0.45)",
+                              }
                             ]}
                           />
                         </View>
                         <Text
                           style={[
                             styles.barDayName,
-                            isToday && { color: Colors.accent, fontWeight: "900" },
+                            isToday && { color: Colors.accent, fontWeight: "600" },
                           ]}
                         >
                           {day.dayName}
@@ -518,7 +511,7 @@ export default function StatsPage() {
               {maxCalDay && maxCalDay.calories > 0 && (
                 <View style={[styles.bestDayCard, { flex: 0 }]}>
                   <View style={styles.bestDayIcon}>
-                    <Trophy size={24} color="#FFD700" weight="fill" />
+                    <Trophy size={24} color={Colors.accent} weight="fill" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.bestDayTitle}>Highest Intake Day</Text>
@@ -567,22 +560,15 @@ export default function StatsPage() {
                                 ? Colors.error
                                 : isToday
                                 ? Colors.accent
-                                : "rgba(255, 204, 0, 0.5)",
-                            },
-                            isToday && {
-                              shadowColor: Colors.accent,
-                              shadowOffset: { width: 0, height: 0 },
-                              shadowOpacity: 0.6,
-                              shadowRadius: 8,
-                              elevation: 4,
-                            },
+                                : "rgba(232, 185, 60, 0.45)",
+                            }
                           ]}
                         />
                       </View>
                       <Text
                         style={[
                           styles.barDayName,
-                          isToday && { color: Colors.accent, fontWeight: "900" },
+                          isToday && { color: Colors.accent, fontWeight: "600" },
                         ]}
                       >
                         {day.dayName}
@@ -643,7 +629,7 @@ export default function StatsPage() {
             {maxCalDay && maxCalDay.calories > 0 && (
               <View style={styles.bestDayCard}>
                 <View style={styles.bestDayIcon}>
-                  <Trophy size={24} color="#FFD700" weight="fill" />
+                  <Trophy size={24} color={Colors.accent} weight="fill" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.bestDayTitle}>Highest Intake Day</Text>
@@ -677,7 +663,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: Colors.text,
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.3,
   },
 
@@ -690,16 +676,11 @@ const styles = StyleSheet.create({
   streakCard: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 20,
+    borderRadius: 14,
     padding: 16,
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
   },
   streakIconWrap: {
     width: 44,
@@ -713,30 +694,24 @@ const styles = StyleSheet.create({
   streakValue: {
     color: Colors.text,
     fontSize: 24,
-    fontWeight: "900",
+    fontWeight: "600",
     letterSpacing: -1,
   },
   streakLabel: {
     color: Colors.textSecondary,
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1.5,
+    fontSize: 12,
+    fontWeight: "500",
     marginTop: 4,
   },
 
   // ── CHART CARD ──
   chartCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 28,
+    borderRadius: 14,
     padding: 20,
     borderWidth: 1,
     borderColor: Colors.borderLight,
     marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 10,
   },
   chartHeader: {
     flexDirection: "row",
@@ -747,7 +722,7 @@ const styles = StyleSheet.create({
   chartTitle: {
     color: Colors.text,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.2,
     flex: 1,
   },
@@ -786,7 +761,7 @@ const styles = StyleSheet.create({
   barValue: {
     color: Colors.textSecondary,
     fontSize: 9,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 6,
     height: 12,
   },
@@ -820,7 +795,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: Colors.text,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.2,
     marginBottom: 12,
   },
@@ -832,53 +807,46 @@ const styles = StyleSheet.create({
   avgCard: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 14,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
   avgValue: {
     fontSize: 20,
-    fontWeight: "900",
+    fontWeight: "600",
     letterSpacing: -0.5,
     marginBottom: 4,
   },
   avgLabel: {
     color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    fontSize: 12,
+    fontWeight: "500",
   },
 
   // ── BEST DAY ──
   bestDayCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 20,
+    borderRadius: 14,
     padding: 18,
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
   },
   bestDayIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "rgba(255,215,0,0.1)",
+    backgroundColor: Colors.accentDim,
     alignItems: "center",
     justifyContent: "center",
   },
   bestDayTitle: {
     color: Colors.text,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.2,
   },
   bestDaySubtext: {

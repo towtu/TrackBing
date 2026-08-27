@@ -406,26 +406,26 @@ export default function CookbookPage() {
               <View style={localStyles.bentoContainer}>
                 <View style={localStyles.bentoMain}>
                   <Text style={localStyles.bentoValue}>{loggedTotal.c}</Text>
-                  <Text style={localStyles.bentoLabel}>CALORIES</Text>
+                  <Text style={localStyles.bentoLabel}>Calories</Text>
                 </View>
                 <View style={localStyles.bentoGrid}>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
                       {loggedTotal.p}g
                     </Text>
-                    <Text style={localStyles.bentoLabelSmall}>PROT</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Protein</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
                       {loggedTotal.cb}g
                     </Text>
-                    <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Carbs</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
                       {loggedTotal.f}g
                     </Text>
-                    <Text style={localStyles.bentoLabelSmall}>FAT</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Fat</Text>
                   </View>
                 </View>
               </View>
@@ -641,23 +641,18 @@ const localStyles = RNStyleSheet.create({
   headerTitle: {
     color: Colors.text,
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.3,
   },
   searchBox: {
     flexDirection: "row",
     backgroundColor: Colors.secondary,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: "center",
     marginBottom: 12,
     height: 56,
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
   input: {
     flex: 1,
@@ -695,17 +690,12 @@ const localStyles = RNStyleSheet.create({
     backgroundColor: Colors.secondary,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    borderRadius: 18,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.borderLight,
     marginRight: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
   },
   iconCircle: {
     width: 42,
@@ -751,7 +741,7 @@ const localStyles = RNStyleSheet.create({
   },
   emptyState: {
     backgroundColor: Colors.surface,
-    borderRadius: 24,
+    borderRadius: 14,
     padding: 32,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -771,7 +761,7 @@ const localStyles = RNStyleSheet.create({
   emptyTitle: {
     color: Colors.text,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 6,
     textAlign: "center",
   },
@@ -787,7 +777,7 @@ const localStyles = RNStyleSheet.create({
     backgroundColor: Colors.secondary,
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 16,
+    borderRadius: 14,
     alignItems: "center",
     gap: 10,
     borderWidth: 1,
@@ -802,8 +792,8 @@ const localStyles = RNStyleSheet.create({
   },
   modalContent: {
     backgroundColor: Colors.secondary,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 24,
     paddingBottom: 44,
     borderTopWidth: 1,
@@ -830,7 +820,7 @@ const localStyles = RNStyleSheet.create({
   modalFoodName: {
     color: Colors.text,
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.3,
   },
   closeBtn: {
@@ -859,7 +849,7 @@ const localStyles = RNStyleSheet.create({
   },
   ingAmount: {
     color: Colors.accent,
-    fontWeight: "800",
+    fontWeight: "600",
     fontSize: 14,
   },
   weightEditRow: {
@@ -876,22 +866,21 @@ const localStyles = RNStyleSheet.create({
   weightEditInput: {
     color: Colors.accent,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     minWidth: 44,
     textAlign: "right",
     paddingVertical: 4,
   },
   weightEditUnit: {
     color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    fontSize: 13,
+    fontWeight: "500",
   },
   bentoContainer: { flexDirection: "row", gap: 10, marginBottom: 22 },
   bentoMain: {
     flex: 1.2,
     backgroundColor: Colors.inputBg,
-    borderRadius: 18,
+    borderRadius: 14,
     padding: 18,
     alignItems: "center",
     justifyContent: "center",
@@ -911,17 +900,15 @@ const localStyles = RNStyleSheet.create({
     borderColor: Colors.border,
   },
   bentoValue: {
-    color: Colors.accent,
+    color: Colors.text,
     fontSize: 34,
-    fontWeight: "900",
+    fontWeight: "600",
     letterSpacing: -1,
   },
   bentoLabel: {
     color: Colors.textMuted,
-    fontSize: 9,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    fontSize: 11,
+    fontWeight: "500",
     marginTop: 4,
   },
   bentoValueSmall: {
@@ -931,33 +918,26 @@ const localStyles = RNStyleSheet.create({
   },
   bentoLabelSmall: {
     color: Colors.textMuted,
-    fontSize: 9,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: "500",
   },
   confirmBtn: {
     backgroundColor: Colors.accent,
     paddingVertical: 18,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
   },
   confirmText: {
     color: Colors.textOnAccent,
     fontSize: 17,
-    fontWeight: "900",
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   adjustToggleBtn: {
     flexDirection: "row",
     backgroundColor: Colors.inputBg,
     paddingVertical: 16,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
@@ -1013,7 +993,7 @@ const localStyles = RNStyleSheet.create({
   portionChipText: {
     color: Colors.text,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   portionChipTextActive: {
     color: Colors.textOnAccent,
@@ -1027,14 +1007,14 @@ const localStyles = RNStyleSheet.create({
     borderColor: Colors.border,
     color: Colors.text,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "center",
     paddingHorizontal: 8,
   },
   portionTimes: {
     color: Colors.textSecondary,
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "600",
   },
 
   // ── DELETE MODAL ──
@@ -1076,7 +1056,7 @@ const localStyles = RNStyleSheet.create({
   deleteModalTitle: {
     color: Colors.text,
     fontSize: 24,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "center",
     marginBottom: 4,
     letterSpacing: -0.5,
@@ -1103,7 +1083,7 @@ const localStyles = RNStyleSheet.create({
   btnKeepText: {
     color: Colors.text,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   btnConfirmDelete: {
     flex: 1,
@@ -1119,6 +1099,6 @@ const localStyles = RNStyleSheet.create({
   btnConfirmDeleteText: {
     color: Colors.white,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
   },
 });

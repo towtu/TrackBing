@@ -807,7 +807,7 @@ export default function AddFoodPage() {
           </View>
 
           {isDesktop && (
-            <View style={{ flex: 1, backgroundColor: Colors.secondary, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: Colors.border, minHeight: 450 }}>
+            <View style={{ flex: 1, backgroundColor: Colors.secondary, borderRadius: 14, padding: 24, borderWidth: 1, borderColor: Colors.border, minHeight: 450 }}>
               {selectedFood ? (
                 <View>
                   <View style={localStyles.modalHeader}>
@@ -868,10 +868,8 @@ export default function AddFoodPage() {
                                   selectedUnit === u
                                     ? Colors.accent
                                     : Colors.textSecondary,
-                                fontWeight: selectedUnit === u ? "700" : "500",
-                                fontSize: 12,
-                                textTransform: "uppercase",
-                                letterSpacing: 1,
+                                fontWeight: selectedUnit === u ? "600" : "500",
+                                fontSize: 13,
                               }}
                             >
                               {u}
@@ -892,22 +890,22 @@ export default function AddFoodPage() {
                   <View style={localStyles.bentoContainer}>
                     <View style={localStyles.bentoMain}>
                       <Text style={localStyles.bentoValue}>{macros.c}</Text>
-                      <Text style={localStyles.bentoLabel}>CALORIES</Text>
+                      <Text style={localStyles.bentoLabel}>Calories</Text>
                     </View>
                     <View style={localStyles.bentoGrid}>
                       <View style={localStyles.bentoSmall}>
                         <Text style={localStyles.bentoValueSmall}>{macros.p}g</Text>
-                        <Text style={localStyles.bentoLabelSmall}>PROT</Text>
+                        <Text style={localStyles.bentoLabelSmall}>Protein</Text>
                       </View>
                       <View style={localStyles.bentoSmall}>
                         <Text style={localStyles.bentoValueSmall}>
                           {macros.cb}g
                         </Text>
-                        <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
+                        <Text style={localStyles.bentoLabelSmall}>Carbs</Text>
                       </View>
                       <View style={localStyles.bentoSmall}>
                         <Text style={localStyles.bentoValueSmall}>{macros.f}g</Text>
-                        <Text style={localStyles.bentoLabelSmall}>FAT</Text>
+                        <Text style={localStyles.bentoLabelSmall}>Fat</Text>
                       </View>
                     </View>
                   </View>
@@ -995,10 +993,8 @@ export default function AddFoodPage() {
                               selectedUnit === u
                                 ? Colors.accent
                                 : Colors.textSecondary,
-                            fontWeight: selectedUnit === u ? "700" : "500",
-                            fontSize: 12,
-                            textTransform: "uppercase",
-                            letterSpacing: 1,
+                            fontWeight: selectedUnit === u ? "600" : "500",
+                            fontSize: 13,
                           }}
                         >
                           {u}
@@ -1019,22 +1015,22 @@ export default function AddFoodPage() {
               <View style={localStyles.bentoContainer}>
                 <View style={localStyles.bentoMain}>
                   <Text style={localStyles.bentoValue}>{macros.c}</Text>
-                  <Text style={localStyles.bentoLabel}>CALORIES</Text>
+                  <Text style={localStyles.bentoLabel}>Calories</Text>
                 </View>
                 <View style={localStyles.bentoGrid}>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>{macros.p}g</Text>
-                    <Text style={localStyles.bentoLabelSmall}>PROT</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Protein</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
                       {macros.cb}g
                     </Text>
-                    <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Carbs</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>{macros.f}g</Text>
-                    <Text style={localStyles.bentoLabelSmall}>FAT</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Fat</Text>
                   </View>
                 </View>
               </View>
@@ -1095,23 +1091,18 @@ const localStyles = RNStyleSheet.create({
   headerTitle: {
     color: Colors.text,
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.3,
   },
   searchBox: {
     flexDirection: "row",
     backgroundColor: Colors.secondary,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: "center",
     marginBottom: 16,
     height: 56,
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
   input: { flex: 1, color: Colors.text, paddingHorizontal: 12, fontSize: 16 },
   filterRow: {
@@ -1124,7 +1115,7 @@ const localStyles = RNStyleSheet.create({
   filterChip: {
     minHeight: 32,
     paddingHorizontal: 12,
-    borderRadius: 16,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: Colors.borderLight,
     backgroundColor: Colors.secondary,
@@ -1137,8 +1128,8 @@ const localStyles = RNStyleSheet.create({
   },
   filterChipText: {
     color: Colors.textSecondary,
-    fontSize: 11,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: "500",
     letterSpacing: 0.2,
   },
   filterChipTextActive: {
@@ -1154,16 +1145,11 @@ const localStyles = RNStyleSheet.create({
     backgroundColor: Colors.secondary,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    borderRadius: 18,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
   },
   suggestionItemCard: {
     flexGrow: 0,
@@ -1203,7 +1189,7 @@ const localStyles = RNStyleSheet.create({
   sectionTitle: {
     color: Colors.text,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   recentList: {
@@ -1220,7 +1206,7 @@ const localStyles = RNStyleSheet.create({
     minHeight: 120,
     backgroundColor: Colors.secondary,
     padding: 14,
-    borderRadius: 18,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.borderLight,
     position: "relative",
@@ -1261,7 +1247,7 @@ const localStyles = RNStyleSheet.create({
   recentName: {
     color: Colors.text,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     minHeight: 34,
     letterSpacing: 0,
     paddingRight: 32,
@@ -1274,7 +1260,7 @@ const localStyles = RNStyleSheet.create({
   recentKcal: {
     color: Colors.accent,
     fontSize: 12,
-    fontWeight: "900",
+    fontWeight: "600",
     marginTop: 8,
   },
   recentInfoRow: {
@@ -1289,15 +1275,13 @@ const localStyles = RNStyleSheet.create({
   recentInfoLabel: {
     color: Colors.textSecondary,
     fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    fontWeight: "600",
   },
   recentBarcodeValue: {
     flex: 1,
     color: Colors.text,
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "right",
   },
   createBtn: {
@@ -1316,7 +1300,7 @@ const localStyles = RNStyleSheet.create({
     maxWidth: 520,
     marginTop: 14,
     padding: 14,
-    borderRadius: 18,
+    borderRadius: 14,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -1337,7 +1321,7 @@ const localStyles = RNStyleSheet.create({
   beeButtonText: {
     color: Colors.textOnAccent,
     fontSize: 12,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   modalOverlay: {
     flex: 1,
@@ -1346,8 +1330,8 @@ const localStyles = RNStyleSheet.create({
   },
   modalContent: {
     backgroundColor: Colors.secondary,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 24,
     paddingBottom: 44,
     borderTopWidth: 1,
@@ -1371,7 +1355,7 @@ const localStyles = RNStyleSheet.create({
   modalFoodName: {
     color: Colors.text,
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: -0.3,
   },
   closeBtn: {
@@ -1404,9 +1388,9 @@ const localStyles = RNStyleSheet.create({
     alignItems: "center",
   },
   weightInput: {
-    color: Colors.accent,
+    color: Colors.text,
     fontSize: 44,
-    fontWeight: "900",
+    fontWeight: "600",
     textAlign: "center",
     letterSpacing: 0,
     width: "100%",
@@ -1422,7 +1406,7 @@ const localStyles = RNStyleSheet.create({
   bentoMain: {
     flex: 1.2,
     backgroundColor: Colors.inputBg,
-    borderRadius: 18,
+    borderRadius: 14,
     padding: 18,
     alignItems: "center",
     justifyContent: "center",
@@ -1442,17 +1426,15 @@ const localStyles = RNStyleSheet.create({
     borderColor: Colors.border,
   },
   bentoValue: {
-    color: Colors.accent,
+    color: Colors.text,
     fontSize: 34,
-    fontWeight: "900",
+    fontWeight: "600",
     letterSpacing: -1,
   },
   bentoLabel: {
     color: Colors.textMuted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
     marginTop: 4,
   },
   bentoValueSmall: {
@@ -1462,26 +1444,19 @@ const localStyles = RNStyleSheet.create({
   },
   bentoLabelSmall: {
     color: Colors.textMuted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   confirmBtn: {
     backgroundColor: Colors.accent,
     paddingVertical: 18,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
   },
   confirmText: {
     color: Colors.textOnAccent,
     fontSize: 17,
-    fontWeight: "900",
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   deleteBtn: {

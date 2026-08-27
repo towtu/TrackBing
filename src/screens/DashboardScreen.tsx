@@ -415,7 +415,10 @@ export function DashboardScreen() {
           activeOpacity={0.84}
           accessibilityRole="button"
           accessibilityLabel={`${action.label}: ${action.helper}`}
-          style={styles.quickActionCard}
+          style={[
+            styles.quickActionCard,
+            !isDesktop && styles.quickActionCardMobile,
+          ]}
           onPress={() => router.push(action.route as any)}
         >
           <View style={styles.quickActionIcon}>{action.icon}</View>
@@ -1048,6 +1051,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  quickActionCardMobile: {
+    flexBasis: "44%",
   },
   quickActionIcon: {
     width: 38,

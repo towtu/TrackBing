@@ -40,6 +40,20 @@ export type RecipeIngredient = {
 
 export type Macros = { c: number; p: number; cb: number; f: number };
 
+/** Calculate energy using the standard 4/4/9 kcal macro factors. */
+export function calculateCaloriesFromMacros(
+  protein: number,
+  carbs: number,
+  fat: number,
+): number {
+  const positive = (value: number) =>
+    Number.isFinite(value) && value > 0 ? value : 0;
+
+  return Math.round(
+    positive(protein) * 4 + positive(carbs) * 4 + positive(fat) * 9,
+  );
+}
+
 type MacroSource = {
   nutriments?: Nutriments;
   serving_weight?: number;

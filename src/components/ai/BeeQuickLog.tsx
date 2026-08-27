@@ -439,6 +439,7 @@ export function BeeQuickLog() {
                 <View style={styles.optionWrap}>
                   {options.map((option) => (
                     <TouchableOpacity
+                      accessibilityRole="button"
                       key={option}
                       activeOpacity={0.82}
                       disabled={loading}
@@ -454,6 +455,7 @@ export function BeeQuickLog() {
               {pendingFood ? (
                 <View style={styles.optionWrap}>
                   <TouchableOpacity
+                    accessibilityRole="button"
                     activeOpacity={0.82}
                     disabled={loading}
                     onPress={() => pendingFood && logFood(pendingFood)}
@@ -465,6 +467,7 @@ export function BeeQuickLog() {
                   </TouchableOpacity>
                   {pendingAlternatives.map((alt) => (
                     <TouchableOpacity
+                      accessibilityRole="button"
                       key={`${alt.source}-${alt.name}`}
                       activeOpacity={0.82}
                       disabled={loading}
@@ -491,6 +494,7 @@ export function BeeQuickLog() {
                   ))}
                   {lastQuery ? (
                     <TouchableOpacity
+                      accessibilityRole="button"
                       activeOpacity={0.82}
                       disabled={loading}
                       onPress={findMoreOnWeb}
@@ -500,6 +504,7 @@ export function BeeQuickLog() {
                     </TouchableOpacity>
                   ) : null}
                   <TouchableOpacity
+                    accessibilityRole="button"
                     activeOpacity={0.82}
                     disabled={loading}
                     onPress={() => {

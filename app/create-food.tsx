@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Calculator, CheckCircle, X } from "phosphor-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -26,6 +26,7 @@ import {
   parseBarcode,
   sanitizeBarcodeInput,
 } from "@/src/lib/barcodes";
+import { calculateCaloriesFromMacros } from "@/src/lib/macros";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -53,9 +54,7 @@ export default function CreateFoodPage() {
   const params = useLocalSearchParams<{ barcode?: string | string[] }>();
   const { width, isDesktop } = useResponsive();
   const compactForm = width < 390;
-  const skipNextMacroAutoCalc = useRef(false);
   const [name, setName] = useState("");
-  const [cal, setCal] = useState("");
   const [prot, setProt] = useState("");
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
@@ -69,6 +68,11 @@ export default function CreateFoodPage() {
     null,
   );
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const calculatedCalories = calculateCaloriesFromMacros(
+    parseFloat(prot),
+    parseFloat(carbs),
+    parseFloat(fat),
+  );
 
   useEffect(() => {
     const routeBarcode = Array.isArray(params.barcode)
@@ -90,22 +94,6 @@ export default function CreateFoodPage() {
     });
   }, [params.barcode]);
 
-  useEffect(() => {
-    if (skipNextMacroAutoCalc.current) {
-      skipNextMacroAutoCalc.current = false;
-      return;
-    }
-
-    const p = parseFloat(prot) || 0;
-    const c = parseFloat(carbs) || 0;
-    const f = parseFloat(fat) || 0;
-
-    if (p > 0 || c > 0 || f > 0) {
-      const calculated = Math.round(p * 4 + c * 4 + f * 9);
-      setCal(calculated.toString());
-    }
-  }, [prot, carbs, fat]);
-
   const handleSave = async () => {
     if (submitting) return;
     const parsedBarcode = parseBarcode(barcode, { optional: true });
@@ -118,11 +106,11 @@ export default function CreateFoodPage() {
       return;
     }
 
-    if (!name || !cal) {
+    if (!name.trim()) {
       setFeedback({
         type: "warning",
         title: "Missing info",
-        message: "Please enter at least a name and calories.",
+        message: "Please enter a food name.",
       });
       return;
     }
@@ -148,8 +136,8 @@ export default function CreateFoodPage() {
     const { error } = await supabase.from("personal_foods").insert([
       {
         user_id: user.id,
-        name: name,
-        calories: parseFloat(cal) || 0,
+        name: name.trim(),
+        calories: calculatedCalories,
         protein: parseFloat(prot) || 0,
         carbs: parseFloat(carbs) || 0,
         fat: parseFloat(fat) || 0,
@@ -202,9 +190,7 @@ export default function CreateFoodPage() {
       return;
     }
 
-    skipNextMacroAutoCalc.current = true;
     setUnit("serving");
-    setCal(String(Math.round(result.food.kcal)));
     setProt(formatMacroInput(result.food.protein));
     setCarbs(formatMacroInput(result.food.carbs));
     setFat(formatMacroInput(result.food.fat));
@@ -224,7 +210,12 @@ export default function CreateFoodPage() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Create My Food</Text>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+        <TouchableOpacity
+          accessibilityLabel="Close create food"
+          accessibilityRole="button"
+          onPress={() => router.back()}
+          style={styles.closeBtn}
+        >
           <X size={24} color="white" />
         </TouchableOpacity>
       </View>
@@ -240,7 +231,7 @@ export default function CreateFoodPage() {
           <Text style={styles.infoText}>
             Calories are{" "}
             <Text style={{ fontWeight: "bold" }}>auto-calculated</Text> as you
-            type macros. You can also edit them manually.
+            type macros and cannot be edited directly.
           </Text>
         </View>
 
@@ -315,6 +306,8 @@ export default function CreateFoodPage() {
         >
           {FOOD_UNITS.map((u) => (
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ selected: unit === u }}
               key={u}
               onPress={() => setUnit(u)}
               style={{
@@ -380,23 +373,19 @@ export default function CreateFoodPage() {
             <Text style={{ ...styles.label, color: Colors.accent }}>
               Calories
             </Text>
-            <TextInput
-              style={{
-                ...styles.input,
-                borderColor: Colors.accent,
-                color: Colors.accent,
-                fontWeight: "bold",
-              }}
-              placeholder="0"
-              placeholderTextColor="#666"
-              keyboardType="numeric"
-              value={cal}
-              onChangeText={(t) => setCal(t.replace(/[^0-9.]/g, ""))}
-            />
+            <View
+              accessible
+              accessibilityLabel={`${calculatedCalories} calories, calculated from macros`}
+              style={styles.calorieReadout}
+            >
+              <Text style={styles.calorieValue}>{calculatedCalories}</Text>
+              <Text style={styles.calorieHelper}>Calculated from macros</Text>
+            </View>
           </View>
         </View>
 
         <TouchableOpacity
+          accessibilityRole="button"
           style={[styles.saveBtn, submitting && { opacity: 0.5 }]}
           onPress={handleSave}
           disabled={submitting}
@@ -512,6 +501,27 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   gridItem: { flex: 1 },
+  calorieReadout: {
+    minHeight: 55,
+    backgroundColor: Colors.secondary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    marginBottom: 20,
+    justifyContent: "center",
+  },
+  calorieValue: {
+    color: Colors.accent,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  calorieHelper: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    marginTop: 1,
+  },
   saveBtn: {
     backgroundColor: Colors.accent,
     flexDirection: "row",

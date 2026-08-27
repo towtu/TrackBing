@@ -776,6 +776,8 @@ export default function AddFoodPage() {
                         </Text>
                       </TouchableOpacity>
                       <BeeGuide
+                        interactive
+                        situation={aiLoading ? "searching" : "emptyCollection"}
                         title="I can draft this meal"
                         message="Describe what you ate and Bee will prepare macros for you to review before saving."
                         style={localStyles.beeCard}

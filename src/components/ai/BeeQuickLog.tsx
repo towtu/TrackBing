@@ -347,6 +347,7 @@ export function BeeQuickLog() {
             style={styles.keyboardAvoid}
           >
             <Pressable
+              accessibilityViewIsModal
               style={[styles.sheet, isDesktop && styles.sheetDesktop]}
               onPress={(event) => event.stopPropagation()}
             >
@@ -522,6 +523,9 @@ export function BeeQuickLog() {
 
               <View style={styles.inputRow}>
                 <TextInput
+                  accessibilityHint="Describe one food or meal, including the amount when you know it"
+                  accessibilityLabel="Food description for Bee"
+                  maxLength={200}
                   value={input}
                   onChangeText={setInput}
                   editable={!loading}

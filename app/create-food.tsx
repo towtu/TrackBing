@@ -273,7 +273,7 @@ export default function CreateFoodPage() {
 
         <BeeGuide
           compact
-          interactive
+          interactive={!aiFillLoading}
           situation={
             aiFillLoading
               ? "searching"

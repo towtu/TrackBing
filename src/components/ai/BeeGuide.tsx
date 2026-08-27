@@ -13,9 +13,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import type { BeeMood } from "@/src/lib/beeCoach";
 import {
-  beeMoodToSituation,
   getBeeAccessibilityLabel,
   getBeePose,
   getBeeTapReaction,
@@ -35,8 +33,6 @@ type BeeGuideProps = {
   compact?: boolean;
   mascotSize?: BeeMascotSize;
   situation?: BeeSituation;
-  /** Temporary compatibility bridge while older callers move to situations. */
-  mood?: BeeMood;
   interactive?: boolean;
   variant?: BeeGuideVariant;
   style?: StyleProp<ViewStyle>;
@@ -45,8 +41,6 @@ type BeeGuideProps = {
 type BeeMascotProps = {
   size?: BeeMascotSize;
   situation?: BeeSituation;
-  /** Temporary compatibility bridge while older callers move to situations. */
-  mood?: BeeMood;
   interactive?: boolean;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
@@ -82,12 +76,11 @@ export function BeeGuide({
   compact = false,
   mascotSize = compact ? "small" : "medium",
   situation,
-  mood,
   interactive = true,
   variant = compact ? "compact" : "dashboard",
   style,
 }: BeeGuideProps) {
-  const activeSituation = situation ?? (mood ? beeMoodToSituation(mood) : "greeting");
+  const activeSituation = situation ?? "greeting";
   const [tapCount, setTapCount] = useState(0);
   const [reaction, setReaction] = useState<string | null>(null);
   const lastTapAt = useRef(0);
@@ -164,12 +157,11 @@ export function BeeGuide({
 export function BeeMascot({
   size = "medium",
   situation,
-  mood,
   interactive = false,
   onPress,
   style,
 }: BeeMascotProps) {
-  const activeSituation = situation ?? (mood ? beeMoodToSituation(mood) : "greeting");
+  const activeSituation = situation ?? "greeting";
   const nextPose = getBeePose(activeSituation);
   const [displayedPose, setDisplayedPose] = useState(nextPose);
   const [reduceMotion, setReduceMotion] = useState(false);

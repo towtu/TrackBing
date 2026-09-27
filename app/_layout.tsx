@@ -76,6 +76,7 @@ export default function RootLayout() {
                 <AuthRoute />
               ) : (
                 <Stack
+                  key={session.user.id}
                   screenOptions={{
                     headerShown: false,
                     title: "TrackBing", // <--- THIS SETS THE BROWSER TAB NAME
@@ -85,7 +86,7 @@ export default function RootLayout() {
                 </Stack>
               )}
             </View>
-            {session && <BeeQuickLog />}
+            {session && <BeeQuickLog key={session.user.id} userId={session.user.id} />}
           </View>
         </SafeAreaView>
       </SafeAreaProvider>

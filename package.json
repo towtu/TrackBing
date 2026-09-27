@@ -12,7 +12,10 @@
     "vercel-build": "expo export",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:functions": "deno check --config supabase/functions/deno.json supabase/functions/bee-chat/index.ts supabase/functions/ai-food/index.ts supabase/functions/usda-search/index.ts",
+    "test:db": "node scripts/test-bee-db.mjs",
+    "build:web": "expo export --platform web"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

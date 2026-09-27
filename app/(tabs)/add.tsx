@@ -9,7 +9,7 @@ import {
   Plus,
   X,
 } from "phosphor-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -28,13 +28,16 @@ import {
   type AiFoodSaveOpts,
 } from "@/src/components/ai/AiFoodSheet";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
+import { BeeGroundedAnswerDialog } from "@/src/components/ai/BeeGroundedAnswer.dialog";
 import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-import { supabase } from "@/src/lib/supabase";
-import { upsertDailySummary } from "@/src/lib/dailySummary";
-import { requestAiFood, type AiFood } from "@/src/lib/aiFood";
+import { getLocalDateStr } from "@/src/lib/dailySummary";
+import { isLoggableAiFood, requestAiFood, type AiFood } from "@/src/lib/aiFood";
+import type { GroundedAnswer } from "@/src/lib/beeChat";
+import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
+import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import {
   getAiFoodFeedback,
   shouldMarkAiEstimated,
@@ -123,6 +126,12 @@ export default function AddFoodPage() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { isDesktop } = useResponsive();
+  const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
+  useEffect(() => {
+    const guard = createFoodAccountGuard();
+    accountRef.current = guard;
+    return () => { guard.dispose(); accountRef.current = null; };
+  }, []);
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FoodItem[]>([]);
@@ -139,6 +148,7 @@ export default function AddFoodPage() {
   const [aiAlternatives, setAiAlternatives] = useState<AiFood[]>([]);
   const [aiQuery, setAiQuery] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [liveAnswer, setLiveAnswer] = useState<GroundedAnswer | null>(null);
 
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
   const [revealedBarcodeCode, setRevealedBarcodeCode] = useState<
@@ -244,6 +254,9 @@ export default function AddFoodPage() {
 
   const selectFood = (item: FoodItem) => {
     Keyboard.dismiss();
+    setLiveAnswer(null);
+    setAiFoodProposal(null);
+    setAiAlternatives([]);
     setSelectedFood(item);
     setRevealedBarcodeCode(null);
 
@@ -288,18 +301,29 @@ export default function AddFoodPage() {
       return;
     }
 
-    setFeedback(getAiFoodFeedback(result.reason));
+    if (result.reason === "answer_only") {
+      setLiveAnswer(result.answer);
+      return;
+    }
+    setFeedback({ ...getAiFoodFeedback(result.reason), ...(result.reason === "needs_input" ? { message: result.message } : {}) });
   };
 
   const handleAiFindMore = async () => {
     if (!aiQuery) return;
+    setLiveAnswer(null);
     const result = await requestAiFood(aiQuery, "web");
     if (result.ok) {
       setAiFoodProposal(result.food);
       setAiAlternatives(result.alternatives);
       return;
     }
-    setFeedback(getAiFoodFeedback(result.reason));
+    if (result.reason === "answer_only") {
+      setAiFoodProposal(null);
+      setAiAlternatives([]);
+      setLiveAnswer(result.answer);
+      return;
+    }
+    setFeedback({ ...getAiFoodFeedback(result.reason), ...(result.reason === "needs_input" ? { message: result.message } : {}) });
   };
 
   const handleQueryChange = (text: string) => {
@@ -325,14 +349,20 @@ export default function AddFoodPage() {
     if (!selectedFood || submitting) return;
     setSubmitting(true);
     const foodBarcode = barcodeFromFood(selectedFood);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const guard = accountRef.current;
+    const writer = await guard?.authorize();
+    if (!writer?.isActive()) {
+      if (guard?.isActive()) {
+        setSubmitting(false);
+        setFeedback({ type: "warning", title: "Sign in required", message: "Sign in again before adding this food." });
+      }
+      return;
+    }
 
-    if (user) {
-      const { error } = await supabase.from("food_logs").insert([
+    if (writer.isActive()) {
+      const { error } = await writer.client.from("food_logs").insert([
         {
-          user_id: user.id,
+          user_id: writer.userId,
           name: selectedFood.product_name,
           calories: macros.c,
           protein: macros.p,
@@ -344,6 +374,7 @@ export default function AddFoodPage() {
           ai_estimated: !!selectedFood.ai_estimated,
         },
       ]);
+      if (!writer.isActive()) return;
       if (error) {
         setSelectedFood(null);
         setFeedback({
@@ -352,7 +383,11 @@ export default function AddFoodPage() {
           message: error.message,
         });
       } else {
-        upsertDailySummary();
+        await writer.client.rpc("refresh_daily_summary", {
+          p_day: getLocalDateStr(), p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        });
+        if (!writer.isActive()) return;
+        emitFoodLogChanged();
         if (foodBarcode) {
           const recentFood = createRecentBarcodeFood(
             selectedFood,
@@ -383,11 +418,14 @@ export default function AddFoodPage() {
     food: AiFood,
     opts: AiFoodSaveOpts,
   ): Promise<void> => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    if (!isLoggableAiFood(food)) {
+      setFeedback({ type: "warning", title: "Check the serving values", message: "Use finite, nonnegative nutrition values from a matched record or your package label." });
+      return;
+    }
+    const guard = accountRef.current;
+    const writer = await guard?.authorize();
+    if (!writer?.isActive()) {
+      if (!guard?.isActive()) return;
       setFeedback({
         type: "warning",
         title: "Sign in required",
@@ -400,9 +438,10 @@ export default function AddFoodPage() {
     let savedToMyFoods = false;
 
     if (opts.toMyFoods) {
-      const { error } = await supabase.from("personal_foods").insert([
+      if (!writer.isActive()) return;
+      const { error } = await writer.client.from("personal_foods").insert([
         {
-          user_id: user.id,
+          user_id: writer.userId,
           name: food.name,
           calories: Math.round(food.kcal),
           protein: food.protein,
@@ -412,12 +451,13 @@ export default function AddFoodPage() {
           ai_estimated: aiEstimated,
         },
       ]);
+      if (!writer.isActive()) return;
 
       if (error) {
         setFeedback({
           type: "error",
           title: "Bee couldn't save it",
-          message: error.message,
+          message: "The food could not be saved. Check your connection and try again.",
         });
         return;
       }
@@ -425,20 +465,22 @@ export default function AddFoodPage() {
     }
 
     if (opts.log) {
-      const { error } = await supabase.from("food_logs").insert([
+      if (!writer.isActive()) return;
+      const { error } = await writer.client.from("food_logs").insert([
         {
-          user_id: user.id,
+          user_id: writer.userId,
           name: food.name,
           calories: Math.round(food.kcal),
           protein: food.protein,
           carbs: food.carbs,
           fat: food.fat,
-          serving_size: "1",
-          serving_unit: "serving",
+          serving_size: String(food.requested_portion?.amount ?? food.serving_grams),
+          serving_unit: food.requested_portion?.unit ?? "g",
           barcode: null,
           ai_estimated: aiEstimated,
         },
       ]);
+      if (!writer.isActive()) return;
 
       if (error) {
         if (savedToMyFoods) {
@@ -455,12 +497,17 @@ export default function AddFoodPage() {
         setFeedback({
           type: "error",
           title: "Bee couldn't log it",
-          message: error.message,
+          message: "The serving could not be added to your diary. Check your connection and try again.",
         });
         return;
       }
 
-      upsertDailySummary();
+      const refreshed = await writer.client.rpc("refresh_daily_summary", {
+        p_day: getLocalDateStr(), p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
+      if (!writer.isActive()) return;
+      if (refreshed.error || !refreshed.data?.ok) console.warn("Daily totals could not refresh. Food entries remain saved.");
+      emitFoodLogChanged();
     }
 
     setAiFoodProposal(null);
@@ -1068,6 +1115,12 @@ export default function AddFoodPage() {
             setAiAlternatives([]);
           }}
           onSave={handleAiFoodSave}
+        />
+        <BeeGroundedAnswerDialog
+          answer={liveAnswer}
+          onClose={() => setLiveAnswer(null)}
+          onManual={() => { setLiveAnswer(null); router.push("/create-food"); }}
+          onScan={() => { setLiveAnswer(null); router.push("/scan"); }}
         />
       </View>
     </SafeAreaView>

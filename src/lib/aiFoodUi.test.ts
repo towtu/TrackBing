@@ -25,6 +25,7 @@ describe("aiFoodUi", () => {
       type: "warning",
       title: "Bee could not reach the AI",
     });
+    expect(getAiFoodFeedback("ai_unavailable").message).not.toMatch(/DeepSeek|Tavily/i);
   });
 
   it("marks only low-confidence AI fallback estimates as ai_estimated", () => {

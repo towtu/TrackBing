@@ -36,8 +36,18 @@ export function getAiFoodFeedback(reason: AiFoodReason): AiFoodFeedback {
     return {
       type: "warning",
       title: "Bee could not reach the AI",
-      message: "DeepSeek did not finish that request. Please try again in a moment.",
+      message: "The lookup did not finish. Try again in a moment, or enter your package label manually.",
     };
+  }
+
+  if (reason === "needs_input" || reason === "answer_only") {
+    return { type: "info", title: "Bee needs a little more detail", message: "Add the preparation, flavor, and package size, or enter the values from your label." };
+  }
+  if (reason === "search_unavailable" || reason === "not_configured") {
+    return { type: "info", title: "Bee lookup is unavailable", message: "Scan a barcode or enter your package label manually." };
+  }
+  if (reason === "busy" || reason === "conflict") {
+    return { type: "warning", title: "Bee is finishing another lookup", message: "Give it a moment, then try again." };
   }
 
   if (reason === "unauthorized") {

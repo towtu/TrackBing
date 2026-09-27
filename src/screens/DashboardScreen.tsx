@@ -147,11 +147,14 @@ export function DashboardScreen() {
     const todayStr = getLocalDateStr();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
     const { data: todayLogs } = await supabase
       .from("food_logs")
       .select("id")
       .eq("user_id", userId)
       .gte("created_at", todayStart.toISOString())
+      .lt("created_at", tomorrowStart.toISOString())
       .limit(1);
 
     const dates = new Set<string>();
@@ -211,12 +214,15 @@ export function DashboardScreen() {
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
     const { data } = await supabase
       .from("food_logs")
       .select("*")
       .eq("user_id", user.id)
       .gte("created_at", todayStart.toISOString())
+      .lt("created_at", tomorrowStart.toISOString())
       .order("created_at", { ascending: false });
 
     if (data) {

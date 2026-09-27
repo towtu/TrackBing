@@ -88,7 +88,7 @@ require a new development/store binary with `expo-iap`; Expo Go is insufficient.
 | Check | Result / scope |
 | --- | --- |
 | `npm run typecheck` | Passed: application TypeScript. |
-| `npm test` | Passed: **38 suites / 563 tests**, deterministic fixtures and mocked paid providers. |
+| `npm test` | Passed: **39 suites / 569 tests**, deterministic fixtures and mocked paid providers. |
 | `npm run lint` | Passed: no errors or warnings. |
 | `npm run typecheck:functions` | Passed: all six Deno Edge Function entry points; separate from frontend TS. |
 | `npm run test:db` | Real ephemeral PostgreSQL 16: migration/ownership/concurrency/confirmation/weight/tier/retention/date tests; plus **17 actual Deno handler tests** with mocked providers. 36 legacy/launch checks plus five current-policy integration groups. |
@@ -106,6 +106,10 @@ monthly budgets, actual Search-query refunds/counts, forged entitlement denial,
 origin-tier confirmation, canceled/stale/downgraded actions, atomic weight/profile
 sync, duplicate/concurrent food confirmation and response-loss recovery, owner
 provenance protection, replay deletion and explicit DST next-day exclusion.
+
+Native billing tests verify listener/connection cleanup after catalog failure and disposal.
+Generated-reply tests reject premature first-person, shorthand and passive save claims
+without confusing actual saved preferences with a new write.
 
 The provider runtime tests validate real request-handler code, JWT failure,
 HMAC/tampering/environment cases, unpaid checkout, invoice plan changes, refund

@@ -60,10 +60,20 @@ export async function connectStore(
       )
     );
   });
-  const raw = await IAP.fetchProducts({
-    skus: [...new Set(configured.map((p) => p.id))],
-    type: "subs",
-  });
+  let raw: Awaited<ReturnType<typeof IAP.fetchProducts>>;
+  try {
+    raw = await IAP.fetchProducts({
+      skus: [...new Set(configured.map((p) => p.id))],
+      type: "subs",
+    });
+  } catch (error) {
+    active = false;
+    listener.remove();
+    await IAP.endConnection().catch(() => {
+      console.warn("Purchase connection could not close.");
+    });
+    throw error;
+  }
   const products: StoreProduct[] = [];
   for (const product of raw ?? []) {
     if (product.platform === "android" && product.type === "subs") {
@@ -145,7 +155,9 @@ export async function connectStore(
     dispose: () => {
       active = false;
       listener.remove();
-      void IAP.endConnection().catch(() => undefined);
+      void IAP.endConnection().catch(() => {
+        console.warn("Purchase connection could not close.");
+      });
     },
   };
 }

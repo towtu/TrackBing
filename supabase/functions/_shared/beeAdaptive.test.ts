@@ -14,6 +14,8 @@ describe("adaptive Bee read decisions", () => {
     {reply:"Checking",nextStep:"answer",suggestedPose:"thinking",sql:"update goals"},
   ])("rejects writes, private cross-owner tools and unknown fields",value=>expect(()=>parseBeeDecision(value)).toThrow());
   it("rejects fabricated save claims in generated replies",()=>expect(()=>parseBeeReply({reply:"I saved your weight.",suggestedPose:"success"})).toThrow());
+  it.each(["Saved your weight.", "Your weight has been saved.", "Added to today's food."])("rejects premature shorthand/passive completion: %s",reply=>expect(()=>parseBeeReply({reply,suggestedPose:"success"})).toThrow());
+  it("can describe actual saved preferences without claiming a new write",()=>expect(parseBeeReply({reply:"Your saved preferences use grams.",suggestedPose:"resting"}).reply).toBe("Your saved preferences use grams."));
   it("accepts a fresh concise reply without granting action authority",()=>expect(parseBeeReply({reply:"One recorded weigh-in cannot establish a trend.",suggestedPose:"encouraging"})).toEqual({reply:"One recorded weigh-in cannot establish a trend.",suggestedPose:"encouraging"}));
 });
 describe("recorded weight and exact reviews",()=>{

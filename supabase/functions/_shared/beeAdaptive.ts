@@ -64,7 +64,10 @@ export function parseBeeReply(
   const reply = shortText(r.reply);
   if (
     /\b(?:I(?:'ve| have)?|Bee)\s+(?:have\s+)?(?:saved|added|logged|updated|changed|recorded|deleted)\b/i
-      .test(reply) || !POSES.includes(r.suggestedPose as BeePose)
+      .test(reply) ||
+    /(?:^|[.!?]\s+)(?:successfully\s+)?(?:saved|added|logged|updated|changed|recorded|deleted)(?:[.!?]|$|\s+(?:your|this|that|the|it|to)\b)/i.test(reply) ||
+    /\b(?:has|have|was|were|is|are)\s+(?:now\s+)?(?:been\s+)?(?:saved|added|logged|updated|changed|deleted)\b/i.test(reply) ||
+    !POSES.includes(r.suggestedPose as BeePose)
   ) throw new Error("invalid_reply");
   return { reply, suggestedPose: r.suggestedPose as BeePose };
 }

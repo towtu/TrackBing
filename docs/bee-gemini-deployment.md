@@ -104,7 +104,9 @@ ID is trusted by the Edge Functions.
    should call a missing endpoint/table. Register signed provider notifications
    and scheduled reconciliation before enabling purchases.
 6. Deploy the shared client and build new native binaries with the IAP plugin
-   (Expo Go cannot exercise this native purchase module).
+   (Expo Go cannot exercise this native purchase module). Configure the approved
+   `ios.bundleIdentifier` and matching Apple bundle ID/store products; the existing
+   Android package/store configuration must also match the verified receipts.
 7. Validate with adults/test accounts and Google paid-service configuration.
    Test receipt/checkout, renew, cancel, expire, grace, refund, replace, restore,
    account switch and concurrent confirmations in each provider sandbox.

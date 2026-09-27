@@ -80,10 +80,10 @@ describe("Bee provider boundaries", () => {
 });
 
 describe("Gemini JSON interpretation", () => {
-  it("uses stateless Flash Lite, minimal hidden thinking, JSON format and no Search", async () => {
+  it("uses stateless Flash, medium hidden thinking, JSON format and no Search", async () => {
     const onUsage = vi.fn(); const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json(completed()));
     await expect(geminiJson("Return JSON", { text: "hi" }, { ...options(), fetch: fetcher, maxTokens: 9999, onUsage })).resolves.toEqual({ kind: "chat" });
-    expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({ model: "gemini-3.5-flash-lite", input: '{"text":"hi"}', system_instruction: "Return JSON", store: false, stream: false, response_format: { type: "text", mime_type: "application/json" }, generation_config: { thinking_level: "minimal", thinking_summaries: "none", max_output_tokens: 900 } });
+    expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({ model: "gemini-3.8-flash", input: '{"text":"hi"}', system_instruction: "Return JSON", store: false, stream: false, response_format: { type: "text", mime_type: "application/json" }, generation_config: { thinking_level: "medium", thinking_summaries: "none", max_output_tokens: 4096 } });
     expect(fetcher.mock.calls[0][1]?.headers).toMatchObject({ "x-goog-api-key": "test-key" });
     expect(onUsage).toHaveBeenCalledWith({ inputTokens: 18, outputTokens: 7, searchQueries: 0 });
   });
@@ -92,7 +92,7 @@ describe("Gemini JSON interpretation", () => {
     await geminiJson("Return JSON", {}, { ...options(), model: "gemini-3.1-flash-lite", fetch: fetcher, maxTokens: 100 });
     expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toMatchObject({ model: "gemini-3.1-flash-lite", generation_config: { max_output_tokens: 100 } });
   });
-  it.each(["", "models/gemini-3.5-flash-lite", "https://internal/model", "deepseek-chat", "gemini-3.5-flash-image"])("rejects invalid model %s before HTTP", async (model) => {
+  it.each(["", "models/gemini-3.8-flash", "https://internal/model", "deepseek-chat", "gemini-3.5-flash-image"])("rejects invalid model %s before HTTP", async (model) => {
     const fetcher = vi.fn<typeof fetch>();
     await expect(geminiJson("Return JSON", {}, { ...options(), model, fetch: fetcher })).rejects.toThrow("not_configured");
     expect(fetcher).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ describe("Gemini live grounding", () => {
     const answer = await geminiGrounded(query, { ...options(), fetch: fetcher, maxTokens: 9999, onUsage });
     expect(answer).toEqual({ text: "The exact nutrition panel is unverified.", citations: [{ title: "Rebisco", url: "https://www.rebisco.com.ph/products", startIndex: 0, endIndex: 40 }], searchSuggestionsHtml: [suggestions], searchQueryCount: 2 });
     const body = JSON.parse(fetcher.mock.calls[0][1]?.body as string);
-    expect(body).toMatchObject({ model: "gemini-3.5-flash-lite", store: false, stream: false, tools: [{ type: "google_search" }], generation_config: { thinking_level: "minimal", thinking_summaries: "none", max_output_tokens: 1600 } });
+    expect(body).toMatchObject({ model: "gemini-3.8-flash", store: false, stream: false, tools: [{ type: "google_search" }], generation_config: { thinking_level: "medium", thinking_summaries: "none", max_output_tokens: 4096 } });
     expect(body).not.toHaveProperty("response_format"); expect(body).not.toHaveProperty("previous_interaction_id");
     expect(onUsage).toHaveBeenCalledWith({ inputTokens: 42, outputTokens: 19, searchQueries: 2 });
   });

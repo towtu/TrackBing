@@ -93,15 +93,21 @@ export function parseRequest(value: unknown): BeeRequest {
       command = { kind: c.kind };
       break;
     case "message":
+    case "food_assist":
       fields(c, ["kind", "text", "actionId", "reviewVersion"]);
       command = {
-        kind: "message",
+        kind: c.kind,
         text: text(c.text, 1000),
         ...(c.actionId === undefined ? {} : {
           actionId: uuid(c.actionId),
           reviewVersion: version(c.reviewVersion),
         }),
       };
+      break;
+    case "insight":
+      fields(c, ["kind", "refresh"]);
+      if (c.refresh !== undefined && typeof c.refresh !== "boolean") throw new Error("bad_request");
+      command = { kind: "insight", ...(c.refresh === undefined ? {} : { refresh: c.refresh }) };
       break;
     case "confirm":
     case "cancel":
@@ -131,7 +137,7 @@ export function parseRequest(value: unknown): BeeRequest {
     command.threadId !== threadId
   ) throw new Error("bad_request");
   if (
-    !["load", "new_thread"].includes(command.kind) &&
+    !["load", "new_thread", "insight"].includes(command.kind) &&
     (threadId === undefined || raw.expectedVersion === undefined)
   ) throw new Error("bad_request");
   if (JSON.stringify(raw).length > 8192) throw new Error("bad_request");
@@ -279,6 +285,8 @@ export function explicitMemory(value: string): MemoryChange | null {
       value: memoryValue("usual_product", product[1]),
     };
   }
+  const cookedPortion = clean.match(/^I (?:use|prefer) (cooked|raw) (.{1,80}) portions$/i);
+  if (cookedPortion) return {kind:"set",key:"usual_preparation",value:memoryValue("usual_preparation",`${cookedPortion[2]} ${cookedPortion[1].toLowerCase()}`)};
   const preparation = clean.match(
     /^I usually measure (.{1,100}) (cooked|raw)$/i,
   );
@@ -328,6 +336,13 @@ export function portionCorrection(value: string): Portion | null {
 /** Fail closed when an interpreter drops a separately named item from a list. */
 export function retainFoodList(intent: BeeIntent, message: string): BeeIntent {
   if (intent.kind !== "nutrition") return intent;
+  // Explicit numeric portions are user input, not a model decision. Retain them even
+  // when an interpreter returns a different quantity; source conversion happens later.
+  const explicit = [...message.matchAll(/(\d+(?:\.\d+)?)\s*(grams?|g|ounces?|oz|milliliters?|ml|cups?|pieces?|bars?|servings?|packs?)\b/gi)];
+  if (explicit.length === 1) {
+    const portion = portionCorrection(`${explicit[0][1]} ${explicit[0][2]}`);
+    if (portion) intent = {...intent, query: {...intent.query, portion}};
+  }
   // Strip only the nutrition question prefix: prepositions within a food list
   // ("egg and a slice of toast") must not hide an omitted item.
   const metric = "(?:calories?|kcal|nutrition|macros?|protein|carbs?|carbohydrates?|fat)";

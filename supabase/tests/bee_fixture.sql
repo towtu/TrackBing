@@ -52,7 +52,7 @@ create table public.personal_foods (
 );
 create table public.user_goals (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id),
+  user_id uuid not null unique references auth.users(id),
   calorie_target integer not null,
   current_weight numeric,
   height numeric,
@@ -71,6 +71,16 @@ create table public.user_goals (
   goal_rate numeric,
   unit_system text
 );
+-- Verified in the read-only linked schema dump on 2026-09-27. Recipes store
+-- ingredient snapshots in JSONB; there is no recipe_items table.
+create table public.recipes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  ingredients jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
 -- Supabase has table grants as well as RLS policies. Reproduce both boundaries.
-grant select, insert, update, delete on all tables in schema public to authenticated;
+-- The inspected legacy project granted ALL; the launch migration narrows it.
+grant all on all tables in schema public to anon, authenticated;
 grant all on all tables in schema public to service_role;

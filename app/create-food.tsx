@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Calculator, CheckCircle, X } from "phosphor-react-native";
+import { Calculator, CheckCircle, X } from "@/src/components/icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,6 +29,7 @@ import {
   sanitizeBarcodeInput,
 } from "@/src/lib/barcodes";
 import { calculateCaloriesFromMacros } from "@/src/lib/macros";
+import { parseManualFood } from "@/src/lib/foodValidation";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -115,12 +116,9 @@ export default function CreateFoodPage() {
       return;
     }
 
-    if (!name.trim()) {
-      setFeedback({
-        type: "warning",
-        title: "Missing info",
-        message: "Please enter a food name.",
-      });
+    const checked = parseManualFood(name, prot, carbs, fat);
+    if (!checked.ok) {
+      setFeedback({ type: "warning", title: "Check the food values", message: checked.message });
       return;
     }
 
@@ -146,11 +144,11 @@ export default function CreateFoodPage() {
     const { error } = await writer.client.from("personal_foods").insert([
       {
         user_id: writer.userId,
-        name: name.trim(),
-        calories: calculatedCalories,
-        protein: parseFloat(prot) || 0,
-        carbs: parseFloat(carbs) || 0,
-        fat: parseFloat(fat) || 0,
+        name: checked.value.name,
+        calories: checked.value.calories,
+        protein: checked.value.protein,
+        carbs: checked.value.carbs,
+        fat: checked.value.fat,
         default_unit: unit,
         barcode: parsedBarcode.barcode,
         ai_estimated: aiEstimated,
@@ -254,8 +252,10 @@ export default function CreateFoodPage() {
         <Text style={styles.label}>Food Name</Text>
         <TextInput
           style={styles.input}
+          accessibilityLabel="Food name"
+          maxLength={160}
           placeholder="e.g. Mama's Adobo"
-          placeholderTextColor="#666"
+          placeholderTextColor={Colors.textMuted}
           value={name}
           onChangeText={(value) => { setName(value); setAiFillSource(null); }}
           autoFocus
@@ -353,10 +353,12 @@ export default function CreateFoodPage() {
             <TextInput
               style={styles.input}
               placeholder="0"
-              placeholderTextColor="#666"
+              placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
+              accessibilityLabel="Protein in grams"
+              maxLength={16}
               value={prot}
-              onChangeText={(t) => { setProt(t.replace(/[^0-9.]/g, "")); setAiFillSource(null); }}
+              onChangeText={(t) => { setProt(t); setAiFillSource(null); }}
             />
           </View>
           <View style={styles.gridItem}>
@@ -364,10 +366,12 @@ export default function CreateFoodPage() {
             <TextInput
               style={styles.input}
               placeholder="0"
-              placeholderTextColor="#666"
+              placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
+              accessibilityLabel="Carbohydrate in grams"
+              maxLength={16}
               value={carbs}
-              onChangeText={(t) => { setCarbs(t.replace(/[^0-9.]/g, "")); setAiFillSource(null); }}
+              onChangeText={(t) => { setCarbs(t); setAiFillSource(null); }}
             />
           </View>
         </View>
@@ -378,10 +382,12 @@ export default function CreateFoodPage() {
             <TextInput
               style={styles.input}
               placeholder="0"
-              placeholderTextColor="#666"
+              placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
+              accessibilityLabel="Fat in grams"
+              maxLength={16}
               value={fat}
-              onChangeText={(t) => { setFat(t.replace(/[^0-9.]/g, "")); setAiFillSource(null); }}
+              onChangeText={(t) => { setFat(t); setAiFillSource(null); }}
             />
           </View>
 

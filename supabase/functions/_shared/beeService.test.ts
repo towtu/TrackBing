@@ -23,7 +23,7 @@ describe("Bee endpoint enforcement",()=>{
     expect((await handleBeeRequest(request("hello",{userId:id}),dependencies)).status).toBe(400);
     expect(store.begin).not.toHaveBeenCalled();
   });
-  it.each(["Hi","No","Cancel","Yes","Remember that I prefer grams.","What do you remember about me?"])("%s makes no paid call",async text=>{
+  it.each(["No","Cancel","Yes","Remember that I prefer grams.","What do you remember about me?"])("%s makes no paid call",async text=>{
     const {dependencies,store}=setup(); await handleBeeRequest(request(text),dependencies);
     expect(store.reserve).not.toHaveBeenCalled(); expect(dependencies.search).not.toHaveBeenCalled(); expect(dependencies.interpret).not.toHaveBeenCalled();
   });

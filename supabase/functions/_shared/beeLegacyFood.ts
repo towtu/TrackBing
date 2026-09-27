@@ -10,9 +10,11 @@ export { readBoundedRequestJson } from "./beeRequest.ts";
 
 export type LegacyFoodRequest = { requestId: string; query: string; mode: "auto" | "fill" | "web" };
 export type LegacyFood = AiFood & { evidence: NutritionEvidence; requested_portion: Portion; requested_query: FoodQuery };
-export type LegacyFoodError = "needs_input" | "answer_only" | "bad_request" | "unauthorized" | "not_configured" | "ai_unavailable" | "search_unavailable" | "rate_limited" | "over_free_quota" | "over_pro_cap" | "busy" | "conflict";
+export type LegacyFoodError = "upgrade_required" | "pro_required" | "monthly_request_limit" | "monthly_insight_limit" | "monthly_input_limit" | "monthly_output_limit" | "monthly_search_limit" | "age_required" | "age_restricted" | "paid_data_unavailable" | "needs_input" | "answer_only" | "bad_request" | "unauthorized" | "not_configured" | "ai_unavailable" | "search_unavailable" | "rate_limited" | "over_free_quota" | "over_pro_cap" | "busy" | "conflict";
 export type LegacyFoodPayload = { food: LegacyFood; alternatives: LegacyFood[] } | { error: LegacyFoodError; message?: string; answer?: GroundedAnswer };
 export interface LegacyFoodStore {
+  policy?(): Promise<LegacyFoodError | null>;
+  recordCall?(request: LegacyFoodRequest, token:string, callId:string, usage:GeminiUsage):Promise<void>;
   reserve(request: LegacyFoodRequest, fingerprint: string, token: string): Promise<{ ok: true; replay: false } | { ok: true; replay: true; result: LegacyFoodPayload } | { ok: false; error: string }>;
   release(request: LegacyFoodRequest, token: string, success: boolean, result: LegacyFoodPayload | null): Promise<void>;
   reserveSearch(request: LegacyFoodRequest, token: string): Promise<{ ok: true; replay: boolean } | { ok: false; error: string }>;
@@ -23,7 +25,7 @@ export type LegacyFoodDependencies = {
   store(userId: string): LegacyFoodStore;
   configured(): boolean;
   searchEnabled(): boolean;
-  interpret(text: string, signal: AbortSignal): Promise<unknown>;
+  interpret(text: string, signal: AbortSignal, onUsage?:(usage:GeminiUsage)=>void): Promise<unknown>;
   resolve(query: FoodQuery, signal: AbortSignal, userId: string): Promise<NutritionResult>;
   ground(query: FoodQuery, signal: AbortSignal, onUsage: (usage: GeminiUsage) => void): Promise<GroundedAnswer>;
   newToken?: () => string;
@@ -61,7 +63,7 @@ function validLiveAnswer(value: GroundedAnswer): boolean {
     && value.citations.every(c => isSafeGroundingUrl(c.url) && typeof c.title === "string" && !!c.title.trim() && Number.isSafeInteger(c.startIndex) && Number.isSafeInteger(c.endIndex) && c.startIndex >= 0 && c.startIndex < c.endIndex && c.endIndex <= value.text.length)
     && Array.isArray(value.searchSuggestionsHtml) && value.searchSuggestionsHtml.length > 0 && value.searchSuggestionsHtml.length <= 5 && value.searchSuggestionsHtml.every(validateSuggestionsHtml);
 }
-function quotaError(error: string): LegacyFoodError { return ["rate_limited", "over_free_quota", "over_pro_cap", "busy", "conflict"].includes(error) ? error as LegacyFoodError : "ai_unavailable"; }
+function quotaError(error: string): LegacyFoodError { return ["upgrade_required", "pro_required", "monthly_request_limit", "monthly_insight_limit", "monthly_input_limit", "monthly_output_limit", "monthly_search_limit", "rate_limited", "over_free_quota", "over_pro_cap", "busy", "conflict"].includes(error) ? error as LegacyFoodError : "ai_unavailable"; }
 
 /** Lookup only: neither an ordinary request nor a Search answer writes a food diary. */
 export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDependencies): Promise<Response> {
@@ -79,15 +81,22 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
   const store = deps.store(user.id); let reserved = false;
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]);
   try {
+    const policyError = await store.policy?.();
+    if (policyError) return json({error:policyError},["upgrade_required","pro_required"].includes(policyError)?402:403);
     const fingerprint = await requestFingerprint({ endpoint: "ai-food", query: request.query, mode: request.mode });
     const reservation = await store.reserve(request, fingerprint, token);
-    if (!reservation.ok) return json({ error: quotaError(reservation.error) });
+    if (!reservation.ok) return json({ error: quotaError(reservation.error) },["upgrade_required","pro_required"].includes(reservation.error)?402:429);
     if (reservation.replay) return json(reservation.result);
     reserved = true;
     const finish = async (result: LegacyFoodPayload, success: boolean, persisted: LegacyFoodPayload | null = null): Promise<Response> => {
       await store.release(request, token, success, persisted); reserved = false; return json(result);
     };
-    const intent = retainFoodList(parseIntent(await deps.interpret(request.query, signal)),request.query);
+    let interpretationUsage:GeminiUsage|undefined;
+    let interpreted:unknown;
+    const interpretCall = crypto.randomUUID();
+    try { interpreted=await deps.interpret(request.query,signal,value=>{interpretationUsage=value;}); }
+    finally {await store.recordCall?.(request,token,interpretCall,interpretationUsage??{inputTokens:6000,outputTokens:4096,searchQueries:0});}
+    const intent = retainFoodList(parseIntent(interpreted),request.query);
     if (intent.kind !== "nutrition") return await finish({ error: "needs_input", message: intent.kind === "clarify" ? intent.question : intent.kind === "multiple" ? "Look up each food separately with its portion." : "Enter one food and its portion, such as 72 g boiled egg." }, false);
     if (request.mode !== "web") {
       const resolved = await deps.resolve(intent.query, signal, user.id);
@@ -102,13 +111,15 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
     const search = await store.reserveSearch(request, token);
     // A consumed Search reservation is never reusable, even when the lookup credit was refunded.
     if (!search.ok || search.replay !== false) return await finish({ error: search.ok ? "search_unavailable" : quotaError(search.error) }, false);
-    let searchQueries = 0; let answer: GroundedAnswer;
+    let groundedUsage:GeminiUsage|undefined; const searchCall=crypto.randomUUID();
+    let searchQueries = 3; let answer: GroundedAnswer;
     try {
-      answer = await deps.ground(intent.query, signal, usage => { searchQueries = usage.searchQueries; });
+      answer = await deps.ground(intent.query, signal, usage => { groundedUsage=usage; searchQueries = usage.searchQueries; });
       if (!validLiveAnswer(answer)) throw new Error("invalid_response");
       searchQueries = answer.searchQueryCount;
     } finally {
       // Actual queries remain accounted for even if citation/widget validation rejects the answer.
+      await store.recordCall?.(request,token,searchCall,groundedUsage??{inputTokens:2000,outputTokens:4096,searchQueries:3});
       await store.measureSearch(request, token, searchQueries);
     }
     return await finish({ error: "answer_only", answer, message: "This live Search answer cannot create a food entry. Verify a matching nutrition record or enter the package label manually." }, true, { error: "needs_input", message: REFRESH_MESSAGE });

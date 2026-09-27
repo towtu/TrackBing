@@ -10,8 +10,8 @@ import {
   Plus,
   Trash,
   X,
-} from "phosphor-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+} from "@/src/components/icons";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -30,7 +30,6 @@ import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-import { supabase } from "@/src/lib/supabase";
 import { lookupBarcode, searchAllFoods } from "@/src/lib/foodSearch";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
@@ -44,6 +43,8 @@ import {
   type RecipeIngredient,
   type Unit,
 } from "@/src/lib/macros";
+import { validateRecipe, validateLoggedPortion } from "@/src/lib/foodValidation";
+import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -57,6 +58,11 @@ type FeedbackState = {
 
 export default function CreateRecipePage() {
   const router = useRouter();
+  const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
+  useEffect(() => {
+    const guard = createFoodAccountGuard(); accountRef.current = guard;
+    return () => { guard.dispose(); accountRef.current = null; };
+  }, []);
   const { isDesktop } = useResponsive();
 
   // When opened with an ?id= param we're editing an existing recipe rather
@@ -137,10 +143,13 @@ export default function CreateRecipePage() {
     if (!editId) return;
     let active = true;
     (async () => {
-      const { data } = await supabase
+      const writer = await accountRef.current?.authorize();
+      if (!writer?.isActive()) return;
+      const { data } = await writer.client
         .from("recipes")
         .select("name, ingredients")
         .eq("id", editId)
+        .eq("user_id", writer.userId)
         .single();
       if (active && data) {
         setName(data.name ?? "");
@@ -241,10 +250,12 @@ export default function CreateRecipePage() {
 
   const commitEditor = () => {
     if (!editingFood) return;
+    const error = validateLoggedPortion(editWeight, editUnit, editorMacros);
+    if (error) return notify("Check the ingredient", error);
     const ing: RecipeIngredient = {
       name: editingFood.product_name,
       brands: editingFood.brands,
-      weight: parseFloat(editWeight) || 0,
+      weight: Number(editWeight),
       unit: editUnit,
       default_unit: editingFood.default_unit,
       serving_weight: editingFood.serving_weight,
@@ -272,31 +283,18 @@ export default function CreateRecipePage() {
 
   const handleSave = async () => {
     if (submitting) return;
-    if (!name.trim()) {
-      return notify("Missing name", "Give your recipe a name.");
-    }
-    if (ingredients.length === 0) {
-      return notify("No ingredients", "Add at least one ingredient.");
-    }
+    const validationError = validateRecipe(name, ingredients);
+    if (validationError) return notify("Check the recipe", validationError);
     setSubmitting(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setSubmitting(false);
-      return;
-    }
+    const writer = await accountRef.current?.authorize();
+    if (!writer?.isActive()) { setSubmitting(false); return notify("Sign in required", "Sign in again before saving this recipe."); }
     const { error } = editId
-      ? await supabase
-          .from("recipes")
-          .update({ name: name.trim(), ingredients })
-          .eq("id", editId)
-      : await supabase
-          .from("recipes")
-          .insert([{ user_id: user.id, name: name.trim(), ingredients }]);
+      ? await writer.client.from("recipes").update({ name: name.trim(), ingredients }).eq("id", editId).eq("user_id", writer.userId)
+      : await writer.client.from("recipes").insert([{ user_id: writer.userId, name: name.trim(), ingredients }]);
+    if (!writer.isActive()) return;
     setSubmitting(false);
     if (error) {
-      notify("Could not save recipe", error.message, "error");
+      notify("Could not save recipe", "Your recipe is still here. Check your connection and try again.", "error");
     } else {
       notify(
         "Saved!",
@@ -352,7 +350,9 @@ export default function CreateRecipePage() {
               <TextInput
                 style={s.input}
                 placeholder="e.g. Chicken Adobo"
-                placeholderTextColor="#666"
+                placeholderTextColor={Colors.textMuted}
+                accessibilityLabel="Recipe name"
+                maxLength={160}
                 value={name}
                 onChangeText={setName}
               />
@@ -477,7 +477,9 @@ export default function CreateRecipePage() {
                 style={s.searchInput}
                 placeholder="Search food..."
                 placeholderTextColor={Colors.textSecondary}
-                value={query}
+                accessibilityLabel="Search recipe ingredients"
+                    maxLength={160}
+                    value={query}
                 onChangeText={setQuery}
                 onSubmitEditing={handleSearch}
                 autoFocus
@@ -651,8 +653,10 @@ export default function CreateRecipePage() {
                 <TextInput
                   style={s.weightInput}
                   keyboardType="numeric"
+                  accessibilityLabel="Ingredient portion"
+                  maxLength={16}
                   value={editWeight}
-                  onChangeText={(t) => setEditWeight(t.replace(/[^0-9.]/g, ""))}
+                  onChangeText={(t) => setEditWeight(t)}
                   selectTextOnFocus
                 />
                 <ScrollView

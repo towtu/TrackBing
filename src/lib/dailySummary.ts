@@ -1,3 +1,4 @@
+import { getAccountDay } from "./accountDay";
 import { supabase } from "./supabase";
 
 /**
@@ -20,9 +21,13 @@ export async function upsertDailySummary() {
 
   // The authenticated RPC reads the authoritative log and updates its totals
   // in one transaction. A failed read never overwrites a summary with zeros.
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  let day: Awaited<ReturnType<typeof getAccountDay>>;
+  try { day = await getAccountDay(user.id); } catch {
+    console.warn("Daily date could not refresh. Food entries remain saved.");
+    return false;
+  }
   const { data, error } = await supabase.rpc("refresh_daily_summary", {
-    p_day: getLocalDateStr(), p_timezone: timeZone,
+    p_day: day.date, p_timezone: day.timeZone,
   });
   if (error || !data?.ok) {
     console.warn("Daily totals could not refresh. Food entries remain saved.");

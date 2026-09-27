@@ -200,3 +200,5 @@ export function getBeeTapReaction(
 export function beeMoodToSituation(mood: BeeMood): BeeSituation {
   return MOOD_TO_SITUATION[mood];
 }
+
+export function beePoseToSituation(pose:BeePose):BeeSituation {return ({greeting:"greeting",thinking:"needsClarification",encouraging:"underTarget",celebrating:"streak",caution:"lookupError",resting:"inactiveReturn",searching:"searching",success:"logSuccess"} as const)[pose];}

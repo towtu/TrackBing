@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.5-flash-lite";
+  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
   if (!url || !anon || !service) return new Response(JSON.stringify({ error: "not_configured" }), { status: 503, headers: LEGACY_FOOD_HEADERS });
   const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: boundedFetch } });
   const store = (userId: string): LegacyFoodStore => {
@@ -31,14 +31,24 @@ Deno.serve(async (req: Request) => {
       return data as T;
     }
     return {
-      reserve: (request, fingerprint, token) => rpc("reserve_ai_lookup", { p_request: request.requestId, p_fingerprint: fingerprint, p_token: token }),
+      policy: async () => {
+        const ent=await rpc<{tier:string}>("resolve_entitlement",{});
+        if(ent.tier==="basic") return "upgrade_required";
+        const {data,error}=await admin.from("user_goals").select("age").eq("user_id",userId).maybeSingle();
+        if(error)throw new Error("profile_unavailable");
+        if(typeof data?.age !== "number")return "age_required";
+        if(data.age<18)return "age_restricted";
+        return Deno.env.get("GEMINI_PAID_DATA_USE_CONFIRMED")==="true" ? null : "paid_data_unavailable";
+      },
+      recordCall: async(request,token,callId,value)=>{const result=await rpc<{ok:boolean}>("record_ai_call",{p_request:request.requestId,p_token:token,p_call:callId,p_input_tokens:value.inputTokens,p_output_tokens:value.outputTokens});if(!result.ok)throw new Error("accounting_failed");},
+      reserve: (request, fingerprint, token) => rpc("reserve_ai_budget", { p_request: request.requestId, p_fingerprint: fingerprint, p_token: token, p_feature:"ai_food_assist",p_input_budget:15000,p_output_budget:12288 }),
       release: async (request, token, success, result) => {
-        const response = await rpc<{ ok: boolean }>("release_ai_lookup", { p_request: request.requestId, p_token: token, p_success: success, p_result: result });
+        const response = await rpc<{ ok: boolean }>("finish_ai_budget", { p_request: request.requestId, p_token: token, p_success: success, p_result: result });
         if (!response.ok) throw new Error("reservation_conflict");
       },
-      reserveSearch: (request, token) => rpc("reserve_ai_search", { p_request: request.requestId, p_token: token }),
+      reserveSearch: (request, token) => rpc("reserve_ai_search_queries", { p_request: request.requestId, p_token: token,p_call:request.requestId,p_queries:3 }),
       measureSearch: async (request, token, count) => {
-        const response = await rpc<{ ok: boolean }>("measure_ai_search", { p_request: request.requestId, p_token: token, p_count: count });
+        const response = await rpc<{ ok: boolean }>("measure_ai_search_queries", { p_request: request.requestId, p_token: token,p_call:request.requestId,p_actual:count });
         if (!response.ok) throw new Error("search_accounting_failed");
       },
     };
@@ -50,8 +60,8 @@ Deno.serve(async (req: Request) => {
       return error ? null : data.user;
     },
     store, configured: () => Boolean(apiKey), searchEnabled: () => Deno.env.get("GEMINI_SEARCH_ENABLED") === "true",
-    interpret: (text, signal) => geminiJson(INTENT_PROMPT, { userMessage: text }, { apiKey, model, signal, maxTokens: 900, onUsage: usage }),
-    ground: (query, signal, measuredUsage) => geminiGrounded(query, { apiKey, model, signal, maxTokens: 1600, onUsage: value => { usage(value); measuredUsage(value); } }),
+    interpret: (text, signal, onUsage) => geminiJson(INTENT_PROMPT, { userMessage: text }, { apiKey, model, signal, maxTokens: 4096, onUsage: value=>{usage(value);onUsage?.(value);} }),
+    ground: (query, signal, measuredUsage) => geminiGrounded(query, { apiKey, model, signal, maxTokens: 4096, onUsage: value => { usage(value); measuredUsage(value); } }),
     resolve: (query, signal, userId) => searchNutrition(query, {
       usdaApiKey: Deno.env.get("USDA_API_KEY") ?? "", signal,
       personal: async food => {

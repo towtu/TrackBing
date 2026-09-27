@@ -1,3 +1,4 @@
+import { WeightHistory } from "@/src/components/WeightHistory";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   CaretLeft,
@@ -6,7 +7,7 @@ import {
   Lightning,
   TrendUp,
   Trophy,
-} from "phosphor-react-native";
+} from "@/src/components/icons";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,7 +19,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
-import { getLocalDateStr } from "@/src/lib/dailySummary";
+import { getAccountDay } from "@/src/lib/accountDay";
+import { shiftDay } from "../../supabase/functions/_shared/beeDates";
 import { readCache, writeCache } from "@/src/lib/cache";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -52,29 +54,23 @@ type SummaryRow = {
 };
 
 /** Pure streak calc from the (already-fetched) summaries + today's live state. */
-function computeStreak(summaries: SummaryRow[], loggedToday: boolean): number {
+function computeStreak(summaries: SummaryRow[], loggedToday: boolean, todayStr: string): number {
   const dates = new Set<string>();
   summaries.forEach((s) => {
     if ((s.meal_count || 0) > 0) dates.add(s.date);
   });
 
-  const todayStr = getLocalDateStr();
   if (loggedToday) dates.add(todayStr);
   if (dates.size === 0) return 0;
 
   const sorted = Array.from(dates).sort().reverse();
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = getLocalDateStr(yesterday);
+  const yesterdayStr = shiftDay(todayStr, -1);
 
   if (sorted[0] !== todayStr && sorted[0] !== yesterdayStr) return 0;
 
   let count = 0;
-  const checkDate = new Date(sorted[0]);
   for (let i = 0; i < sorted.length; i++) {
-    const expected = new Date(checkDate);
-    expected.setDate(expected.getDate() - i);
-    if (sorted[i] === getLocalDateStr(expected)) count++;
+    if (sorted[i] === shiftDay(sorted[0], -i)) count++;
     else break;
   }
   return count;
@@ -122,9 +118,10 @@ const EMPTY_TODAY: TodayTotals = {
 async function fetchWeeklyRaw(
   userId: string,
   todayStartIso: string,
+  todayEndIso: string,
 ): Promise<WeeklyRaw> {
   const { data, error } = await supabase.rpc("get_weekly_stats", {
-    p_today_start: todayStartIso,
+    p_today_start: todayStartIso, p_today_end: todayEndIso,
   });
 
   if (!error && data) {
@@ -152,7 +149,7 @@ async function fetchWeeklyRaw(
       .from("food_logs")
       .select("calories, protein, carbs, fat")
       .eq("user_id", userId)
-      .gte("created_at", todayStartIso),
+      .gte("created_at", todayStartIso).lt("created_at", todayEndIso),
   ]);
 
   const today = (todayRes.data ?? []).reduce<TodayTotals>(
@@ -174,23 +171,19 @@ async function fetchWeeklyRaw(
 }
 
 async function computeStats(userId: string): Promise<CachedStats> {
-  const now = new Date();
-  const todayStr = getLocalDateStr(now);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
-  const raw = await fetchWeeklyRaw(userId, todayStart.toISOString());
+  const day = await getAccountDay(userId);
+  const todayStr = day.date;
+  const raw = await fetchWeeklyRaw(userId, day.start, day.end);
   const calorieGoal = raw.calorieTarget || 2000;
 
   const dayMap: Record<string, DayData> = {};
   for (let i = 0; i < 7; i++) {
-    const d = new Date();
-    d.setDate(now.getDate() - 6 + i);
-    const key = getLocalDateStr(d);
+    const key = shiftDay(todayStr, -6 + i);
+    const d = new Date(`${key}T12:00:00Z`);
     dayMap[key] = {
       date: key,
-      label: d.getDate().toString(),
-      dayName: DAY_NAMES[d.getDay()],
+      label: d.getUTCDate().toString(),
+      dayName: DAY_NAMES[d.getUTCDay()],
       calories: 0,
       protein: 0,
       carbs: 0,
@@ -216,7 +209,7 @@ async function computeStats(userId: string): Promise<CachedStats> {
     dayMap[todayStr] = { ...dayMap[todayStr], ...raw.today };
   }
 
-  const streak = computeStreak(raw.summaries, loggedToday);
+  const streak = computeStreak(raw.summaries, loggedToday, todayStr);
   return { weekData: Object.values(dayMap), streak, calorieGoal };
 }
 
@@ -641,6 +634,7 @@ export default function StatsPage() {
             )}
           </>
         )}
+        <WeightHistory />
       </ScrollView>
     </SafeAreaView>
   );

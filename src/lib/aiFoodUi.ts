@@ -20,17 +20,12 @@ export function getAiFoodFeedback(reason: AiFoodReason): AiFoodFeedback {
     };
   }
 
-  if (reason === "over_free_quota" || reason === "over_pro_cap") {
-    return {
-      type: "info",
-      title: "Bee Pro is coming soon",
-      message:
-        reason === "over_free_quota"
-          ? "You've used your free Bee lookups for this month. Pro passes are coming soon."
-          : "You've reached Bee's daily Pro safety cap. Try again tomorrow.",
-      confirmText: "Got it",
-    };
+  if (reason === "upgrade_required" || reason === "pro_required" || reason === "over_free_quota" || reason === "over_pro_cap") {
+    return {type:"info",title:reason === "pro_required" ? "Upgrade to Pro" : "Upgrade to Plus",message:"Open Plans in Profile to review AI features and allowances. Manual food tracking stays free.",confirmText:"Got it"};
   }
+  if (reason.startsWith("monthly_")) return {type:"info",title:"Monthly AI allowance reached",message:"Check Plans for your remaining allowance and reset date. Manual tracking stays available."};
+  if (reason === "age_required" || reason === "age_restricted") return {type:"info",title:"AI access needs an adult profile",message:"Bee's cloud AI is available to adults with a complete age setting. Manual tracking stays available."};
+  if (reason === "paid_data_unavailable") return {type:"info",title:"Bee is temporarily unavailable",message:"The service is not ready for private AI requests yet. Scan or enter your package label manually."};
 
   if (reason === "ai_unavailable") {
     return {

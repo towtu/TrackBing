@@ -5,7 +5,7 @@ import type {
   BeeResult,
   BeeSnapshot,
   NutritionEvidence,
-  PendingFood,
+  PendingAction,
 } from "../../supabase/functions/_shared/beeTypes";
 import { supabase } from "./supabase";
 import { isSafeGroundingUrl } from "../../supabase/functions/_shared/beeGrounding";
@@ -22,6 +22,7 @@ export type {
   GroundedAnswer,
   MemoryKey,
   PendingFood,
+  PendingAction,
 } from "../../supabase/functions/_shared/beeTypes";
 
 export function createBeeRequest(
@@ -104,7 +105,7 @@ export function createBeeClient(userId: string) {
 }
 
 export function isCurrentBeeReview(
-  draft: PendingFood,
+  draft: PendingAction,
   snapshot: BeeSnapshot | null,
   now = Date.now(),
 ): boolean {
@@ -147,7 +148,7 @@ const ERRORS: readonly BeeErrorCode[] = [
   "bad_request", "unauthorized", "not_found", "conflict", "busy", "expired",
   "stale_action", "over_free_quota", "over_pro_cap", "rate_limited",
   "provider_unavailable", "not_configured", "save_failed", "offline", "error",
-  "search_unavailable",
+  "search_unavailable", "upgrade_required", "pro_required", "monthly_request_limit", "monthly_insight_limit", "monthly_input_limit", "monthly_output_limit", "monthly_search_limit", "age_required", "age_restricted", "paid_data_unavailable", "stale_profile",
 ];
 
 export function getBeeErrorFeedback(error: BeeErrorCode): {
@@ -155,6 +156,23 @@ export function getBeeErrorFeedback(error: BeeErrorCode): {
   action: "retry" | "refresh" | "none";
 } {
   switch (error) {
+    case "upgrade_required":
+      return {message: "AI food help requires Plus. Adaptive Bee requires Pro. Manual tracking stays free.", action: "none"};
+    case "pro_required":
+      return {message: "This Bee feature requires Pro. Your saved data and manual tracking remain available.", action: "none"};
+    case "monthly_request_limit":
+    case "monthly_insight_limit":
+    case "monthly_input_limit":
+    case "monthly_output_limit":
+    case "monthly_search_limit":
+      return {message: "You reached this month’s AI allowance. Check your plan for the reset date; manual tracking remains available.", action: "none"};
+    case "age_required":
+    case "age_restricted":
+      return {message: "Bee AI is available to adults with an age saved in Profile. Manual tracking remains available.", action: "none"};
+    case "paid_data_unavailable":
+      return {message: "Bee is awaiting privacy configuration. Manual tracking is available.", action: "none"};
+    case "stale_profile":
+      return {message: "Your profile changed. Review a fresh proposal before saving.", action: "refresh"};
     case "unauthorized":
       return { message: "Sign in again to continue this conversation.", action: "none" };
     case "over_free_quota":
@@ -224,9 +242,12 @@ function isSnapshot(value: unknown): value is BeeSnapshot {
     (value.liveAnswer === undefined || isBeeGroundedAnswer(value.liveAnswer));
 }
 
-function isDraft(value: unknown): value is PendingFood {
+function isDraft(value: unknown): value is PendingAction {
   if (!record(value) || typeof value.id !== "string" || !Number.isInteger(value.review_version) ||
-      typeof value.expires_at !== "string" || !record(value.food)) return false;
+      typeof value.expires_at !== "string") return false;
+  if (value.kind === "weight") return record(value.weight) && typeof value.weight.weightKg === "number" && Number.isFinite(value.weight.weightKg) && value.weight.weightKg >= 30 && value.weight.weightKg <= 300 && ["kg","lb"].includes(String(value.weight.unit)) && typeof value.weight.originalAmount === "number" && Number.isFinite(value.weight.originalAmount) && typeof value.weight.localDate === "string" && typeof value.weight.updatesCurrentWeight === "boolean";
+  if (value.kind === "goal") {const goal=value.goal;if(!record(goal)||!record(goal.previous)||!record(goal.next))return false;const next=goal.next;return ["calorie_target","protein_grams","carbs_grams","fat_grams"].every(key=>typeof next[key]==="number" && Number.isFinite(next[key]) && next[key]>=0);}
+  if (!record(value.food)) return false;
   const food = value.food;
   return ["usda", "openfoodfacts", "my_food", "user_label"].includes(String(food.source)) &&
     typeof food.name === "string" && typeof food.servingLabel === "string" &&

@@ -64,6 +64,7 @@ export type ReviewedFood = {
   evidence: NutritionEvidence;
 };
 export type PendingFood = {
+  kind?: "food";
   id: string;
   thread_id: string;
   review_version: number;
@@ -73,6 +74,24 @@ export type PendingFood = {
   expires_at: string;
   food: ReviewedFood;
 };
+export type BeePose = "greeting" | "thinking" | "encouraging" | "celebrating" | "caution" | "resting" | "searching" | "success";
+export type WeightDraft = {
+  weightKg: number; originalAmount: number; unit: "kg" | "lb";
+  measuredAt: string; localDate: string; timeZone: string; updatesCurrentWeight: boolean;
+};
+export type GoalValues = {
+  calorie_target: number | null; protein_grams: number | null; carbs_grams: number | null; fat_grams: number | null;
+  goal_mode: string | null; goal_rate: number | null; target_weight: number | null;
+  maintenance_calories: number | null; calculation_method: string | null;
+};
+export type GoalDraft = { previous: GoalValues; next: GoalValues; profileRevision: number };
+type PendingBase = Omit<PendingFood, "kind" | "food">;
+export type PendingWeight = PendingBase & { kind: "weight"; weight: WeightDraft };
+export type PendingGoal = PendingBase & { kind: "goal"; goal: GoalDraft };
+export type PendingAction = PendingFood | PendingWeight | PendingGoal;
+export type BeeInsight = { text: string; suggested_pose: BeePose; context_revision: string; expires_at: string };
+export type BeeTier = "basic" | "plus" | "pro";
+export type BeeEntitlement = { tier: BeeTier; capabilities: Record<string, boolean>; remaining: Record<string, number>; limits: Record<string, number>; reset_at: string | null };
 export type MemoryKey =
   | "preferred_name"
   | "preferred_units"
@@ -84,7 +103,7 @@ export type BeeMessage = {
   role: "user" | "assistant";
   text: string;
   created_at: string;
-  draft?: PendingFood;
+  draft?: PendingAction;
 };
 /** Transient display only: never persist, index, or use as a log payload. */
 export type GroundedAnswer = {
@@ -103,8 +122,12 @@ export type BeeSnapshot = {
   messages: BeeMessage[];
   memories: BeeMemory[];
   profile: Record<string, string | number | null>;
-  pending: PendingFood | null;
+  pending: PendingAction | null;
   saved_log_id?: string;
+  saved_action?: { kind: "food" | "weight" | "goal"; id: string; pending_id?: string; local_date: string };
+  suggested_pose?: BeePose;
+  insight?: BeeInsight;
+  entitlement?: BeeEntitlement;
   summary_warning?: boolean;
   liveAnswer?: GroundedAnswer;
 };
@@ -113,6 +136,8 @@ export type BeeCommand =
   | { kind: "new_thread" }
   | { kind: "clear_chat" }
   | { kind: "message"; text: string; actionId?: string; reviewVersion?: number }
+  | { kind: "food_assist"; text: string; actionId?: string; reviewVersion?: number }
+  | { kind: "insight"; refresh?: boolean }
   | { kind: "confirm" | "cancel"; actionId: string; reviewVersion: number }
   | { kind: "memory_set"; key: MemoryKey; value: string }
   | { kind: "memory_delete"; key: MemoryKey }
@@ -141,6 +166,8 @@ export type BeeErrorCode =
   | "not_configured"
   | "save_failed"
   | "offline"
+  | "upgrade_required" | "pro_required" | "monthly_request_limit" | "monthly_input_limit" | "monthly_output_limit" | "monthly_insight_limit" | "monthly_search_limit"
+  | "age_required" | "age_restricted" | "paid_data_unavailable" | "stale_profile"
   | "error";
 export type BeeResult = { ok: true; snapshot: BeeSnapshot } | {
   ok: false;

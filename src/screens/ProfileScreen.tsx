@@ -1,3 +1,7 @@
+import { BeeAction } from "@/src/components/ai/BeeMemories";
+import { WeightHistory } from "@/src/components/WeightHistory";
+import { createBeeRequestId, resolveBeeTimeZone } from "@/src/lib/beeChat";
+import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { UnitSystemToggle } from "@/src/components/nutrition/UnitSystemToggle";
 import { TargetBreakdown } from "@/src/components/nutrition/TargetBreakdown";
 import {
@@ -29,6 +33,9 @@ import {
   type UnitSystem,
 } from "@/src/lib/nutritionTargets";
 import { supabase } from "@/src/lib/supabase";
+import { LegalLinks } from "@/src/components/legal/LegalLinks";
+import { AnalyticsPrivacyControls } from "@/src/components/privacy/AnalyticsConsent";
+import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useRouter } from "expo-router";
 import {
@@ -40,11 +47,12 @@ import {
   Ruler,
   SignOut,
   Target,
-} from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
+} from "@/src/components/icons";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -85,8 +93,15 @@ export function ProfileScreen() {
   const { isDesktop, width } = useResponsive();
   const isCompactPhone = isCompactPhoneLayout(width);
   const router = useRouter();
+  const profileRevision = useRef<number | null>(null);
+  const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
+  useEffect(() => {
+    const guard = createFoodAccountGuard(); accountRef.current = guard;
+    return () => { guard.dispose(); accountRef.current = null; };
+  }, []);
 
   const [loading, setLoading] = useState(true);
+  const [profileReload,setProfileReload]=useState(0);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: SweetFeedbackType;
@@ -138,7 +153,7 @@ export function ProfileScreen() {
 
   useEffect(() => {
     let mounted = true;
-
+    setLoading(true); setProfileError("");
     const fetchProfile = async () => {
       try {
         const {
@@ -172,6 +187,7 @@ export function ProfileScreen() {
           return;
         }
 
+        profileRevision.current = data.profile_revision ?? null;
         const loadedUnitSystem = isUnitSystem(data.unit_system)
           ? data.unit_system
           : "metric";
@@ -179,7 +195,7 @@ export function ProfileScreen() {
           data.activity_level,
         );
         const loadedAge = Number(data.age);
-        const loadedWeight = Number(data.current_weight);
+        const loadedWeight = data.current_weight == null ? NaN : Number(data.current_weight);
         const loadedHeight = Number(data.height);
         const hasLoadedTargetWeight = data.target_weight != null;
         const loadedTargetWeight = Number(data.target_weight);
@@ -298,7 +314,7 @@ export function ProfileScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [profileReload]);
 
   const recalculateEstimatedTarget = (
     overrides: {
@@ -632,7 +648,7 @@ export function ProfileScreen() {
         ? calculateNutritionTarget(bodyInput)
         : targetResult;
     const savedCalories = effectiveTargetResult?.finalCalories ?? calories;
-    if (!Number.isFinite(savedCalories) || savedCalories <= 0) {
+    if (!Number.isFinite(savedCalories) || savedCalories <= 0 || savedCalories > 100000) {
       showMessage(
         "Invalid Target",
         "Select a calorie plan before saving this profile.",
@@ -644,15 +660,10 @@ export function ProfileScreen() {
     setSaving(true);
     setProfileError("");
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!user) throw new Error("Please sign in again before saving.");
+      const writer = await accountRef.current?.authorize();
+      if (!writer?.isActive()) throw new Error("Please sign in again before saving.");
 
       const updates: Record<string, string | number | null> = {
-        user_id: user.id,
         current_weight: bodyInput.weightKg,
         target_weight: savedTargetWeight,
         height: bodyInput.heightCm,
@@ -685,10 +696,11 @@ export function ProfileScreen() {
             : goalRate;
       }
 
-      const { error } = await supabase
-        .from("user_goals")
-        .upsert(updates, { onConflict: "user_id" });
-      if (error) throw error;
+      const { data: saved, error } = await writer.client.rpc("save_profile", {p_request:createBeeRequestId(),p_profile:{...updates,time_zone:resolveBeeTimeZone()},p_expected_revision:profileRevision.current});
+      if (!writer.isActive()) return;
+      if (error || !saved?.ok) throw new Error("Your profile could not be saved. Refresh and try again.");
+      profileRevision.current = saved.profile?.profile_revision ?? saved.profile_revision ?? profileRevision.current;
+      emitFoodLogChanged();
 
       setCalories(savedCalories);
       if (effectiveTargetResult) setTargetResult(effectiveTargetResult);
@@ -1255,6 +1267,7 @@ export function ProfileScreen() {
         {profileError ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{profileError}</Text>
+            <BeeAction label="Reload saved profile" disabled={saving} onPress={()=>setProfileReload(value=>value+1)}/>
           </View>
         ) : null}
 
@@ -1279,6 +1292,12 @@ export function ProfileScreen() {
             {renderSaveButton()}
           </>
         )}
+        <View style={{ marginTop: 24, gap: 16 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Plans and usage" onPress={()=>router.push("/plans")} style={{padding:16}}><Text style={{color:Colors.accent}}>Plans and usage</Text></Pressable>
+          <WeightHistory />
+          <AnalyticsPrivacyControls />
+          <LegalLinks />
+        </View>
       </ScrollView>
 
       <SweetFeedback
@@ -1416,7 +1435,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 17,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.controlBorder,
   },
   genderSection: {
     marginTop: 15,

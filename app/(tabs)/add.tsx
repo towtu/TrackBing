@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Barcode,
@@ -8,7 +9,7 @@ import {
   Minus,
   Plus,
   X,
-} from "phosphor-react-native";
+} from "@/src/components/icons";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -33,7 +34,7 @@ import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-import { getLocalDateStr } from "@/src/lib/dailySummary";
+import { getAccountDay } from "@/src/lib/accountDay";
 import { isLoggableAiFood, requestAiFood, type AiFood } from "@/src/lib/aiFood";
 import type { GroundedAnswer } from "@/src/lib/beeChat";
 import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
@@ -54,6 +55,7 @@ import {
   type Macros,
   type Unit,
 } from "@/src/lib/macros";
+import { validateLoggedPortion } from "@/src/lib/foodValidation";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -121,6 +123,18 @@ const createRecentBarcodeFood = (
     fat_100g: macros.f,
   },
 });
+
+// A summary failure is separate from an already successful diary insert.
+async function refreshWriterSummary(writer: {userId: string; client: SupabaseClient; isActive: () => boolean}) {
+  try {
+    const day = await getAccountDay(writer.userId, new Date(), writer.client);
+    if (!writer.isActive()) return {error: true, data: null};
+    return await writer.client.rpc("refresh_daily_summary", {p_day: day.date, p_timezone: day.timeZone});
+  } catch {
+    console.warn("Daily date could not refresh. Food entries remain saved.");
+    return {error: true, data: null};
+  }
+}
 
 export default function AddFoodPage() {
   const router = useRouter();
@@ -347,6 +361,8 @@ export default function AddFoodPage() {
 
   const confirmAdd = async () => {
     if (!selectedFood || submitting) return;
+    const error = validateLoggedPortion(inputWeight, selectedUnit, macros);
+    if (error) { setFeedback({ type: "warning", title: "Check the portion", message: error }); return; }
     setSubmitting(true);
     const foodBarcode = barcodeFromFood(selectedFood);
     const guard = accountRef.current;
@@ -383,9 +399,7 @@ export default function AddFoodPage() {
           message: error.message,
         });
       } else {
-        await writer.client.rpc("refresh_daily_summary", {
-          p_day: getLocalDateStr(), p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        });
+        await refreshWriterSummary(writer);
         if (!writer.isActive()) return;
         emitFoodLogChanged();
         if (foodBarcode) {
@@ -502,9 +516,7 @@ export default function AddFoodPage() {
         return;
       }
 
-      const refreshed = await writer.client.rpc("refresh_daily_summary", {
-        p_day: getLocalDateStr(), p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      });
+      const refreshed = await refreshWriterSummary(writer);
       if (!writer.isActive()) return;
       if (refreshed.error || !refreshed.data?.ok) console.warn("Daily totals could not refresh. Food entries remain saved.");
       emitFoodLogChanged();
@@ -656,6 +668,8 @@ export default function AddFoodPage() {
               <MagnifyingGlass size={20} color={Colors.textSecondary} style={{ marginLeft: 15 }} />
               <TextInput
                 style={localStyles.input}
+                accessibilityLabel="Search foods"
+                maxLength={160}
                 placeholder="Search food..."
                 placeholderTextColor={Colors.textSecondary}
                 value={query}
@@ -884,9 +898,11 @@ export default function AddFoodPage() {
                       <TextInput
                         style={localStyles.weightInput}
                         keyboardType="numeric"
-                        value={inputWeight}
+                        accessibilityLabel="Food portion"
+                    maxLength={16}
+                    value={inputWeight}
                         onChangeText={(t) =>
-                          setInputWeight(t.replace(/[^0-9.]/g, ""))
+                          setInputWeight(t)
                         }
                         selectTextOnFocus
                       />
@@ -1009,9 +1025,11 @@ export default function AddFoodPage() {
                   <TextInput
                     style={localStyles.weightInput}
                     keyboardType="numeric"
+                    accessibilityLabel="Food portion"
+                    maxLength={16}
                     value={inputWeight}
                     onChangeText={(t) =>
-                      setInputWeight(t.replace(/[^0-9.]/g, ""))
+                      setInputWeight(t)
                     }
                     selectTextOnFocus
                   />

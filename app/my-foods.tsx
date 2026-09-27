@@ -8,8 +8,8 @@ import {
   Plus,
   Trash,
   X,
-} from "phosphor-react-native";
-import React, { useCallback, useState } from "react";
+} from "@/src/components/icons";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -37,6 +37,8 @@ import {
   type FoodItem,
   type Unit,
 } from "@/src/lib/macros";
+import { validateLoggedPortion } from "@/src/lib/foodValidation";
+import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -49,6 +51,8 @@ type FeedbackState = {
 
 export default function MyFoodsPage() {
   const router = useRouter();
+  const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
+  useEffect(() => { const guard=createFoodAccountGuard(); accountRef.current=guard; return ()=>{guard.dispose();accountRef.current=null;}; }, []);
   const { isDesktop } = useResponsive();
 
   const [personalFoods, setPersonalFoods] = useState<FoodItem[]>([]);
@@ -72,10 +76,14 @@ export default function MyFoodsPage() {
 
   const fetchMyFoods = async () => {
     setLoading(true);
-    const { data } = await supabase
+    const writer=await accountRef.current?.authorize();
+    if (!writer?.isActive()) {setLoading(false);return;}
+    const { data } = await writer.client
       .from("personal_foods")
       .select("*")
+      .eq("user_id", writer.userId)
       .order("created_at", { ascending: false });
+    if (!writer.isActive()) return;
     const formatted: FoodItem[] =
       data?.map((f) => ({
         code: "personal-" + f.id,
@@ -154,15 +162,15 @@ export default function MyFoodsPage() {
 
   const confirmAdd = async () => {
     if (!selectedFood || submitting) return;
+    const error = validateLoggedPortion(inputWeight, selectedUnit, macros);
+    if (error) { setFeedback({ type: "warning", title: "Check the portion", message: error }); return; }
     setSubmitting(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      const { error } = await supabase.from("food_logs").insert([
+    const writer = await accountRef.current?.authorize();
+    if (!writer?.isActive()) {setSubmitting(false);return;}
+    {
+      const { error } = await writer.client.from("food_logs").insert([
         {
-          user_id: user.id,
+          user_id: writer.userId,
           name: selectedFood.product_name,
           calories: macros.c,
           protein: macros.p,
@@ -173,6 +181,7 @@ export default function MyFoodsPage() {
           ai_estimated: !!selectedFood.ai_estimated,
         },
       ]);
+      if (!writer.isActive()) return;
       if (error) {
         setSelectedFood(null);
         setFeedback({
@@ -181,7 +190,7 @@ export default function MyFoodsPage() {
           message: error.message,
         });
       } else {
-        upsertDailySummary();
+        void upsertDailySummary();
         setSelectedFood(null);
         setFeedback({
           type: "success",
@@ -396,9 +405,11 @@ export default function MyFoodsPage() {
                   <TextInput
                     style={localStyles.weightInput}
                     keyboardType="numeric"
+                    accessibilityLabel="Food portion"
+                    maxLength={16}
                     value={inputWeight}
                     onChangeText={(t) =>
-                      setInputWeight(t.replace(/[^0-9.]/g, ""))
+                      setInputWeight(t)
                     }
                     selectTextOnFocus
                   />

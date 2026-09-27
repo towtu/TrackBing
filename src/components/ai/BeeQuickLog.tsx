@@ -1,4 +1,4 @@
-import { ChatCircleText, PaperPlaneTilt, X } from "phosphor-react-native";
+import { ChatCircleText, PaperPlaneTilt, X } from "@/src/components/icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,8 +31,10 @@ import {
   type BeeRequest,
   type BeeSnapshot,
   type PendingFood,
+  type PendingAction,
 } from "@/src/lib/beeChat";
-import type { BeeSituation } from "@/src/lib/beeCompanion";
+import {beePoseToSituation, type BeeSituation} from "@/src/lib/beeCompanion";
+import { onOpenBee } from "@/src/lib/beeEvents";
 import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { Colors, Radii } from "@/src/styles/colors";
 
@@ -108,6 +110,10 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setSnapshot(result.snapshot);
     setNow(Date.now());
     setEditingPortion(false);
+    if (result.snapshot.saved_action && result.snapshot.saved_action.kind !== "food") {
+      const action = result.snapshot.saved_action;
+      if(lastSavedLog.current !== (action.pending_id ?? action.id)) {lastSavedLog.current=action.pending_id ?? action.id;emitFoodLogChanged();setNotice(action.kind === "weight" ? "Weight check-in saved." : "Reviewed goals saved.");}
+    }
     if (result.snapshot.saved_log_id && result.snapshot.saved_log_id !== lastSavedLog.current) {
       lastSavedLog.current = result.snapshot.saved_log_id;
       // The server owns both the food write and summary recomputation.
@@ -116,7 +122,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
         ? "Food saved. Your daily summary still needs to refresh."
         : "Added to today's food log.");
     }
-    if (request.command.kind === "message") {
+    if ((request.command.kind === "message" || request.command.kind === "food_assist")) {
       const sent = request.command.text;
       setInput((current) => current.trim() === sent ? "" : current);
     }
@@ -152,6 +158,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setNow(Date.now());
     if (!busyRef.current && !failed) void sendCommand({ kind: "load" });
   };
+  useEffect(()=>onOpenBee(()=>{setVisible(true);focusAfterOpenRef.current=true; if(!busyRef.current)void execute(createBeeRequest({kind:"load"},snapshotRef.current));}),[userId]);
   const close = () => setVisible(false);
   const enterManually = () => {
     close();
@@ -164,9 +171,9 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const submitText = () => {
     const text = input.trim();
     if (!text || !snapshot || failed || busyRef.current) return;
-    void sendCommand({ kind: "message", text });
+    void sendCommand({ kind: snapshot.entitlement?.tier === "plus" ? "food_assist" : "message", text });
   };
-  const confirmDraft = (draft: PendingFood) => {
+  const confirmDraft = (draft: PendingAction) => {
     if (!failed && isCurrentBeeReview(draft, snapshotRef.current)) {
       void sendCommand({ kind: "confirm", actionId: draft.id, reviewVersion: draft.review_version });
     }
@@ -186,7 +193,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const pending = snapshot?.pending;
   const pendingInMessages = pending && messages.some((message) =>
     message.draft?.id === pending.id && message.draft.review_version === pending.review_version);
-  const headerSituation: BeeSituation = loading ? "searching" : failed ? "lookupError" : pending ? "reviewingMatch" : "greeting";
+  const headerSituation: BeeSituation = loading ? "searching" : failed ? "lookupError" : pending ? "reviewingMatch" : beePoseToSituation(snapshot?.suggested_pose ?? "greeting");
   const blocked = loading || failed !== null || snapshot === null;
   useEffect(() => {
     if (Platform.OS === "web" && visible && view === "chat" && !blocked && focusAfterOpenRef.current) {
@@ -195,7 +202,9 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     }
   }, [visible, view, blocked]);
 
-  const renderReview = (draft: PendingFood) => (
+  const renderReview = (draft: PendingAction) => draft.kind === "weight" || draft.kind === "goal" ? (
+    <ActionReview draft={draft} current={isCurrentBeeReview(draft,snapshot,now)} busy={blocked} onConfirm={()=>confirmDraft(draft)} onEdit={editPortion} onCancel={()=>void sendCommand({kind:"cancel",actionId:draft.id,reviewVersion:draft.review_version})}/>
+  ) : (
     <FoodReview
       draft={draft}
       current={isCurrentBeeReview(draft, snapshot, now)}
@@ -242,7 +251,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.headerAvatar}><BeeMascot size="small" situation={headerSituation} /></View>
                 <View style={styles.headerCopy}>
                   <Text accessibilityRole="header" style={styles.title}>Bee</Text>
-                  <Text style={styles.subtitle}>Your food and nutrition companion</Text>
+                  <Text style={styles.subtitle}>Food, weight and progress</Text>
                 </View>
                 <BeeAction label="Close Bee quick log" iconOnly onPress={close} icon={<X size={18} color={Colors.textSecondary} weight="bold" />} />
               </View>
@@ -288,6 +297,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
               >
                 {view === "memories" && snapshot ? (
                   <BeeMemories
+                    canWrite={snapshot.entitlement?.tier === "pro"}
                     memories={snapshot.memories}
                     busy={blocked}
                     onCommand={sendCommand}
@@ -301,12 +311,13 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                         <View style={[styles.skeletonLine, styles.skeletonShort]} />
                       </View>
                     ) : null}
+                    {snapshot?.insight ? <View style={styles.welcome}><Text style={styles.messageText}>{snapshot.insight.text}</Text></View> : null}
                     {snapshot && messages.length === 0 ? (
                       <View style={styles.welcome}>
                         <BeeMascot size="medium" situation="greeting" />
                         <Text style={styles.welcomeTitle}>What can I help with?</Text>
                         <Text style={styles.welcomeText}>
-                          Ask about your nutrition targets or tell me what you ate. I’ll ask for details, then show a portion to review before saving food.
+                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds one-food AI help; Pro adds adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Describe one food and its portion for AI food help. Pro adds adaptive conversations, preferences and progress guidance." : "Ask about food or your recorded progress. Food, weight and goal changes always need your review."}
                         </Text>
                         <View style={styles.starters}>
                           <BeeAction label="What do you know about me?" disabled={blocked} onPress={() => void sendCommand({ kind: "message", text: "What do you know about me?" })} />
@@ -339,13 +350,14 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                   <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
                     <ActivityIndicator size="small" color={Colors.accent} />
                     <Text style={styles.subtitle}>
-                      {activeRequest.command.kind === "load" ? "Opening your conversation…" : activeRequest.command.kind === "confirm" ? "Saving food…" : activeRequest.command.kind.startsWith("memory_") ? "Updating your preferences…" : "Bee is thinking…"}
+                      {activeRequest.command.kind === "load" ? "Opening your conversation…" : activeRequest.command.kind === "confirm" ? "Saving your review…" : activeRequest.command.kind.startsWith("memory_") ? "Updating your preferences…" : "Bee is thinking…"}
                     </Text>
                   </View>
                 ) : null}
                 {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
                 {view === "chat" ? (
                   <View style={styles.actions}>
+                    <BeeAction label="Plans and usage" onPress={()=>{close();router.push("/plans");}} style={styles.manualButton}/>
                     <BeeAction label="Enter food manually" onPress={enterManually} style={styles.manualButton} />
                     <BeeAction label="Scan a barcode" onPress={scanBarcode} style={styles.manualButton} />
                   </View>
@@ -357,6 +369,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.feedback}>
                   <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.messageText}>{feedback.message}</Text>
                   <View style={styles.actions}>
+                    <BeeAction label="Plans and usage" onPress={()=>{close();router.push("/plans");}}/>
                     {feedback.action === "retry" ? <BeeAction label="Retry" primary disabled={loading} onPress={() => void retryFailed(failed)} /> : null}
                     {feedback.action !== "none" ? (
                       <BeeAction label="Refresh conversation" disabled={loading} onPress={() => void execute(createBeeRequest({ kind: "load" }, failed.error === "not_found" ? null : snapshotRef.current))} />
@@ -407,6 +420,13 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   );
 }
 
+function ActionReview({draft,current,busy,onConfirm,onEdit,onCancel}:{draft:Extract<PendingAction,{kind:"weight"|"goal"}>;current:boolean;busy:boolean;onConfirm:()=>void;onEdit:()=>void;onCancel:()=>void}) {
+  return <View style={styles.review}>
+    <Text style={styles.foodName}>{draft.kind === "weight" ? "Weight check-in" : "Nutrition goal review"}</Text>
+    {draft.kind === "weight" ? <><Text style={styles.calories}>{draft.weight.originalAmount} {draft.weight.unit}</Text><Text style={styles.serving}>For {draft.weight.localDate}</Text><Text style={styles.calculation}>{draft.weight.updatesCurrentWeight ? "Updates your current profile weight." : "Backdated entry: your newer current weight stays."} Your nutrition targets stay unchanged.</Text></> : <><Text style={styles.serving}>Daily calories: {draft.goal.previous.calorie_target} → {draft.goal.next.calorie_target} kcal</Text><Text style={styles.macro}>Protein {draft.goal.previous.protein_grams ?? "unset"} → {draft.goal.next.protein_grams} g · Carbs {draft.goal.previous.carbs_grams ?? "unset"} → {draft.goal.next.carbs_grams} g · Fat {draft.goal.previous.fat_grams ?? "unset"} → {draft.goal.next.fat_grams} g</Text><Text style={styles.calculation}>Goal: {draft.goal.previous.goal_mode ?? "custom"} → {draft.goal.next.goal_mode}. Target weight stays {draft.goal.next.target_weight ?? "unset"} kg.</Text></>}
+    {current ? <><Text style={styles.messageText}>{draft.kind === "weight" ? `Save ${draft.weight.originalAmount} ${draft.weight.unit} for ${draft.weight.localDate}?` : "Save these reviewed nutrition goals?"}</Text><View style={styles.actions}><BeeAction label="Confirm" primary disabled={busy} onPress={onConfirm}/><BeeAction label="Edit review" disabled={busy} onPress={onEdit}/><BeeAction label="Cancel" disabled={busy} onPress={onCancel}/></View></> : <Text style={styles.calculation}>{draft.status === "confirmed" ? "Saved" : draft.status === "pending" ? "Review expired or replaced" : draft.status}</Text>}
+  </View>;
+}
 function FoodReview({ draft, current, busy, onConfirm, onEdit, onCancel }: {
   draft: PendingFood;
   current: boolean;
@@ -456,6 +476,7 @@ function FoodReview({ draft, current, busy, onConfirm, onEdit, onCancel }: {
       <Text style={styles.reviewDate}>For {draft.local_date}</Text>
       {current ? (
         <View style={styles.reviewActions}>
+          <Text style={styles.reviewStatus}>{`Add ${food.servingLabel} of ${food.name} to today's food?`}</Text>
           <BeeAction label="Add to today" primary disabled={busy} onPress={onConfirm} style={styles.addButton} />
           <View style={styles.actions}>
             <BeeAction label="Edit portion" disabled={busy} onPress={onEdit} />

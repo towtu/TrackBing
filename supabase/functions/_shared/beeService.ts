@@ -5,10 +5,12 @@ import type {
   BeeSnapshot,
   FoodQuery,
   GroundedAnswer,
-  PendingFood,
+  PendingAction,
+  BeeEntitlement,
+  BeeInsight,
 } from "./beeTypes.ts";
 import { parseIntent, parseRequest, retainFoodList } from "./beeIntent.ts";
-import { dayBounds, localDay, shiftDay } from "./beeDates.ts";
+import { dayBounds, localDay, shiftDay, validTimeZone } from "./beeDates.ts";
 import {
   type ConversationState,
   deterministicTurn,
@@ -19,6 +21,8 @@ import {
   resolveNutritionIntent,
   type TurnOutcome,
 } from "./beeConversation.ts";
+import { adaptiveTurn, type ProgressContext } from "./beeAdaptiveTurn.ts";
+import { explicitMemory } from "./beeIntent.ts";
 import { readBoundedRequestJson } from "./beeRequest.ts";
 import type { GeminiUsage } from "./beeProviders.ts";
 import type { NutritionResult } from "./beeNutrition.ts";
@@ -29,7 +33,7 @@ export type TurnLease = {
   thread_id: string;
   token: string;
   state: ConversationState;
-  pending: PendingFood | null;
+  pending: PendingAction | null;
 };
 type BeginResult = TurnLease | { ok: true; replay: true; result: BeeResult } | {
   ok: false;
@@ -41,6 +45,11 @@ type Reservation = { ok: true; replay: false } | {
   result: TurnOutcome;
 } | { ok: false; error: BeeErrorCode };
 export interface BeeStore {
+  entitlement?(): Promise<BeeEntitlement>;
+  progress?(timeZone: string): Promise<ProgressContext>;
+  recordCall?(request: BeeRequest, lease: TurnLease, callId: string, usage: GeminiUsage): Promise<void>;
+  getInsight?(revision: string, timeZone: string): Promise<BeeInsight | null>;
+  saveInsight?(revision: string, timeZone: string, text: string, pose: string): Promise<BeeInsight>;
   begin(request: BeeRequest, fingerprint: string): Promise<BeginResult>;
   snapshot(threadId: string): Promise<BeeSnapshot>;
   finish(
@@ -76,6 +85,9 @@ export interface BeeStore {
   history(start: string, end: string): Promise<HistoryLog[]>;
 }
 export type BeeDependencies = {
+  savedTimeZone?: (userId:string)=>Promise<string|null>;
+  paidDataApproved?: () => boolean;
+  generate?: (system: string, context: unknown, signal: AbortSignal, onUsage: (usage: GeminiUsage) => void) => Promise<unknown>;
   authenticate(authorization: string): Promise<{ id: string } | null>;
   store(userId: string): BeeStore;
   interpret(
@@ -106,7 +118,8 @@ const HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
 };
-function json(result: BeeResult, status = 200): Response {
+function json(result: BeeResult, status?: number): Response {
+  status ??= result.ok ? 200 : ["upgrade_required","pro_required"].includes(result.error) ? 402 : /limit|quota|cap/.test(result.error) ? 429 : result.error === "unauthorized" ? 401 : ["busy","conflict","stale_action","stale_profile"].includes(result.error) ? 409 : result.error === "bad_request" ? 400 : ["age_required","age_restricted"].includes(result.error) ? 403 : result.error === "not_found" ? 404 : 503;
   return new Response(JSON.stringify(result), { status, headers: HEADERS });
 }
 
@@ -165,16 +178,18 @@ export async function handleBeeRequest(
   } catch {
     return json({ ok: false, error: "bad_request" }, 400);
   }
+  try { const savedZone = await deps.savedTimeZone?.(user.id); if(validTimeZone(savedZone))request={...request,timeZone:savedZone}; } catch {return json({ok:false,error:"error"});}
   const store = deps.store(user.id);
   const fingerprint = await requestFingerprint({
     endpoint: "bee-chat",
     ...request,
   });
   let lease: TurnLease;
+  let entitlement: BeeEntitlement | undefined;
   try {
     const begun = await store.begin(request, fingerprint);
     if (!begun.ok) return json(begun);
-    if (begun.replay) return json(begun.result);
+    if (begun.replay) { const result=begun.result; const access=store.entitlement?await store.entitlement():undefined; return json(result.ok ? {...result,snapshot:{...result.snapshot,entitlement:access}} : result); }
     lease = begun;
   } catch {
     return json({ ok: false, error: "error" });
@@ -185,8 +200,8 @@ export async function handleBeeRequest(
       const result = await store.finish(request, lease, persisted);
       return json(
         result.ok && liveAnswer
-          ? { ...result, snapshot: { ...result.snapshot, liveAnswer } }
-          : result,
+          ? { ...result, snapshot: { ...result.snapshot, entitlement, liveAnswer } }
+          : result.ok ? {...result,snapshot:{...result.snapshot,entitlement}} : result,
       );
     } catch {
       return json({
@@ -199,6 +214,15 @@ export async function handleBeeRequest(
   let reserved = false;
   try {
     const snapshot = await store.snapshot(lease.thread_id);
+    entitlement = store.entitlement ? await store.entitlement() : undefined;
+    const kind = request.command.kind;
+    const isMessage = kind === "message" || kind === "food_assist";
+    const memoryWrite = kind === "memory_set" || (isMessage && "text" in request.command && explicitMemory(request.command.text)?.kind === "set");
+    if (entitlement && memoryWrite && entitlement.tier !== "pro") return await finish({error:"pro_required"});
+    const readOnlyHistory = kind === "message" && knownHistory(request.command.text);
+
+    if (entitlement && kind === "food_assist" && entitlement.tier === "basic") return await finish({error:"upgrade_required"});
+    if (entitlement && (kind === "confirm" || (isMessage && "text" in request.command && /^(yes|yep|confirm|save it|add it)[.! ]*$/i.test(request.command.text))) && lease.pending && (entitlement.tier === "basic" || (lease.pending.kind && lease.pending.kind !== "food" && entitlement.tier !== "pro"))) return await finish({error:lease.pending.kind === "food" || !lease.pending.kind ? "upgrade_required" : "pro_required"});
     const context = {
       state: lease.state,
       pending: lease.pending,
@@ -217,6 +241,52 @@ export async function handleBeeRequest(
       });
     }
     if (deterministic) return await finish(deterministic);
+    if (readOnlyHistory) {
+      const day = shiftDay(localDay((deps.now ?? (()=>new Date()))(),request.timeZone),-readOnlyHistory.daysAgo);
+      const bounds = dayBounds(day,request.timeZone);
+      const logs = await store.history(bounds.start,bounds.end);
+      return await finish({text:historyReply(day,logs.slice(0,30),readOnlyHistory.repeat,logs.length>30),state:{awaiting:"none"},invalidate_pending:true});
+    }
+    if (entitlement && (kind === "message" || kind === "insight") && entitlement.tier !== "pro" && !readOnlyHistory && !(kind === "message" && "text" in request.command && /^(yes|no|cancel|yep|nope|confirm|save it|add it)[.! ]*$/i.test(request.command.text))) return await finish({error:entitlement.tier === "basic" ? "upgrade_required" : "pro_required"});
+    if (deps.generate && entitlement && store.progress) {
+      if (typeof snapshot.profile.age !== "number") return await finish({error:"age_required"});
+      if (snapshot.profile.age < 18) return await finish({error:"age_restricted"});
+      if (!deps.paidDataApproved?.()) return await finish({error:"paid_data_unavailable"});
+      if (!deps.configured()) return await finish({error:"not_configured"});
+      const progress = entitlement.tier === "plus" ? {localDate:localDay((deps.now??(()=>new Date()))(),request.timeZone),totals:{calories:0,protein:0,carbs:0,fat:0,count:0},weights:[],recentLogTimes:[],revision:"0"} : await store.progress(request.timeZone);
+      if (kind === "insight" && store.getInsight && !(request.command.kind === "insight" && request.command.refresh)) {
+        const cached = await store.getInsight(progress.revision, request.timeZone);
+        if (cached) { const response = await store.finish(request,lease,{}); return json(response.ok ? {...response,snapshot:{...response.snapshot,insight:cached,entitlement}} : response); }
+      }
+      const reservation = await store.reserve(request,lease,fingerprint);
+      if (!reservation.ok) return await finish({error:reservation.error});
+      if (reservation.replay) return await finish(reservation.result ?? {error:"conflict"});
+      reserved = true;
+      let calls = 0;
+      const model = async (system:string, input:unknown) => {
+        if (++calls > 2) throw new Error("tool_budget");
+        const callId = crypto.randomUUID(); let usage:GeminiUsage|undefined;
+        try { return await deps.generate!(system,input,signal,value=>{usage=value;}); }
+        finally { await store.recordCall?.(request,lease,callId,usage??{inputTokens:6000,outputTokens:4096,searchQueries:0}); }
+      };
+      const outcome = await adaptiveTurn(request,context,progress,entitlement.tier,model,q=>deps.search(q,signal,user.id),(deps.now??(()=>new Date()))());
+      const {needsWeb,...persisted}=outcome;
+      if (needsWeb && deps.searchEnabled()) {
+        const searchReservation = await store.reserveSearch(request,lease);
+        if (!searchReservation.ok || searchReservation.replay) { await store.release(request,lease,false,null); reserved=false; return await finish({error:searchReservation.ok ? "search_unavailable" : searchReservation.error}); }
+        let usage:GeminiUsage|undefined;
+        const callId=crypto.randomUUID();
+        try { persisted.liveAnswer = await deps.ground(needsWeb,signal,value=>{usage=value;}); }
+        finally { await store.recordCall?.(request,lease,callId,usage??{inputTokens:2000,outputTokens:4096,searchQueries:3}); await store.measureSearch(request,lease,usage?.searchQueries??3); }
+        persisted.text="I showed a live search answer. Search again to refresh it, or use a barcode or package label to add food.";
+      }
+      let insight:BeeInsight|undefined;
+      if (kind === "insight" && persisted.text && store.saveInsight) insight=await store.saveInsight(progress.revision,request.timeZone,persisted.text,persisted.suggested_pose??"greeting");
+      const {liveAnswer,...safe}=persisted;
+      await store.release(request,lease,true,safe);reserved=false;
+      const response=await store.finish(request,lease,kind === "insight" ? {} : safe);
+      return json(response.ok ? {...response,snapshot:{...response.snapshot,entitlement,...(liveAnswer?{liveAnswer}:{}),...(insight?{insight}:{})}} : response);
+    }
     if (request.command.kind !== "message") {
       return await finish({ error: "bad_request" });
     }
@@ -241,7 +311,7 @@ export async function handleBeeRequest(
     if (!deps.configured()) return await finish({ error: "not_configured" });
     const reservation = await store.reserve(request, lease, fingerprint);
     if (!reservation.ok) return await finish({ error: reservation.error });
-    if (reservation.replay) return await finish(reservation.result);
+    if (reservation.replay) return await finish(reservation.result ?? {error:"conflict"});
     reserved = true;
     const intent = retainFoodList(
       parseIntent(

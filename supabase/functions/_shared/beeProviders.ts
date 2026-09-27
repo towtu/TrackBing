@@ -65,16 +65,16 @@ export async function boundedJsonFetch(url: Endpoint, body: unknown, options: Fe
 }
 
 function model(options: GeminiOptions): string {
-  // Minimal thinking is supported by Gemini 3 Flash; reject path/agent/image model substitutions.
-  const value = options.model ?? "gemini-3.5-flash-lite";
+  // Gemini 3.8 Flash supports low, medium and high thinking; minimal returns an error.
+  const value = options.model ?? "gemini-3.8-flash";
   if (!options.apiKey || !/^gemini-3(?:\.\d+)?-flash(?:-lite)?(?:-preview(?:-\d{2}-\d{4})?)?$/.test(value)) throw new Error("not_configured");
   return value;
 }
 function generation(options: GeminiOptions, maximum: number) {
-  return { thinking_level: "minimal", thinking_summaries: "none", max_output_tokens: boundedNumber(options.maxTokens, maximum) };
+  return { thinking_level: "medium", thinking_summaries: "none", max_output_tokens: boundedNumber(options.maxTokens, maximum) };
 }
-function tokenCount(value: unknown): number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+function tokenCount(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
 }
 function reportUsage(raw: Record<string, unknown> | null, options: GeminiOptions) {
   const usage = object(raw?.usage);
@@ -82,7 +82,7 @@ function reportUsage(raw: Record<string, unknown> | null, options: GeminiOptions
     const step = object(value); const args = object(step?.arguments);
     return count + (step?.type === "google_search_call" && Array.isArray(args?.queries) ? args.queries.filter(query => typeof query === "string" && query.trim()).length : 0);
   }, 0) : 0;
-  options.onUsage?.({ inputTokens: tokenCount(usage?.total_input_tokens), outputTokens: tokenCount(usage?.total_output_tokens), searchQueries });
+  options.onUsage?.({ inputTokens: tokenCount(usage?.total_input_tokens, 6000), outputTokens: tokenCount(usage?.total_output_tokens, 4096), searchQueries });
 }
 function steps(raw: Record<string, unknown> | null): Record<string, unknown>[] {
   if (raw?.status !== "completed" || !Array.isArray(raw.steps) || !raw.steps.length || raw.steps.length > 256) throw new Error("invalid_response");
@@ -105,7 +105,7 @@ export async function geminiJson(system: string, context: unknown, options: Gemi
   if (!input || typeof system !== "string" || new TextEncoder().encode(input + system).byteLength > 65_000) throw new Error("context_too_large");
   const raw = object(await boundedJsonFetch(GEMINI_ENDPOINT, {
     model: selectedModel, input, system_instruction: system, store: false, stream: false,
-    response_format: { type: "text", mime_type: "application/json" }, generation_config: generation(options, 900),
+    response_format: { type: "text", mime_type: "application/json" }, generation_config: generation(options, 4096),
   }, { ...options, headers: { "x-goog-api-key": options.apiKey }, maxBytes: 48_000 }));
   reportUsage(raw, options);
   let text = "";
@@ -157,7 +157,7 @@ export async function geminiGrounded(query: FoodQuery, options: GeminiOptions): 
   const selectedModel = model(options);
   const raw = object(await boundedJsonFetch(GEMINI_ENDPOINT, {
     model: selectedModel, input: JSON.stringify(foodIdentity(query)), system_instruction: GROUNDING_INSTRUCTION,
-    tools: [{ type: "google_search" }], store: false, stream: false, generation_config: generation(options, 1600),
+    tools: [{ type: "google_search" }], store: false, stream: false, generation_config: generation(options, 4096),
   }, { ...options, headers: { "x-goog-api-key": options.apiKey } }));
   reportUsage(raw, options);
   const answer: GroundedAnswer = { text: "", citations: [], searchSuggestionsHtml: [], searchQueryCount: 0 };

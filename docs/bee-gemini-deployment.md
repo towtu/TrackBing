@@ -1,256 +1,299 @@
-# Bee chat with Gemini: implementation and deployment
+# Adaptive Bee, subscriptions and deployment
 
-## Result and responsibilities
+Implementation on `feat/bee-conversation`, draft PR #10. This is reviewable code,
+not evidence of a production deployment or live Gemini/store/payment verification.
+The controlling specification is `TrackBing_Gemini_Search_Migration_README.md`,
+identical to the user's Downloads `(2).md` (SHA256
+`6bb5bfcca18160b1b3733e41efc05eab3580780e4b148753d8c0b28f5bb0738b`).
+That revision adds Basic/Plus/Pro subscriptions, provider verification, monthly
+billing-anniversary allowances, paywalls and modeled contribution economics to
+the preceding adaptive food/weight/goal brief.
 
-The feature preserves Expo/React Native, Supabase Auth, the Bee design tokens,
-manual/barcode food entry, `food_logs`, and existing entitlements. The intended
-model is `gemini-3.5-flash-lite`; no model is silently substituted.
+## Responsibilities and boundaries
 
-- `bee-chat` validates the JWT and request, assembles relevant context, dispatches
-  validated intents, retrieves owned food history, and manages server-owned reviews.
-- Gemini interprets text with a separate no-search JSON call. It cannot return a
-  SQL statement, nutrition value, memory write, or confirmation action.
-- Independent retrieval reads the owner's personal foods, USDA FoodData Central,
-  then Open Food Facts. It preserves preparation, product identity, package size,
-  nutrient basis, record ID, original evidence, attribution, and retrieval time.
-- Application code scales the retained basis, converts ounces with
-  `28.349523125 g/oz` and energy with `4.184 kJ/kcal`, and rounds calories to an
-  integer and macros to one decimal. Missing macros remain unknown: the existing
-  non-null log schema requires complete values before proposing a log.
-- A miss, or an explicit web request, enables Google Search in one separate
-  Interactions request. The resulting answer, citations, and intact Search
-  Suggestions are **transient display only**. They never become a food draft,
-  log, cache, transcript/context, or request replay. On reload, a generic reminder
-  replaces that answer. Search again to refresh it.
-- PostgreSQL owns thread versions, turn leases, explicit preferences, reviewed
-  food snapshots, expiry, shared quota reservations, and atomic confirmation.
-  Dashboard refresh uses the existing food-log event and transactional summary RPC.
+- Expo web/iOS/Android share Bee chat, reviewed actions, Memories and manual
+  weight history. The existing diary, dashboard events and nutrition calculator
+  remain authoritative. No new competing diary or AI food catalog.
+- `bee-chat` validates the actual session, resolves the server's tier, loads a
+  small fresh owner snapshot, and runs at most two non-search Gemini decisions.
+  Runtime schemas allow only named capabilities and eight existing mascot poses.
+  The model selects wording and reads; it cannot execute SQL, arbitrary HTTP,
+  notifications, food/weight writes or target changes.
+- `beeAdaptiveTurn.ts` implements adaptive conversation/insights. Plus receives
+  only food assistance without goal/weight/preference context. Basic makes no
+  model calls. Saved context is reassembled each request; no Google-side session.
+- `beeNutrition.ts` searches private foods, USDA and Open Food Facts. Brand,
+  preparation, whole/white, variant, package and serving compatibility are
+  checked before a result can produce a draft. Explicit numeric portions are
+  retained from the user's text even if the model misinterprets the amount.
+  Code scales canonical values, converts oz/kJ, and requires supported mass/count
+  or volume basis. No assumed density, invented mass or manufactured missing macros.
+- `beeProviders.ts` is the sole stateless Gemini Interactions adapter:
+  `gemini-3.8-flash`, medium thinking, `store:false`, 4,096 output tokens per call,
+  separate JSON planning and Google Search calls. Internal reasoning is excluded
+  from user-facing output. Server secrets never enter the Expo bundle.
+- Search automatically follows a genuine independent-source miss, once product
+  details are sufficiently clear. Greetings, confirmations and direct hits do
+  not search. Google answer text, citation annotations and required Search
+  Suggestions display together in the isolated web/native renderer.
+- **Google results remain transient and answer-only.** Their text, links,
+  suggestions, query corpus and numbers are neither cached, fed into future
+  model context, promoted into an index, nor used for a diary proposal. The
+  persistent thread keeps a neutral refresh placeholder. A barcode/independent
+  record or user-owned manual label is required to log. No harvesting of cited links.
+- `bee_pending_actions` stores a server-created exact review. PostgreSQL locks
+  owner/thread/action, checks status/version/expiry/timezone/tier, inserts once,
+  and consumes the action in one transaction. The originating capability and current tier are both checked. No macros/weight/targets are
+  accepted in a confirm request. A stale button or superseded review cannot write.
+  Completed request replays recover the original write after a lost response.
+- Dashboard/Stats/summary refresh and manual weights use the validated saved
+  account timezone, with explicit start/next-day boundaries including DST.
+- `weight_logs` stores dated kg measurements plus original kg/lb and timezone.
+  Unknown-date legacy current weights are explicitly labeled baselines. One
+  manual RPC serves Profile and Stats; Bee uses the same canonical writer.
+  Backdated/edit/delete operations synchronize the latest profile weight without
+  changing nutrition targets. Baselines stay distinct from editable dated records.
+- Goal proposals reuse the existing calculator and age guards, show previous
+  and proposed calories/macros/mode, retain target weight, and require another
+  confirmation. Profile revision checks reject stale proposals and stale manual
+  form saves. With fewer than two comparable dated measurements, no trend exists.
+- Dashboard insights are non-search, private, revisioned and bounded to 24 hours
+  or local midnight. Food/profile/weight/memory changes invalidate them. Mascot
+  renders/taps do not pay for new insights; taps open Bee. An insight does not
+  advance a conversation's reviewed version. Offline fallback stays deterministic.
 
-The Google boundary is deliberately stricter than the permitted private text
-history exception. No shared nutrition cache, embeddings, transcript-derived
-memory summary, automatic estimate, page crawling, or label-image/OCR feature
-was added. Google links are never used as a scraping lead list.
+## Database additions and rollout order
 
-Official references checked during implementation:
-[models](https://ai.google.dev/gemini-api/docs/models),
-[Interactions API](https://ai.google.dev/api/interactions-api),
-[grounding](https://ai.google.dev/gemini-api/docs/google-search),
-[Additional Terms](https://ai.google.dev/gemini-api/terms),
-[USDA API and CC0](https://fdc.nal.usda.gov/api-guide/), and
-[Open Food Facts API/licensing](https://openfoodfacts.github.io/openfoodfacts-server/api/).
-Recheck availability, billing and display requirements before production release.
+Keep all existing migrations in their normal order. New feature migrations:
 
-## Files and database entities
+1. `20260915000000_bee_conversations.sql` — owner-scoped threads/messages,
+   explicit memories, food pending actions, turn leases, independent provenance,
+   atomic food confirmation and original usage infrastructure.
+2. `20260927000000_launch_validation.sql` — additive `NOT VALID` constraints
+   protect new writes without discarding legacy rows, restrictive owner policies,
+   finite/range guards and independent atomic USDA proxy rate limiting.
+3. `20260928000000_adaptive_bee.sql` — generic food/weight/goal actions, weight
+   history/baselines, profile revision/timezone, context revisions and insight
+   storage, canonical manual weight/profile RPCs and atomic adaptive confirmations.
+4. `20260929000000_subscription_budgets.sql` — private verified subscriptions,
+   events, billing accounts/requests/customers/checkouts, shared monthly usage,
+   call/Search accounting, entitlement resolution and private progress/insight RPCs.
+5. `20260930000000_billing_actions.sql` — private receipt/account/payment
+   bindings, billing leases, confirmation tier enforcement, unified replay
+   invalidation/retention, server-only food provenance guards, explicit-day weekly Stats boundaries and fail-closed retirement of the old AI quota RPC.
 
-| Area | Files / responsibility |
-| --- | --- |
-| Server contracts and controller | `_shared/beeTypes`, `beeIntent`, `beeConversation`, `beeDates`, `beeRequest`, `beeService`, `beeStore` |
-| Providers and food sources | `_shared/beeProviders`, `beeGrounding`, `beeNutrition`; deterministic fixtures beside each module |
-| Endpoints | `bee-chat/index.ts`, migrated `ai-food/index.ts`, hardened `usda-search/index.ts`, compatible `_shared/beeLegacyFood` |
-| Shared client and account guards | `src/lib/beeChat`, `aiFood`, `aiFoodUi`, `foodAccountGuard`; corresponding tests |
-| Bee UI | `BeeQuickLog`, `BeeMemories`, `BeeGroundedAnswer` and platform suggestions/dialog components |
-| Existing app integration | `app/_layout.tsx`, Add/Create food screens, `AiFoodSheet`, `dailySummary`, Dashboard local-day bounds |
-| Database / verification | `20260915000000_bee_conversations.sql`, `supabase/tests`, `scripts/test-bee-db.mjs`, functions `deno.json`/lock, CI |
+Every user-owned addition has RLS. Clients can read only their own permitted
+records; service-only data/RPCs are revoked from anon/authenticated/public. Manual
+profile/weight RPCs derive `auth.uid()` internally. Foreign references include
+owners. Privileged functions use a fixed `public,pg_temp` search path. No body user
+ID is trusted by the Edge Functions.
 
-All paths in the server rows are under `supabase/functions`. New tables are
-`bee_threads`, `bee_messages`, `bee_memories`, `bee_pending_actions`, `bee_turns`,
-`ai_lookup_reservations`, and `ai_search_reservations`. `food_logs` gains nullable
-`bee_action_id` and `bee_provenance`, plus a unique action constraint and owner/date
-index. Existing logs and IDs remain intact. Provenance is the historical reviewed
-snapshot; later owner diary edits do not constitute newly verified source values.
+**Staged release:**
 
-Every new table has owner-only SELECT RLS. Writes go through owner-scoped,
-service-only RPCs; direct authenticated writes and draft-construction RPC calls
-are denied. The sole new client mutation RPC, `refresh_daily_summary`, derives
-its owner from `auth.uid()` and accepts only date/timezone. Confirmation locks
-state, validates owner/current version/status/expiry/timezone, inserts once, and
-recovers the original success after a lost response. Its database write succeeds
-before Bee says “Added.” Summary failure returns a separate warning and retains
-the saved food.
+1. Back up the database and compare the real schema with migration assumptions.
+   Review invalid legacy values before validating `NOT VALID` constraints later.
+2. Disable existing AI entry points for the short migration window. Retire old
+   clients' free-AI promise in release communication. The final migration makes
+   an old AI function fail closed rather than retain a second exploitable cap.
+3. Verify actual historical paid receipts/contracts. Import only documented
+   periods into `verified_legacy_subscriptions` and reconcile them as `legacy`.
+   Never promote a client-controlled `pro_until`. If any legacy contract differs
+   from this policy, resolve it before rollout, not by guessing access rights.
+4. Apply all migrations to an isolated environment; run database tests.
+5. Deploy all six functions and configure disabled sandbox secrets; no client
+   should call a missing endpoint/table. Register signed provider notifications
+   and scheduled reconciliation before enabling purchases.
+6. Deploy the shared client and build new native binaries with the IAP plugin
+   (Expo Go cannot exercise this native purchase module).
+7. Validate with adults/test accounts and Google paid-service configuration.
+   Test receipt/checkout, renew, cancel, expire, grace, refund, replace, restore,
+   account switch and concurrent confirmations in each provider sandbox.
+8. Enable a small authorized cohort, monitor metrics, then authorize wider rollout.
+   Deployment/merging are separate operator actions; this PR does neither.
 
-## Configuration and ordered rollout
-
-Server-only secrets:
-
-```text
-GEMINI_API_KEY=<paid Gemini project key>
-GEMINI_MODEL=gemini-3.5-flash-lite
-GEMINI_SEARCH_ENABLED=true
-USDA_API_KEY=<FoodData Central key>
-```
-
-Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
-`SUPABASE_SERVICE_ROLE_KEY` to hosted functions. Never use an `EXPO_PUBLIC_*`
-variable for server secrets. The app still uses only its existing public Supabase
-URL/anon key. USDA is optional for live answer-only search, but needed for reliable
-common-food database reviews when no suitable owned/OFF record exists. Open Food
-Facts requires no key; its attribution/ODbL metadata is retained. This feature
-creates no public combined food database. Review ODbL obligations separately if
-adding one later.
-
-1. Back up and inspect the **staging** schema/migration history. The repository
-   has no migrations creating its original base tables. The isolated SQL fixture
-   is test-only; do not apply it to a real Supabase project.
-2. Apply existing migrations in chronological order if not already recorded:
-   `20260614000000`, `20260624000000`, `20260624000100`, `20260629000000`,
-   `20260629000100`, `20260731000000`; then apply
-   `20260915000000_bee_conversations.sql`. Do not mark unapplied migrations as
-   applied to bypass schema errors.
-3. Configure secrets, deploy `bee-chat`, migrated `ai-food`, and `usda-search`.
-   Keep platform JWT verification enabled; each function also validates the JWT
-   through `auth.getUser()`. Verify with a staging account.
-4. Confirm the hourly `trackbing-bee-history-retention` Cron job exists. When
-   `pg_cron` is unavailable, schedule server-only `bee_prune_all_history()` hourly
-   with the platform's trusted scheduler.
-5. Publish the app only after all migrations/RPCs/endpoints exist. Start with a
-   small cohort, provider spend alerts, and numeric latency/error/usage monitoring.
-6. Remove DeepSeek/Tavily secrets only after all deployed/older clients and
-   branch-specific functions have migrated. Neither new AI endpoint uses them.
-
-Safe command templates (replace only the staging placeholders):
-
-```sh
-npx supabase link --project-ref <STAGING_PROJECT_REF>
-npx supabase db push --linked --dry-run
-npx supabase db push --linked
-npx supabase secrets set --project-ref <STAGING_PROJECT_REF> --env-file supabase/functions/.env
-npx supabase functions deploy bee-chat --project-ref <STAGING_PROJECT_REF>
-npx supabase functions deploy ai-food --project-ref <STAGING_PROJECT_REF>
-npx supabase functions deploy usda-search --project-ref <STAGING_PROJECT_REF>
-```
-
-Create the ignored `supabase/functions/.env` locally; never commit credentials.
-No migration, function, or app was deployed to production during implementation.
-
-## Cost, context, and retention policy
-
-- Existing caps remain **7 free successful lookups per UTC month**, **100 Pro per
-  UTC day**, and **15 paid lookup attempts per UTC minute**. Both AI endpoints use
-  the same atomic reservations. Failures/clarifications refund monthly/daily
-  credits; attempts remain counted. A successful independent review or valid live
-  answer consumes one credit, irrespective of internal provider calls.
-- Deterministic Add/Cancel, portion corrections from retained evidence, greetings,
-  owned history, and preference operations make no paid model/search request.
-- Additional Google Search **launch** caps are 3/day free and 20/day Pro, UTC.
-  Launched searches are not refunded. A consumed request ID cannot launch Search
-  again, even after a failed response. Start a new request to search again.
-- One Interactions Search call can execute several billable Google queries. These
-  launch caps are not a guaranteed currency budget or provider-query cap. Numeric
-  token/query counts are logged without prompt bodies; query counts are also
-  recorded when response validation rejects the display payload. Set Google Cloud
-  spend alerts and inspect actual billable usage.
-- Request body: 8 KiB, message: 1,000 characters, body-read timeout: 5 seconds.
-  Interpretation output: 900 tokens; search output: 1,600; provider timeout: 25
-  seconds; nutrition work has a 55-second deadline, with separate bounded
-  authentication/database calls of 8 seconds each. Independent API reads: 8 seconds/160 KiB,
-  USDA: eight candidates, OFF: five. No automatic provider retries or unbounded
-  tool loops. Citation/text/widget caps are shared with the client.
-- The model receives current food/clarification, relevant explicit preferences,
-  and at most four filtered recent messages (500 characters each). History uses
-  specific owner/date reads, not months of logs. Profile targets are read from
-  `user_goals` when displaying actual settings, not copied into durable memory.
-- Chat retention is 30 days and 50 messages per thread, including removal of
-  replay copies. Explicit preferences remain until edited/deleted. No derived
-  memory summaries exist. Clear chat and clear preferences are distinct controls;
-  neither deletes food history. Confirmed provenance remains with the food log.
-- Drafts expire at the earlier of 30 minutes or local midnight. A timezone change
-  before confirmation also requires a new review. History/summary date reads use
-  local start and next-day boundaries, including DST. Device IANA timezone is
-  validated; Philippine locale fallback is Asia/Manila, otherwise UTC.
-- There is no shared nutrition cache. Each new independent lookup is fresh;
-  portion-only edits reuse retained original basis. Explicit preferences and
-  personal foods remain private. `store:false` disables Interactions conversation
-  storage, but does not eliminate Google's separate grounding processing retention.
-
-## Supported flows and limitations
-
-Bee supports one food or defined dish per request, portion corrections, fresh
-food/preparation changes, explicit Add/Edit/Cancel, durable name/units/usual
-product/preparation preferences, recall/forget/edit/clear, new conversations,
-and actual owned today/yesterday/date-offset food history. Multiple separate
-foods require individual entry; repeating a meal asks which recorded item because
-existing logs have no meal category.
-
-Fudgee Barr needs flavor and package size; a bar, a ten-bar serving and a full
-pack remain distinct. Unknown mass/density/count conversions ask for a label.
-Owned native-unit foods can have unknown grams and still use their actual serving
-basis; the legacy finite-grams editor instead asks for input. Missing macros or
-conflicting records require manual label entry. The existing editable AI sheet
-locks its reviewed serving; edited names/macros become user-entered data with the
-original source/formula removed. Full source provenance is stored by the new
-server-confirmed Bee flow; the legacy editable manual save path remains manual.
-
-Automated matching checks structured identity, units/basis, finite values,
-conflicts, and exact independent source-ID URLs. It cannot establish that a
-crowdsourced/manufacturer record is current or that every live Google claim is
-correct. Google answers are displayed with provider citation metadata and intact
-suggestions; they are not automatically verified or converted to a log.
-
-## Verification and remaining release checks
-
-Run:
+Safe commands (replace placeholders; use ignored files, not inline credentials):
 
 ```sh
-npm run typecheck
-npm test
-npm run lint
-npm run typecheck:functions   # Deno 2 installed
-npm run test:db              # Docker + PostgreSQL 16 image
-npm run build:web
-npx expo export --platform android --platform ios
-npm audit --omit=dev --audit-level=critical
+supabase db push --dry-run --linked
+supabase db push --linked
+supabase secrets set --env-file supabase/functions/.env --project-ref <project-ref>
+supabase functions deploy bee-chat --project-ref <project-ref> --no-verify-jwt
+supabase functions deploy ai-food --project-ref <project-ref> --no-verify-jwt
+supabase functions deploy usda-search --project-ref <project-ref> --no-verify-jwt
+supabase functions deploy billing --project-ref <project-ref> --no-verify-jwt
+supabase functions deploy billing-webhook --project-ref <project-ref> --no-verify-jwt
+supabase functions deploy billing-reconcile --project-ref <project-ref> --no-verify-jwt
 ```
 
-The PostgreSQL runner uses a disposable container without host ports, production
-credentials, or real user data. It checks RLS/grants, row locking, concurrent and
-lost-response confirmation, failure recovery, stale workers/actions, atomic shared
-quotas/search caps, native serving bases, memory deletion/replay cleanup, retention,
-local midnight/DST, timezone changes, and summary failure separation. Unit tests
-mock paid APIs; nutrition numbers in fixtures are explicitly marked test data.
-Browser checks use intercepted auth/functions/database requests at 375/768/1440 px.
+`--no-verify-jwt` disables only the gateway's legacy JWT check: the three user
+proxies and billing validate the session with Supabase Auth on every request.
+Webhooks instead verify provider HMAC/JWS/OIDC. Scheduled reconciliation requires
+its own constant-time checked server-only credential. Do not publish a gateway
+exception for any function without the corresponding handler authentication.
+Supabase supplies its existing server URL/anon/service-role values. Keep real
+`.env*` ignored; safe templates are root and `supabase/functions/.env.example`.
 
-Verified locally on 27 September 2026:
+## Server configuration
 
-| Check | Result |
-| --- | --- |
-| Application TypeScript and Expo lint | Passed |
-| Unit / mocked integration tests | 389 tests across 27 suites passed |
-| Deno 2.9.6 checks | All three changed Edge Functions passed |
-| PostgreSQL 16 | 30 behavior groups passed against the actual migration |
-| Expo exports | Web, Android and iOS passed |
-| Chrome with controlled fixtures | Review/source/actions, immediate dashboard refresh, display-only Search, preference add/edit/delete/clear, reload, new conversation, cancellation and provider-error retry checked; screenshots in ignored `output/playwright/` |
-| Dependency audit | **Failed on the unchanged baseline lockfile:** 34 advisories, including critical `shell-quote` and `tar` advisories. No dependencies were added/upgraded. The existing CI audit gate remains enabled; resolve these before release in a separate dependency patch. |
+Required for paid AI: `GEMINI_API_KEY`, `GEMINI_MODEL=gemini-3.8-flash`,
+`GEMINI_SEARCH_ENABLED`, `BEE_AI_ENABLED`, `GEMINI_PAID_DATA_USE_CONFIRMED=true`.
+The last flag is an operator assertion after reviewing paid-service data handling;
+blank/false denies private model calls. Cloud AI requires an actual age >=18 in
+Profile. Unpaid Google service restrictions make this gate necessary. Manual
+tracking continues independently. USDA retains `USDA_API_KEY` server-side.
 
-Browser walkthroughs had no unexpected failed requests or application console
-errors. Existing React Native/Reanimated deprecation and multiple Supabase-client
-warnings remain. A deliberately injected 503 tested the recoverable error state.
-Fixture arithmetic/screenshots are test data, not live nutrition verification.
+Billing configuration:
 
-Security check: JWT authentication, owner-scoped reads and writes, every new
-table's RLS/grants, service-only fixed-search-path RPCs, stale/expired reviews,
-row locking and idempotency, shared concurrent quotas, bounded input/output and
-timeouts, account-switch races, source provenance, and prompt/markup injection
-boundaries were checked. Provider secrets remain server-only. Fixed external
-API destinations reject redirects; there is no user-controlled server page fetch.
-Search content cannot authorize writes or become retained nutrition. Existing
-dependency advisories above remain a release blocker. Auth/password handling,
-payments, and uploads were not changed.
+- `BILLING_PRODUCTS_JSON`: exact provider/product/tier/monthly-or-annual mapping;
+  Google entries include their exact base-plan ID. Four products per provider,
+  no introductory offers/free trials. One Apple group, Pro ranked above Plus.
+- `PAYMONGO_ENABLED`, `PAYMONGO_LIVE`, `PAYMONGO_SECRET_KEY`,
+  `PAYMONGO_WEBHOOK_SECRET`, `BILLING_SITE_ORIGIN` (real HTTPS origin).
+  Enable Subscriptions/Maya with PayMongo. Configure automatic monthly/yearly
+  PHP plans at the disclosed amounts. Server checks plan price/currency/interval.
+- `APPLE_BUNDLE_ID`, `APPLE_APP_ID` (production), `APPLE_KEY_ID`,
+  `APPLE_ISSUER_ID`, `APPLE_PRIVATE_KEY`, `APPLE_ROOT_CA_BASE64` (verified Apple
+  certificate bytes, comma-separated). Official Apple's verification library
+  checks signatures/environment/bundle/account, with online certificate checks.
+- `GOOGLE_PLAY_PACKAGE`, `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`,
+  `GOOGLE_PUBSUB_AUDIENCE`, `GOOGLE_PUBSUB_SERVICE_EMAIL`.
+  Grant minimum Publisher permissions; authenticated Pub/Sub pushes must match
+  configured audience and service email. Receipt ownership uses the account hash.
+- `BILLING_SANDBOX=true` only in isolated testing. Production rejects test Play
+  receipts; Apple verification selects the exact configured environment.
+- `BILLING_RECONCILE_SECRET`: independent random >=32-character scheduler secret.
+  Schedule a server-side POST every few minutes to `billing-reconcile`, with
+  `Authorization: Bearer <secret>` stored in a secrets manager. Each run verifies
+  three oldest stale subscriptions from provider servers; tune frequency for
+  account volume and alert on non-200 responses. Never ship this secret to Expo.
 
-Live Gemini, USDA/OFF quality, exact real Search Suggestions variants, native
-keyboard/link behavior, and same-account web/device end-to-end confirmation still
-require a configured **staging** project and a mobile device/emulator. Deno checks
-and native exports establish type/bundle compatibility, not a device walkthrough.
-The plain PostgreSQL image verifies pruning but does not contain the Supabase
-Cron extension; verify the scheduled job in staging.
+Webhook URLs: `billing-webhook?provider=web`, `...=apple`, `...=google`.
+Register correct environment-specific endpoints and event coverage. Web refund
+handling joins verified payment IDs to their invoice; full successful refunds
+and matched disputes revoke that cycle. Partial refunds retain access. Unmapped
+refunds return retryable failure and need operator reconciliation; do not ignore
+those alerts. A delayed paid event cannot revive a revoked invoice. Newer paid
+cycles can restore access. Store replacements recheck the linked old Play token;
+replacement cancellations are expired rather than retained through an old date.
+Use provider sandboxes to confirm actual event payloads/ordering before release.
 
-## Safe recovery
+Web checkout creates an idempotent recurring **Maya** first-invoice payment flow.
+This UI does not implement a card-entry widget or promise GCash. Web users can
+cancel renewal/change plans for the next paid cycle; native users purchase,
+restore and manage through StoreKit/Play with their actual localized price.
+There are no PayMongo checkout links in native purchase UI. Web return URLs never
+unlock access. Highest verified overlapping tier applies, with duplicate warning.
 
-Before app rollout, revert a failed function deploy to the previous function build
-and leave the additive tables/columns in place. After rollout, disable Search with
-`GEMINI_SEARCH_ENABLED=false` and redeploy both AI endpoints if provider problems
-occur; manual/barcode flows and deterministic confirmed reviews remain available.
-Keep the Gemini endpoints for rollback clients so shared atomic quotas remain in
-force; do not redeploy the old non-atomic quota implementation alongside Bee.
-Roll the UI back independently if necessary. Never drop food logs, provenance,
-memories, or new tables as a rollback shortcut. Retry a failed summary refresh;
-never insert the same confirmed food again to repair totals.
+Public build configuration/optional consent is documented in
+[public-web.md](launch/public-web.md). Real public origin, operator/contact, reviewed
+legal copy and optional Plausible account are still operator inputs.
+
+## Allowances, retries and operating limits
+
+| Tier | Monthly interactions | Search queries | Insights | Input / output tokens |
+| --- | ---: | ---: | ---: | ---: |
+| Basic | 0 | 0 | 0 | 0 / 0 |
+| Plus | 60 food assistance | 10 | 0 | 160,000 / 50,000 |
+| Pro | 250 food/chat | 50 | 30 | 800,000 / 200,000 |
+
+One account shares counters across endpoints/devices. Each requested paid turn
+is one interaction, not one charge per internal model step. Insights have their
+separate 30-refresh allowance and share token/Search ceilings. Annual purchases
+receive monthly allowances on the UTC account billing anniversary, clamped for
+short months; never twelve months of credits at once. Upgrades do not reset usage.
+No background food searches, per-device loophole or extra user overage billing.
+Manual work, Add/Cancel, actual diary history, reading/exporting/deleting saved
+preferences and fresh cached insights need no model request. A downgrade retains
+all records but blocks new Pro memory/actions and invalid-tier confirmations.
+
+Account locks enforce 15 paid starts/minute and one in-flight provider turn.
+USDA has its separate 30 authenticated searches/minute. Model turn deadline is
+55 seconds; external structured retrieval has its own bounded timeouts/content.
+Requests stream through a UTF8 byte cap/body deadline, up to 2,000 chat characters.
+Output/schema/truncation failures fail closed. No automatic paid retries.
+
+Reservations cover 15,000 input / 12,288 output tokens for a bounded turn;
+unused capacity is released. Actual usage is deduplicated per call. A failed
+preflight is uncharged. Once provider work was attempted, measured (or
+conservatively reserved unknown) cost and the interaction are retained; the same
+request cannot launch paid work twice. The UI can start a new turn after a
+provider failure. Near a token ceiling there must be room for a complete bounded
+turn, so some remaining tokens may not be usable individually.
+
+Search reserves up to three queries before launch and reconciles to actual
+reported query count, refunding unused reservations after a successful response.
+Failed/unknown provider work retains the reservation. Google's model can execute
+more queries in flight than reserved; actual excess is counted and subsequent
+requests denied. This is a bounded-call/cap defense, **not an API-level guarantee
+that Google executes at most three queries**. Absorb in-flight excess without
+charging the user. Set provider billing alerts/project spend ceilings and use
+`BEE_AI_ENABLED=false` as the circuit breaker. Missing usage is conservative,
+not silently zero. Metrics contain numeric tokens/counts only, no prompt bodies.
+
+Chat is owner-private: 30 days/50 messages per thread, six recent messages in model
+context; pruning removes expired content/replays. The first migration schedules hourly
+`bee_prune_all_history()` when pg_cron is available; otherwise configure a
+service-only hourly scheduler. Verify that job before promising inactive-account retention. No transcript
+summary/embedding may resurrect deleted preferences. Preference deletion fences
+other threads and invalidates replays/derived insights. Explicit memories persist
+until edited/deleted/account removal; confirmed diaries and weights are retained
+as the user's data. Billing ledger retention/backups/account erasure require an
+operator-reviewed policy; no invented legal retention promise. Cached insights
+expire at local midnight/24h and are invalidated on underlying record changes.
+
+No public nutrition cache was added. Independent provenance (record ID, URL,
+identity, timestamp, basis, original nutrients, attribution/license) stays in the
+owner's reviewed/saved food. USDA is public-domain source data; OFF attribution/
+ODbL is preserved and must be reviewed for any future aggregate database. Existing
+manual/barcode/search remain. Automated compatibility/evidence checks cannot
+prove a third-party label is current or that model prose is true. Exact API values
+and typed review arithmetic are trusted; unclear/missing/conflicting identity,
+macros or conversion goes to clarification/manual label entry. No label-image OCR
+or AI estimate promotion was implemented.
+
+## Validation and limitations
+
+See [launch report](launch/2026-09-27-implementation-report.md) for all twenty
+launch items, commands, measurements and the manual walkthrough. Unit and Edge
+provider tests use marked deterministic fixtures; PostgreSQL tests run real PG16
+in an ephemeral Docker container. Existing schema compatibility is tested, not
+production Supabase deployment. Browser checks intercept Supabase and make no
+real account writes. Native exports are builds, not physical-device verification.
+
+Still required before shipping: live paid Gemini/USDA source checks; verified
+store/PayMongo product setup, credentials/webhooks/sandbox lifecycle tests;
+provider-terms/legal review; real origin/HTTPS/404/social/Lighthouse verification;
+actual native device/VoiceOver/TalkBack/keyboard/purchase tests; old paid-contract
+migration and user communication. No production deployment is claimed.
+
+## Recovery
+
+Disable paid AI and checkout first if errors rise; keep Basic/manual records
+available. Do not drop additive tables, pending actions, weights, billing ledger
+or food provenance. Keep migrations forward-only. Old pre-migration UI binaries
+may fail closed for AI, so prefer rolling forward to a fixed shared client/function
+rather than restoring obsolete quota code. Reconcile uncertain provider receipts
+and pending checkouts before initiating new payments. Back up/restore only in an
+isolated audited procedure; never erase users' diaries to roll back Bee. Summary
+refresh failure does not undo a successful food insert; recompute derived totals.
+Never remove DeepSeek/Tavily production secrets until deployed old callers have
+been retired, although the checked-in execution path no longer uses them.
+
+## Primary references checked
+
+- [Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash),
+  [Interactions](https://ai.google.dev/api/interactions-api),
+  [pricing](https://ai.google.dev/gemini-api/docs/pricing),
+  [Additional Terms](https://ai.google.dev/gemini-api/terms).
+- [PayMongo subscriptions](https://docs.paymongo.com/docs/payment-acceptance-subscriptions),
+  [subscription resource](https://docs.paymongo.com/reference/subscription-resource),
+  [refund resource](https://docs.paymongo.com/reference/refund-resource).
+- [Apple official verification library](https://github.com/apple/app-store-server-library-node),
+  [Play subscription state](https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2).
+- [USDA API](https://fdc.nal.usda.gov/api-guide/),
+  [Open Food Facts reuse](https://world.openfoodfacts.org/data),
+  [Supabase function auth](https://supabase.com/docs/guides/functions/auth).
+
+The brief's contribution table is an assumption-based cost model, not actual
+profit or live verified storefront proceeds. Recheck prices, FX, taxes, commissions,
+refunds and measured per-user usage before enabling the proposed catalog.

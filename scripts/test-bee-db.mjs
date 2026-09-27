@@ -44,16 +44,34 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   fixture("supabase/tests/bee_fixture.sql");
+  fixture("supabase/migrations/20260614000000_add_nutrition_goal_metadata.sql");
   fixture("supabase/migrations/20260624000000_enable_rls_user_tables.sql");
+  fixture("supabase/migrations/20260624000100_add_get_weekly_stats_rpc.sql");
   fixture("supabase/migrations/20260629000000_add_ai_and_entitlements.sql");
   fixture("supabase/migrations/20260629000100_ai_usage_increment.sql");
+  fixture("supabase/migrations/20260731000000_add_personal_food_barcodes.sql");
+  fixture("supabase/recipes.sql");
   if (!process.argv.includes("--baseline")) fixture("supabase/migrations/20260915000000_bee_conversations.sql");
   assert.equal(query("select to_regclass('public.bee_pending_actions') is not null;"), "t", "reviewed drafts must have a persisted table");
   const { runBeeDatabaseTests } = await import("../supabase/tests/bee_database.mjs");
   const { runBeeMigrationDatabaseTests } = await import("../supabase/tests/bee_migration_database.mjs");
-  await runBeeMigrationDatabaseTests({ assert, query, queryAsync, literal, json, rpcSql, rpc });
-  if (!process.argv.includes("--migration-only")) await runBeeDatabaseTests({ assert, query, queryAsync, literal, json, rpcSql, rpc });
-  process.stdout.write("Bee PostgreSQL invariants passed.\n");
+  const { seedLaunchLegacyRows, runLaunchDatabaseTests } = await import("../supabase/tests/launch_database.mjs");
+  const context = { assert, query, queryAsync, literal, json, rpcSql, rpc };
+  const legacy = seedLaunchLegacyRows(context);
+  if (!process.argv.includes("--launch-baseline")) fixture("supabase/migrations/20260927000000_launch_validation.sql");
+  if (!process.argv.includes("--launch-only") && !process.argv.includes("--adaptive-only")) {
+    await runBeeMigrationDatabaseTests(context);
+    if (!process.argv.includes("--migration-only")) await runBeeDatabaseTests(context);
+  }
+  if (!process.argv.includes("--adaptive-only")) await runLaunchDatabaseTests({ ...context, legacy });
+  fixture("supabase/migrations/20260928000000_adaptive_bee.sql");
+  fixture("supabase/migrations/20260929000000_subscription_budgets.sql");
+  fixture("supabase/migrations/20260930000000_billing_actions.sql");
+  const { runAdaptiveDatabaseTests } = await import("../supabase/tests/adaptive_database.mjs");
+  await runAdaptiveDatabaseTests(context);
+  const edge = spawnSync(process.env.DENO_BINARY ?? "deno", ["test", "--cached-only", "--config", "supabase/functions/deno.json", "--allow-env", "supabase/tests/usda_proxy_deno.mts", "supabase/tests/billing_deno.mts"], { cwd: root, stdio: "inherit" });
+  if (edge.status !== 0) throw new Error(edge.error?.message ?? "USDA Edge Function tests failed");
+  process.stdout.write("Bee and launch PostgreSQL invariants and USDA Edge Function checks passed.\n");
 } finally {
   if (started) docker(["rm", "-f", container]);
 }

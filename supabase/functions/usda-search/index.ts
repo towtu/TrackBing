@@ -7,7 +7,7 @@ const HEADERS = {
   "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS", "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
 };
-const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status, headers: HEADERS });
+const json = (payload: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(payload), { status, headers: { ...HEADERS, ...headers } });
 const boundedFetch: typeof fetch = (input, init) => fetch(input, { ...init, redirect: "error", signal: AbortSignal.any([...(init?.signal ? [init.signal] : []), AbortSignal.timeout(8000)]) });
 function integer(value: unknown, fallback: number, maximum: number): number {
   if (value === undefined) return fallback;
@@ -36,12 +36,14 @@ Deno.serve(async (req: Request) => {
   const authorization = req.headers.get("authorization") ?? "";
   if (authorization.length > 8192 || !/^Bearer \S+$/i.test(authorization)) return json({ error: "unauthorized" }, 401);
   const url = Deno.env.get("SUPABASE_URL"); const anon = Deno.env.get("SUPABASE_ANON_KEY");
-  const key = Deno.env.get("USDA_API_KEY");
-  if (!url || !anon || !key) return json({ error: "not_configured" }, 503);
+  const key = Deno.env.get("USDA_API_KEY"); const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !anon || !key || !serviceKey) return json({ error: "not_configured" }, 503);
+  let userId: string;
   try {
     const client = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: authorization }, fetch: boundedFetch } });
     const { data, error } = await client.auth.getUser();
     if (error || !data.user) return json({ error: "unauthorized" }, 401);
+    userId = data.user.id;
   } catch { return json({ error: "unauthorized" }, 401); }
   let body: Record<string, unknown>; let query: string; let pageSize: number; let pageNumber: number; let dataType: string[];
   try {
@@ -53,6 +55,17 @@ Deno.serve(async (req: Request) => {
     if (body.dataType !== undefined && (!Array.isArray(body.dataType) || !body.dataType.length || body.dataType.length > 4 || body.dataType.some(value => typeof value !== "string" || !DATA_TYPES.includes(value)))) throw new Error("bad_request");
     dataType = body.dataType === undefined ? DATA_TYPES : body.dataType as string[];
   } catch { return json({ error: "bad_request" }, 400); }
+  try {
+    const service = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: boundedFetch } });
+    // This independent provider limit is reserved before launch; it never spends AI credits.
+    const { data, error } = await service.rpc("reserve_usda_request", { p_user: userId });
+    if (error || !data || typeof data !== "object" || Array.isArray(data)) throw new Error("unavailable");
+    const quota = data as Record<string, unknown>;
+    if (quota.ok === false && quota.error === "rate_limited" && typeof quota.retry_after === "number" && Number.isInteger(quota.retry_after) && quota.retry_after >= 1 && quota.retry_after <= 60) {
+      return json({ error: "rate_limited" }, 429, { "Retry-After": String(quota.retry_after) });
+    }
+    if (quota.ok !== true || typeof quota.remaining !== "number" || !Number.isInteger(quota.remaining) || quota.remaining < 0 || quota.remaining > 29) throw new Error("unavailable");
+  } catch { return json({ error: "nutrition_unavailable" }, 503); }
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(8000)]);
   let removeAbort = () => {};
   try {

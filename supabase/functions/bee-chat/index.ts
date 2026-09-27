@@ -27,7 +27,7 @@ Deno.serve(async (req: Request) => {
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.5-flash-lite";
+  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
   // Missing configuration never exposes an environment value in the response.
   if (!url || !anon || !service) {
     return new Response(
@@ -58,14 +58,17 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await client.auth.getUser();
       return error ? null : data.user;
     },
+    savedTimeZone: async(userId)=>{const {data,error}=await admin.from("user_goals").select("time_zone").eq("user_id",userId).maybeSingle();if(error)throw new Error("profile_unavailable");return data?.time_zone??null;},
     store: (userId) => createBeeStore(admin, userId),
-    configured: () => Boolean(apiKey),
+    configured: () => Boolean(apiKey) && Deno.env.get("BEE_AI_ENABLED") !== "false",
+    paidDataApproved: () => Deno.env.get("GEMINI_PAID_DATA_USE_CONFIRMED") === "true",
+    generate: (system,context,signal,onUsage) => geminiJson(system,context,{apiKey,model,signal,maxTokens:4096,onUsage:usage=>{reportUsage(usage);onUsage(usage);}}),
     interpret: (context, signal) =>
       geminiJson(INTENT_PROMPT, context, {
         apiKey,
         model,
         signal,
-        maxTokens: 900,
+        maxTokens: 4096,
         onUsage: reportUsage,
       }),
     searchEnabled: () => Deno.env.get("GEMINI_SEARCH_ENABLED") === "true",
@@ -74,7 +77,7 @@ Deno.serve(async (req: Request) => {
         apiKey,
         model,
         signal,
-        maxTokens: 1600,
+        maxTokens: 4096,
         onUsage: (usage) => {
           reportUsage(usage);
           onUsage(usage);

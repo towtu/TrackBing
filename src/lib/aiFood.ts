@@ -30,6 +30,7 @@ export type AiFood = {
 };
 
 export type AiFoodReason =
+  | "upgrade_required" | "pro_required" | "monthly_request_limit" | "monthly_input_limit" | "monthly_output_limit" | "monthly_search_limit" | "age_required" | "age_restricted" | "paid_data_unavailable"
   | "over_free_quota"
   | "over_pro_cap"
   | "rate_limited"
@@ -75,6 +76,7 @@ export async function requestAiFood(
 }
 
 const AI_FOOD_REASONS: readonly AiFoodReason[] = [
+  "upgrade_required", "pro_required", "monthly_request_limit", "monthly_input_limit", "monthly_output_limit", "monthly_search_limit", "age_required", "age_restricted", "paid_data_unavailable",
   "over_free_quota",
   "over_pro_cap",
   "rate_limited",

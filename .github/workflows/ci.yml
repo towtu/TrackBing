@@ -31,6 +31,8 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_ANON_KEY: build-only-placeholder
+      - name: Check tracked and exported secret patterns
+        run: node scripts/check-secrets.mjs --dist
       - name: Lint
         run: npx expo lint
       - name: Audit production deps

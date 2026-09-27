@@ -1,5 +1,5 @@
 import React, { useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View, Share, type StyleProp, type ViewStyle } from "react-native";
 import type { BeeCommand, BeeMemory, MemoryKey } from "@/src/lib/beeChat";
 import { Colors, Radii } from "@/src/styles/colors";
 
@@ -15,16 +15,19 @@ export function BeeMemories({
   busy,
   onCommand,
   onProfile,
+  canWrite = true,
 }: {
   memories: BeeMemory[];
   busy: boolean;
   onCommand: (command: BeeCommand) => Promise<boolean>;
   onProfile: () => void;
+  canWrite?: boolean;
 }) {
   const [editing, setEditing] = useState<MemoryKey | null>(null);
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const save = async (key: MemoryKey) => {
     if (!value.trim() || busy) return;
@@ -35,9 +38,12 @@ export function BeeMemories({
   return (
     <View style={styles.preferences}>
       <Text accessibilityRole="header" style={styles.heading}>Saved preferences</Text>
+      <BeeAction label="Export preferences" disabled={busy} onPress={()=>void Share.share({message:JSON.stringify(memories.map(({key,value})=>({key,value})),null,2)}).catch(()=>setExportError("Preferences could not be shared. Try again."))}/>
+      {exportError ? <Text accessibilityRole="alert" style={styles.body}>{exportError}</Text> : null}
       <Text style={styles.body}>
         Bee remembers details you explicitly ask to keep. Editing or deleting one here updates future replies.
       </Text>
+      {!canWrite ? <Text style={styles.body}>Pro is required to save or edit preferences. You can still read and delete saved preferences.</Text> : null}
       {PREFERENCES.map((preference) => {
         const memory = memories.find((item) => item.key === preference.key);
         const isEditing = editing === preference.key;
@@ -90,7 +96,7 @@ export function BeeMemories({
                   <BeeAction
                     label={memory ? "Edit" : "Add"}
                     accessibilityLabel={`${memory ? "Edit" : "Add"} saved ${preference.label.toLowerCase()}`}
-                    disabled={busy || editing !== null}
+                    disabled={busy || !canWrite || editing !== null}
                     onPress={() => {
                       setEditing(preference.key);
                       setValue(memory?.value ?? (preference.key === "preferred_units" ? "grams" : ""));
@@ -157,7 +163,7 @@ export function BeeAction({
   return (
     <Pressable
       accessibilityRole={role}
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

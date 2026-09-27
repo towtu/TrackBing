@@ -4,7 +4,10 @@ import type {
   BeeRequest,
   FoodQuery,
   GroundedAnswer,
-  PendingFood,
+  PendingAction,
+  WeightDraft,
+  GoalDraft,
+  BeePose,
   ReviewedFood,
 } from "./beeTypes.ts";
 import {
@@ -23,7 +26,7 @@ export type ConversationState = {
 };
 export type BeeContext = {
   state: ConversationState;
-  pending: PendingFood | null;
+  pending: PendingAction | null;
   memories: BeeMemory[];
   profile: Record<string, string | number | null>;
   recent: { role: "user" | "assistant"; text: string }[];
@@ -33,6 +36,9 @@ export type TurnOutcome = {
   liveAnswer?: GroundedAnswer;
   state?: ConversationState;
   draft?: ReviewedFood;
+  weight_draft?: WeightDraft;
+  goal_draft?: GoalDraft;
+  suggested_pose?: BeePose;
   invalidate_pending?: boolean;
   memory?: MemoryChange;
   confirm?: boolean;
@@ -114,13 +120,13 @@ export function deterministicTurn(
       invalidate_pending: true,
     };
   }
-  if (command.kind !== "message") return null;
+  if (command.kind !== "message" && command.kind !== "food_assist") return null;
   const text = command.text;
   const decision = decisionText(text);
   if (decision === "cancel") {
     return {
       cancel: true,
-      text: "Cancelled. I haven’t added any food.",
+      text: "Cancelled. Nothing was saved.",
       state: { awaiting: "none" },
     };
   }
@@ -133,7 +139,7 @@ export function deterministicTurn(
     return {
       text: context.state.awaiting === "clarification"
         ? context.state.question ?? "Which food and portion did you mean?"
-        : "There isn’t a current food review to confirm. Tell me the food and amount first.",
+        : "There isn’t a current review to confirm. Tell me what you would like to review first.",
       state: context.state,
     };
   }
@@ -166,19 +172,8 @@ export function deterministicTurn(
       state: { awaiting: "none" },
     };
   }
-  if (
-    /^(hi|hello|hey|good (?:morning|afternoon|evening)|thanks|thank you)[!. ]*$/i
-      .test(text)
-  ) {
-    return {
-      text:
-        "Hi! Ask me about one food and its portion. I’ll show the nutrition and source, then ask before adding it. You can also ask about your food history or saved preferences.",
-      invalidate_pending: true,
-      state: { awaiting: "none" },
-    };
-  }
   const portion = portionCorrection(text);
-  if (portion && context.pending) {
+  if (portion && context.pending && (!context.pending.kind || context.pending.kind === "food")) {
     if (context.pending.food.source === "ai_estimate") {
       return {
         text:
@@ -223,7 +218,7 @@ export function knownHistory(
 /** Nutrition interpretation gets no profile biometrics and no bulk food history. */
 export function modelContext(text: string, context: BeeContext) {
   return {
-    currentFood: context.state.query ?? context.pending?.food.query ?? null,
+    currentFood: context.state.query ?? (context.pending && (!context.pending.kind || context.pending.kind === "food") ? context.pending.food.query : null) ?? null,
     awaiting: context.state.awaiting,
     clarification: context.state.question,
     savedPreferences: context.memories.filter((m) =>

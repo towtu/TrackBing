@@ -44,6 +44,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   fixture("supabase/tests/bee_fixture.sql");
+  fixture("supabase/migrations/20260613000000_legacy_base_schema.sql");
   fixture("supabase/migrations/20260614000000_add_nutrition_goal_metadata.sql");
   fixture("supabase/migrations/20260624000000_enable_rls_user_tables.sql");
   fixture("supabase/migrations/20260624000100_add_get_weekly_stats_rpc.sql");

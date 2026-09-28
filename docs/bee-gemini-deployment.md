@@ -64,7 +64,17 @@ the preceding adaptive food/weight/goal brief.
 
 ## Database additions and rollout order
 
-Keep all existing migrations in their normal order. New feature migrations:
+Keep all existing migrations in their normal order. The original unversioned
+TrackBing tables now have an idempotent first migration,
+`20260613000000_legacy_base_schema.sql`, so a fresh project can bootstrap.
+Existing projects keep their rows. When linking an existing project whose migration
+history starts after this timestamp, review the schema and use Supabase’s
+`--include-all` flag only if its dry run shows this unapplied older migration.
+The complete chain applied on a clean, isolated local Supabase stack on
+2026-09-28. `scripts/test-supabase-local.py` also exercised two real local Auth
+sessions, owner RLS, weight retry, local-day totals and Bee's JWT/thread checks.
+This is local verification, not a production migration or live Gemini test.
+New feature migrations:
 
 1. `20260915000000_bee_conversations.sql` — owner-scoped threads/messages,
    explicit memories, food pending actions, turn leases, independent provenance,
@@ -91,6 +101,8 @@ ID is trusted by the Edge Functions.
 **Staged release:**
 
 1. Back up the database and compare the real schema with migration assumptions.
+   A fresh isolated project starts with the idempotent base migration above;
+   do not run a synthetic test fixture against production.
    Review invalid legacy values before validating `NOT VALID` constraints later.
 2. Disable existing AI entry points for the short migration window. Retire old
    clients' free-AI promise in release communication. The final migration makes
@@ -125,6 +137,18 @@ supabase functions deploy usda-search --project-ref <project-ref> --no-verify-jw
 supabase functions deploy billing --project-ref <project-ref> --no-verify-jwt
 supabase functions deploy billing-webhook --project-ref <project-ref> --no-verify-jwt
 supabase functions deploy billing-reconcile --project-ref <project-ref> --no-verify-jwt
+```
+
+For an existing project whose history predates the new base migration, first
+review `supabase db push --dry-run --linked --include-all`. Apply with
+`supabase db push --linked --include-all` only when that output names exactly
+the intended unapplied migrations and the live schema comparison is complete.
+Do not use a synthetic fixture or `db reset` on a linked project. The local
+Auth/RLS smoke test requires an isolated local Supabase workdir and a Bee
+handler at `http://127.0.0.1:8000/` (or set `TRACKBING_LOCAL_BEE_URL`):
+
+```sh
+TRACKBING_LOCAL_WORKDIR=<isolated-local-workdir> python3 scripts/test-supabase-local.py
 ```
 
 `--no-verify-jwt` disables only the gateway's legacy JWT check: the three user

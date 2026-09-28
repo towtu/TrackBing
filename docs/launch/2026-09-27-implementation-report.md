@@ -63,7 +63,18 @@ provider verification and does not imply legal approval or measured profit.
 | Public/launch | public legal/not-found routes, `+html`, consent/metadata, image assets, colors/icons, form validation, `vercel.json`, export/security/browser scripts |
 | Verification/docs | CI, unit/provider/PG tests, safe `.env.example` templates, deployment/report/audit documents |
 
-Apply existing migrations first, then these in order:
+Apply `20260613000000_legacy_base_schema.sql` first on a fresh project,
+then the existing historical migrations in timestamp order. An existing project
+with these tables keeps its data; inspect its schema and migration history before
+including an older unapplied migration. Then apply these feature migrations:
+
+On 2026-09-28, all 12 migrations applied in order to a clean isolated local
+Supabase stack. A two-account local Auth/PostgREST/Bee smoke test passed owner
+RLS, invalid JWT, cross-user thread denial, weight-write replay, and Manila
+local-day totals (`scripts/test-supabase-local.py`). The CLI's local functions
+proxy hit a Docker DNS error in this environment; the same Bee Edge entrypoint
+was served directly by Deno against local Supabase for the handler checks.
+No hosted project, Gemini key, production user, or production deployment was used.
 
 1. `20260915000000_bee_conversations.sql` (already in the branch's first commit).
 2. `20260927000000_launch_validation.sql`.

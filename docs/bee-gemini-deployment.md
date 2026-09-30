@@ -91,6 +91,9 @@ New feature migrations:
 5. `20260930000000_billing_actions.sql` — private receipt/account/payment
    bindings, billing leases, confirmation tier enforcement, unified replay
    invalidation/retention, server-only food provenance guards, explicit-day weekly Stats boundaries and fail-closed retirement of the old AI quota RPC.
+6. `20260930000100_account_cascade_context.sql` — skip context recreation when
+   Auth account deletion cascades into private weight/memory records. No data
+   removal, policy relaxation or new client grants.
 
 Every user-owned addition has RLS. Clients can read only their own permitted
 records; service-only data/RPCs are revoked from anon/authenticated/public. Manual
@@ -99,6 +102,12 @@ owners. Privileged functions use a fixed `public,pg_temp` search path. No body u
 ID is trusted by the Edge Functions.
 
 **Staged release:**
+
+Password recovery, diary browsing and tracking downloads have a separate
+[account/diary setup guide](account-and-diary-ux.md). Configure the recovery OTP
+email template and transactional SMTP before shipping `/recover`; verify delivery
+to an operator-controlled Gmail inbox. These free flows require no Gemini key.
+FileSystem/Sharing changes require a compatible new native binary.
 
 1. Back up the database and compare the real schema with migration assumptions.
    A fresh isolated project starts with the idempotent base migration above;

@@ -81,6 +81,7 @@ No hosted project, Gemini key, production user, or production deployment was use
 3. `20260928000000_adaptive_bee.sql`.
 4. `20260929000000_subscription_budgets.sql`.
 5. `20260930000000_billing_actions.sql`.
+6. `20260930000100_account_cascade_context.sql` — prevent Bee metadata recreation during operator Auth deletion; no data deletion or grant changes.
 
 New entities include owner threads/messages/memories/pending actions, dated
 weights/baselines, private insights/context revisions, verified subscriptions and
@@ -99,13 +100,15 @@ require a new development/store binary with `expo-iap`; Expo Go is insufficient.
 | Check | Result / scope |
 | --- | --- |
 | `npm run typecheck` | Passed: application TypeScript. |
-| `npm test` | Passed: **40 suites / 570 tests**, deterministic fixtures and mocked paid providers. |
+| `npm test` | Passed: **43 suites / 594 tests**, deterministic fixtures and mocked paid providers. |
 | `npm run lint` | Passed: no errors or warnings. |
 | `npm run typecheck:functions` | Passed: all six Deno Edge Function entry points; separate from frontend TS. |
-| `npm run test:db` | Real ephemeral PostgreSQL 16: migration/ownership/concurrency/confirmation/weight/tier/retention/date tests; plus **17 actual Deno handler tests** with mocked providers. 36 legacy/launch checks plus five current-policy integration groups. |
-| `npm run build:web` | Passed: 20 Expo routes; finalizer verifies real public HTML, metadata/noindex, internal anchors, assets, crawler gating and branded 404. |
+| `npm run test:db` | Real ephemeral PostgreSQL 16: migration/ownership/concurrency/confirmation/weight/tier/retention/date tests; plus **17 actual Deno handler tests** with mocked providers. 36 legacy/launch checks, five current-policy integration groups and the Auth cascade regression. |
+| `npm run build:web` | Passed: 23 Expo routes; finalizer verifies real public HTML, metadata/noindex, internal anchors, assets, crawler gating and branded 404. |
 | Expo iOS and Android exports | Passed: both Hermes bundles. Build evidence only; no native device/purchase/camera/VoiceOver/TalkBack run. |
 | `scripts/check-web-ui.cjs` | Real Chrome at **375 / 768 / 1440 px**, public/protected routes and Bee interactions, controlled Supabase fixture. No real user writes. |
+| `scripts/check-account-ux.cjs` | Real Chrome at **375 / 768 / 1440 px**: send/invalid/valid recovery, no recovery session storage, signed-out history/export denial, local-date history/empty/invalid states and downloaded CSV/JSON contents. Controlled test data; zero unexpected console errors/failed requests. |
+| `scripts/check-account-local.cjs` | Actual local Supabase Auth recovery OTP/password update and old/new password login, six-table cross-owner tracking read denial, disposable account cleanup. No Gmail/hosted delivery verification. |
 | `node scripts/check-secrets.mjs --dist` | Pattern scan of tracked source and web export; values are never printed. No detected server credential; not proof against every possible credential format. |
 | `npm audit --json` | **16 advisories: 1 high, 15 moderate, 0 critical** after compatible patches. Not a clean audit. |
 
@@ -245,6 +248,34 @@ Fixtures contain illustrative values; none are presented as live-source nutritio
 8. Review real-domain headers/direct routes/social/crawlers/Lighthouse, camera,
    keyboards/safe areas, VoiceOver/TalkBack and real mobile purchase management.
 
+### Product UX additions, 30 September
+
+Password recovery is reachable from sign-in and Profile, with an isolated
+nonpersistent recovery session, code verification, show/hide passwords, explicit
+save, resend cooldown, safe retry and separate post-save session-revocation status.
+The supplied Supabase recovery email template and real transactional SMTP setup
+must be configured before release; actual Gmail delivery remains unverified.
+
+Dashboard History and Profile open a private day browser with saved-zone midnight
+boundaries, actual diary totals, previous/next/Today, empty/loading/error/retry
+states and request fencing. Profile also opens bounded tracking JSON/food CSV/
+weight CSV downloads. Native temporary sharing files are cleaned up; CSV names
+are escaped against spreadsheet formulas; Google results/Auth/billing are excluded.
+These free flows make no Gemini request. See [setup and data boundaries](../account-and-diary-ux.md).
+
+Real local Auth exercised invalid/valid recovery and old/new password sign-in;
+six-table reads denied another owner. Test cleanup uncovered a context-trigger
+FK failure during Auth deletion. The new forward-only migration prevents that
+metadata recreation, with a real PostgreSQL regression observed failing before
+the fix and passing after it. Local disposable account cleanup now succeeds.
+This repairs the operator erasure path; it does not claim a new in-app account
+deletion flow or legal retention approval.
+
+Both the new and existing UI scripts passed at three widths with controlled
+fixtures. The updated web export has 23 routes; iOS/Android Hermes exports passed.
+Device keyboards, actual share-sheet/file saving, Gmail delivery and production
+Auth settings still require operator checks. Native modules need a new app binary.
+
 ## Security review
 
 **Security check:** session validation, explicit owner-scoped service calls, RLS,
@@ -270,6 +301,14 @@ backup policy, spend alerts and legal/source/provider terms require operator
 verification. Supabase sessions retain the existing client architecture; this PR
 does not claim server-cookie protection for a client-only Expo app.
 
+The new account/diary diff also checks OTP recipient binding and verification,
+ephemeral recovery storage, generic Auth errors, duplicate-submit fencing,
+mounted-owner/JWT reads, exact local boundaries, keyset/page/byte/time limits,
+no partial export on errors, CSV formula escaping, private temporary-file cleanup,
+no grounded/billing/session export and the restricted fixed-path cascade trigger.
+Two SDK-compatible native modules were added for file sharing; no unrelated
+dependency upgrade was made. The 16 existing audit advisories remain unresolved.
+
 ## Twenty-item launch evidence
 
 “Implemented” below means locally implemented and checked, not production launch
@@ -277,7 +316,7 @@ approval. “Partial” includes native or real deployment checks still outstand
 
 | # | Status | Evidence | Exact remaining operator action |
 | --- | --- | --- | --- |
-| 1 Privacy | Partial | `/privacy`, legal links, processor/control draft, static export and three-width Chrome checks | Approve operator/contact, rights/erasure/backups/retention and Google/billing processing; native route walk. |
+| 1 Privacy | Partial | `/privacy`, legal links, processor/control draft including recovery/downloads, static export and three-width Chrome checks | Approve operator/contact, rights/erasure/backups/retention and Google/billing processing; native route walk. |
 | 2 Terms | Partial | `/terms`, signed-out access, Basic/Plus/Pro/AI limits and payment draft | Approve age/refund/tax/dispute terms and effective date; native walk. |
 | 3 Secrets / access | Implemented | Safe env templates, tracked/dist scan, real PG owner/RPC/provenance tests | Configure server-only secrets and verify policies on isolated deployment before release. |
 | 4 HTTPS | Blocked | HTTPS-only adapters; Vercel configuration; protected PR preview redirects HTTP→HTTPS308, app page is inaccessible | Supply real production origin or accessible isolated preview; verify app TLS/headers/camera, then decide HSTS. |

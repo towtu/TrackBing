@@ -152,3 +152,27 @@ describe("Legacy food migration", () => {
     expect(await payload(await handleLegacyFoodRequest(req(), deps))).toEqual({ error: "over_free_quota" }); expect(deps.interpret).not.toHaveBeenCalled(); expect(store.release).not.toHaveBeenCalled();
   });
 });
+
+// Illustrative TEST DATA: source order and response compatibility, not food advice.
+it('keeps curated provenance and uses medium confidence without searching',async()=>{
+ const {deps,store}=setup();deps.resolve=vi.fn().mockResolvedValue({kind:'found',food:{...food,source:'trackbing_gist',evidence:{...food.evidence,url:'https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json',license:'operator-provided'}}});
+ expect(await payload(await handleLegacyFoodRequest(req(),deps))).toMatchObject({food:{source:'trackbing_gist',confidence:'medium',serving_grams:72}});
+ expect(deps.ground).not.toHaveBeenCalled();expect(store.reserveSearch).not.toHaveBeenCalled();
+});
+it('returns an independent USDA fallback after Google without storing Google data',async()=>{
+ const {deps,store}=setup(),order:string[]=[];
+ deps.resolve=vi.fn().mockImplementation(async()=>{order.push('gist');return {kind:'unavailable',message:'No record'};});
+ deps.ground=vi.fn().mockImplementation(async()=>{order.push('google');return answer;});
+ deps.fallbackResolve=vi.fn().mockImplementation(async received=>{order.push('usda');expect(received).toEqual(query);return {kind:'found',food};});
+ expect(await payload(await handleLegacyFoodRequest(req(),deps))).toMatchObject({food:{source:'usda',serving_grams:72}});
+ expect(order).toEqual(['gist','google','usda']);expect(JSON.stringify(vi.mocked(store.release).mock.calls)).not.toContain(answer.text);
+ expect(JSON.stringify(vi.mocked(store.release).mock.calls)).not.toContain('example.com/panel');
+});
+it('recovers a Google failure through genuine USDA, but explicit web stays answer only',async()=>{
+ const {deps}=setup();deps.resolve=vi.fn().mockResolvedValue({kind:'unavailable',message:'No record'});
+ deps.ground=vi.fn().mockRejectedValue(new Error('provider unavailable'));deps.fallbackResolve=vi.fn().mockResolvedValue({kind:'found',food});
+ expect(await payload(await handleLegacyFoodRequest(req(),deps))).toMatchObject({food:{source:'usda'}});
+ vi.mocked(deps.ground).mockResolvedValue(answer);vi.mocked(deps.fallbackResolve).mockClear();
+ expect(await payload(await handleLegacyFoodRequest(req({requestId,query:'72 g boiled egg',mode:'web'}),deps))).toMatchObject({error:'answer_only'});
+ expect(deps.fallbackResolve).not.toHaveBeenCalled();
+});

@@ -35,6 +35,7 @@ import {
 } from "@/src/lib/beeChat";
 import {beePoseToSituation, type BeeSituation} from "@/src/lib/beeCompanion";
 import { onOpenBee } from "@/src/lib/beeEvents";
+import { expandBeeMacroLabels, latestBeeMessageId } from "@/src/lib/beeConversationUi";
 import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { Colors, Radii } from "@/src/styles/colors";
 
@@ -190,6 +191,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const displayedMessages = snapshot?.liveAnswer && lastMessage?.role === "assistant" && lastMessage.text === LIVE_ANSWER_PLACEHOLDER
     ? messages.slice(0, -1)
     : messages;
+  const latestReplyId = latestBeeMessageId(displayedMessages, Boolean(snapshot?.liveAnswer));
   const pending = snapshot?.pending;
   const pendingInMessages = pending && messages.some((message) =>
     message.draft?.id === pending.id && message.draft.review_version === pending.review_version);
@@ -327,16 +329,20 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                     ) : null}
                     {displayedMessages.map((message) => (
                       <View key={message.id} style={[styles.messageRow, message.role === "user" ? styles.userMessageRow : styles.beeMessageRow]}>
-                        {message.role === "assistant" ? <BeeMascot size="small" situation={message.draft ? "reviewingMatch" : "greeting"} style={styles.messageMascot} /> : null}
+                        {message.role === "assistant" ? (
+                          <View style={styles.messageAvatarSlot}>
+                            {message.id === latestReplyId ? <View testID="bee-latest-message-mascot"><BeeMascot size="small" situation={message.draft ? "reviewingMatch" : "greeting"} style={styles.messageMascot} /></View> : null}
+                          </View>
+                        ) : null}
                         <View style={[styles.messageBubble, message.role === "user" ? styles.userBubble : styles.beeBubble]}>
-                          <Text selectable style={[styles.messageText, message.role === "user" && styles.userMessageText]}>{message.text}</Text>
+                          <Text selectable style={[styles.messageText, message.role === "user" && styles.userMessageText]}>{message.role === "assistant" ? expandBeeMacroLabels(message.text) : message.text}</Text>
                           {message.draft ? renderReview(message.draft) : null}
                         </View>
                       </View>
                     ))}
                     {snapshot?.liveAnswer ? (
                       <View style={[styles.messageRow, styles.beeMessageRow]}>
-                        <BeeMascot size="small" situation="greeting" style={styles.messageMascot} />
+                        <View style={styles.messageAvatarSlot} testID="bee-latest-message-mascot"><BeeMascot size="small" situation="greeting" style={styles.messageMascot} /></View>
                         <View style={[styles.messageBubble, styles.beeBubble]}>
                           <BeeGroundedAnswer key={`${snapshot.thread.id}:${snapshot.thread.version}`} answer={snapshot.liveAnswer} />
                         </View>
@@ -423,7 +429,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 function ActionReview({draft,current,busy,onConfirm,onEdit,onCancel}:{draft:Extract<PendingAction,{kind:"weight"|"goal"}>;current:boolean;busy:boolean;onConfirm:()=>void;onEdit:()=>void;onCancel:()=>void}) {
   return <View style={styles.review}>
     <Text style={styles.foodName}>{draft.kind === "weight" ? "Weight check-in" : "Nutrition goal review"}</Text>
-    {draft.kind === "weight" ? <><Text style={styles.calories}>{draft.weight.originalAmount} {draft.weight.unit}</Text><Text style={styles.serving}>For {draft.weight.localDate}</Text><Text style={styles.calculation}>{draft.weight.updatesCurrentWeight ? "Updates your current profile weight." : "Backdated entry: your newer current weight stays."} Your nutrition targets stay unchanged.</Text></> : <><Text style={styles.serving}>Daily calories: {draft.goal.previous.calorie_target} → {draft.goal.next.calorie_target} kcal</Text><Text style={styles.macro}>Protein {draft.goal.previous.protein_grams ?? "unset"} → {draft.goal.next.protein_grams} g · Carbs {draft.goal.previous.carbs_grams ?? "unset"} → {draft.goal.next.carbs_grams} g · Fat {draft.goal.previous.fat_grams ?? "unset"} → {draft.goal.next.fat_grams} g</Text><Text style={styles.calculation}>Goal: {draft.goal.previous.goal_mode ?? "custom"} → {draft.goal.next.goal_mode}. Target weight stays {draft.goal.next.target_weight ?? "unset"} kg.</Text></>}
+    {draft.kind === "weight" ? <><Text style={styles.calories}>{draft.weight.originalAmount} {draft.weight.unit}</Text><Text style={styles.serving}>For {draft.weight.localDate}</Text><Text style={styles.calculation}>{draft.weight.updatesCurrentWeight ? "Updates your current profile weight." : "Backdated entry: your newer current weight stays."} Your nutrition targets stay unchanged.</Text></> : <><Text style={styles.serving}>Daily calories: {draft.goal.previous.calorie_target} → {draft.goal.next.calorie_target} kcal</Text><Text style={styles.macro}>Protein {draft.goal.previous.protein_grams ?? "unset"} → {draft.goal.next.protein_grams} g · Carbohydrates {draft.goal.previous.carbs_grams ?? "unset"} → {draft.goal.next.carbs_grams} g · Fat {draft.goal.previous.fat_grams ?? "unset"} → {draft.goal.next.fat_grams} g</Text><Text style={styles.calculation}>Goal: {draft.goal.previous.goal_mode ?? "custom"} → {draft.goal.next.goal_mode}. Target weight stays {draft.goal.next.target_weight ?? "unset"} kg.</Text></>}
     {current ? <><Text style={styles.messageText}>{draft.kind === "weight" ? `Save ${draft.weight.originalAmount} ${draft.weight.unit} for ${draft.weight.localDate}?` : "Save these reviewed nutrition goals?"}</Text><View style={styles.actions}><BeeAction label="Confirm" primary disabled={busy} onPress={onConfirm}/><BeeAction label="Edit review" disabled={busy} onPress={onEdit}/><BeeAction label="Cancel" disabled={busy} onPress={onCancel}/></View></> : <Text style={styles.calculation}>{draft.status === "confirmed" ? "Saved" : draft.status === "pending" ? "Review expired or replaced" : draft.status}</Text>}
   </View>;
 }
@@ -459,10 +465,10 @@ function FoodReview({ draft, current, busy, onConfirm, onEdit, onCancel }: {
       <Text style={styles.calories}>{Math.round(food.calories)} kcal</Text>
       <View style={styles.macros}>
         <Text style={styles.macro}>Protein {formatNumber(food.protein)} g</Text>
-        <Text style={styles.macro}>Carbs {formatNumber(food.carbs)} g</Text>
+        <Text style={styles.macro}>Carbohydrates {formatNumber(food.carbs)} g</Text>
         <Text style={styles.macro}>Fat {formatNumber(food.fat)} g</Text>
       </View>
-      <Text style={styles.sourceType}>{food.source === "user_label" ? "Your nutrition label" : food.source === "my_food" ? "Your saved food" : food.source === "openfoodfacts" ? "Open Food Facts product label" : food.source === "usda" ? "USDA nutrition" : "Nutrition source"}</Text>
+      <Text style={styles.sourceType}>{food.source === "user_label" ? "Your nutrition label" : food.source === "my_food" ? "Your saved food" : food.source === "openfoodfacts" ? "Open Food Facts product label" : food.source === "usda" ? "USDA nutrition" : food.source === "trackbing_gist" ? "TrackBing curated foods — check preparation and portion" : "Nutrition source"}</Text>
       <Text style={styles.calculation}>
         {food.grams !== null && source.basis.grams !== null
           ? `${formatNumber(food.grams)} g ÷ ${formatNumber(source.basis.grams)} g × ${formatNumber(source.basis.nutrients.calories)} kcal = ${Math.round(food.calories)} kcal`
@@ -486,7 +492,6 @@ function FoodReview({ draft, current, busy, onConfirm, onEdit, onCancel }: {
       ) : (
         <View style={styles.reviewActions}>
           <Text style={styles.reviewStatus}>{status}</Text>
-          <BeeAction label="Add to today" disabled onPress={onConfirm} />
         </View>
       )}
     </View>
@@ -531,6 +536,7 @@ const styles = StyleSheet.create({
   beeMessageRow: { alignSelf: "stretch", gap: 6 },
   userMessageRow: { alignSelf: "flex-end", justifyContent: "flex-end", maxWidth: "88%" },
   messageMascot: { width: 34, marginTop: 1 },
+  messageAvatarSlot: { width: 34 },
   messageBubble: { borderRadius: Radii.card, paddingHorizontal: 12, paddingVertical: 11 },
   beeBubble: { flex: 1, minWidth: 0, backgroundColor: Colors.surface },
   userBubble: { backgroundColor: Colors.accent },

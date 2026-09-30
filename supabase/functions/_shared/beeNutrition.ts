@@ -24,7 +24,10 @@ export type NutritionDependencies = {
   fetch?: typeof fetch;
   now?: () => Date;
   personal: (query: FoodQuery) => Promise<PersonalRecord[]>;
+  gist?: () => Promise<unknown>;
 };
+export type NutritionPhase = 'all' | 'preferred' | 'fallback';
+export const TRACKBING_GIST_URL = 'https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json';
 const INJECTION =
   /ignore\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|system)\s+instructions|\b(?:system|assistant|developer)\s*:|\b(?:reveal|send|exfiltrate)\b[^\n]{0,80}\b(?:api\s*keys?|secrets?|tokens?)\b|<\/?(?:system|tool_call|assistant)>/i;
 const unavailable = (): NutritionResult => ({
@@ -76,6 +79,9 @@ function preflight(query: FoodQuery): NutritionResult | null {
     typeof query.name !== "string" || !query.name.trim() ||
     query.name.length > 160 || INJECTION.test(query.name)
   ) return unavailable();
+  if (/\bchicken\s+breast\b/i.test(query.name) && !/\b(raw|uncooked|cooked|boiled|fried|grilled|steamed|roasted|baked)\b/i.test(`${query.name} ${query.preparation ?? ''}`)) {
+    return clarify('Was the chicken breast weighed raw or after cooking?');
+  }
   if (
     [query.preparation, query.brand, query.variant, query.market].some((
       value,
@@ -172,7 +178,7 @@ function scaleRecord(
   source: ReviewedFood["source"],
 ): NutritionResult {
   if (
-    !["usda", "openfoodfacts", "my_food", "user_label"].includes(source) ||
+    !["usda", "openfoodfacts", "my_food", "user_label", "trackbing_gist"].includes(source) ||
     !identityMatches(query, evidence.identity)
   ) return unavailable();
   if (evidence.excerpt.length > 12000 || INJECTION.test(evidence.excerpt)) {
@@ -183,6 +189,16 @@ function scaleRecord(
     snapshot = JSON.parse(evidence.excerpt);
   } catch {
     return unavailable();
+  }
+  if (
+    source === 'trackbing_gist' && (evidence.url !== TRACKBING_GIST_URL || evidence.record !== 'independent')
+  ) return unavailable();
+  if (source === "trackbing_gist") {
+    const row=object(snapshot.data), n=evidence.basis.nutrients;
+    // Check the source row too, not just a URL and two copies of the basis.
+    if (!row || row.name!==evidence.identity || evidence.basis.grams!==100 || evidence.basis.unit!=="g" ||
+      n.calories!==row.c || n.protein!==row.p || n.carbs!==row.cb || n.fat!==row.f ||
+      (row.unit!=null && row.unit!=="g" && row.nutrition_basis!=="per_100g")) return unavailable();
   }
   if (
     snapshot.identity !== evidence.identity || snapshot.url !== evidence.url ||
@@ -340,7 +356,7 @@ function evidence(
     ? "USDA FoodData Central (CC0)"
     : source === "openfoodfacts"
     ? "Open Food Facts contributors (ODbL)"
-    : "Your saved food";
+    : source === 'trackbing_gist' ? 'TrackBing curated foods' : "Your saved food";
   return {
     identity,
     title: identity,
@@ -354,7 +370,7 @@ function evidence(
       ? "CC0-1.0"
       : source === "openfoodfacts"
       ? "ODbL-1.0"
-      : "user-owned",
+      : source === 'trackbing_gist' ? 'operator-provided' : "user-owned",
     excerpt: JSON.stringify({
       identity,
       basis,
@@ -407,10 +423,29 @@ function select(
 export async function searchNutrition(
   query: FoodQuery,
   deps: NutritionDependencies,
+  phase: NutritionPhase = 'all',
 ): Promise<NutritionResult> {
   const early = preflight(query);
   if (early) return early;
   const now = (deps.now?.() ?? new Date()).toISOString();
+  if (phase === 'fallback') return searchUsda(query,deps,now);
+  if (deps.gist) {
+    let raw:unknown;
+    try {raw=await deps.gist();} catch {raw=null;}
+    const rows = Array.isArray(raw) ? raw.slice(0,500) : [];
+    const entries = rows.flatMap((value,index):NutritionEvidence[]=>{
+      const row=object(value);
+      if (!row || typeof row.name !== 'string' || row.name.length>160 || !identityMatches(query,row.name)) return [];
+      // Existing mass records use c/p/cb/f per100g. Legacy ml/serving rows need
+      // an explicit basis: the preferred display unit alone cannot establish it.
+      if (row.unit != null && row.unit !== 'g' && row.nutrition_basis !== 'per_100g') return [];
+      const calories=nutrient(row.c);if(calories===null)return [];
+      const basis:NutritionBasis={grams:100,unit:'g',count:null,milliliters:null,nutrients:{calories,protein:nutrient(row.p),carbs:nutrient(row.cb),fat:nutrient(row.f)}};
+      return [evidence(row.name,basis,String(index),TRACKBING_GIST_URL,null,{...row},'trackbing_gist',now)];
+    });
+    const result=select(query,entries,'trackbing_gist');
+    if(result)return result;
+  }
   const personal = await deps.personal(query);
   const own = personal.filter((p) =>
     !p.ai_estimated && identityMatches(query, p.name)
@@ -438,86 +473,6 @@ export async function searchNutrition(
   }).filter((e): e is NutritionEvidence => e !== null);
   const ownResult = select(query, own, "my_food");
   if (ownResult) return ownResult;
-  // USDA generic records are never used to replace a branded product.
-  if (
-    !query.brand && !query.variant && !/fudgee/i.test(query.name) &&
-    deps.usdaApiKey
-  ) {
-    let data: unknown;
-    try {
-      data = await apiJson(
-        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${
-          encodeURIComponent(deps.usdaApiKey)
-        }`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: [query.name, query.preparation].filter(Boolean).join(" "),
-            dataType: ["SR Legacy", "Foundation", "Survey (FNDDS)"],
-            pageSize: 8,
-          }),
-        },
-        deps,
-      );
-    } catch {
-      data = null;
-    }
-    const raw = object(data)?.foods;
-    const records = (Array.isArray(raw) ? raw : []).slice(0, 8).flatMap(
-      (value): NutritionEvidence[] => {
-        const food = object(value);
-        if (
-          !food || typeof food.description !== "string" ||
-          !Number.isSafeInteger(food.fdcId) ||
-          !identityMatches(query, food.description)
-        ) return [];
-        const ns = Array.isArray(food.foodNutrients)
-          ? food.foodNutrients.map(object).filter((
-            n,
-          ): n is Record<string, unknown> => n !== null)
-          : [];
-        const get = (id: number) =>
-          nutrient(ns.find((n) => n.nutrientId === id)?.value);
-        const calories = get(1008) ??
-          (get(1062) === null ? null : get(1062)! / 4.184);
-        if (calories === null) return [];
-        const basis: NutritionBasis = {
-          grams: 100,
-          unit: "g",
-          count: null,
-          milliliters: null,
-          nutrients: {
-            calories,
-            protein: get(1003),
-            carbs: get(1005),
-            fat: get(1004),
-          },
-        };
-        const id = String(food.fdcId);
-        return [
-          evidence(
-            food.description,
-            basis,
-            id,
-            `https://fdc.nal.usda.gov/food-details/${id}/nutrients`,
-            null,
-            {
-              fdcId: food.fdcId,
-              description: food.description,
-              foodNutrients: ns.filter((n) =>
-                [1008, 1062, 1003, 1005, 1004].includes(Number(n.nutrientId))
-              ),
-            },
-            "usda",
-            now,
-          ),
-        ];
-      },
-    );
-    const result = select(query, records, "usda");
-    if (result) return result;
-  }
   const fields =
     "code,product_name,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,serving_quantity_unit,nutriments,countries_tags,nutrition_data_per";
   const term = [query.name, query.brand, query.variant].filter(Boolean).join(
@@ -538,7 +493,7 @@ export async function searchNutrition(
       },
     }, deps);
   } catch {
-    return unavailable();
+    data = null;
   }
   const raw = object(data),
     products = query.barcode
@@ -665,5 +620,94 @@ export async function searchNutrition(
       ),
     ];
   });
-  return select(query, entries, "openfoodfacts") ?? unavailable();
+  return select(query, entries, "openfoodfacts") ?? (phase === "all" ? await searchUsda(query,deps,now) : unavailable());
+}
+
+async function searchUsda(query:FoodQuery,deps:NutritionDependencies,now:string):Promise<NutritionResult> {
+  // USDA generic records are never used to replace a branded product.
+  if (
+    !query.brand && !query.variant && !/fudgee/i.test(query.name) &&
+    deps.usdaApiKey
+  ) {
+    let data: unknown;
+    try {
+      data = await apiJson(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${
+          encodeURIComponent(deps.usdaApiKey)
+        }`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: [query.name, query.preparation].filter(Boolean).join(" "),
+            dataType: ["SR Legacy", "Foundation", "Survey (FNDDS)"],
+            pageSize: 8,
+          }),
+        },
+        deps,
+      );
+    } catch {
+      data = null;
+    }
+    const raw = object(data)?.foods;
+    const records = (Array.isArray(raw) ? raw : []).slice(0, 8).flatMap(
+      (value): NutritionEvidence[] => {
+        const food = object(value);
+        if (
+          !food || typeof food.description !== "string" ||
+          !Number.isSafeInteger(food.fdcId) ||
+          !identityMatches(query, food.description)
+        ) return [];
+        const ns = Array.isArray(food.foodNutrients)
+          ? food.foodNutrients.map(object).filter((
+            n,
+          ): n is Record<string, unknown> => n !== null)
+          : [];
+        const get = (id: number) =>
+          nutrient(ns.find((n) => n.nutrientId === id)?.value);
+        const calories = get(1008) ??
+          (get(1062) === null ? null : get(1062)! / 4.184);
+        if (calories === null) return [];
+        const basis: NutritionBasis = {
+          grams: 100,
+          unit: "g",
+          count: null,
+          milliliters: null,
+          nutrients: {
+            calories,
+            protein: get(1003),
+            carbs: get(1005),
+            fat: get(1004),
+          },
+        };
+        const id = String(food.fdcId);
+        return [
+          evidence(
+            food.description,
+            basis,
+            id,
+            `https://fdc.nal.usda.gov/food-details/${id}/nutrients`,
+            null,
+            {
+              fdcId: food.fdcId,
+              description: food.description,
+              foodNutrients: ns.filter((n) =>
+                [1008, 1062, 1003, 1005, 1004].includes(Number(n.nutrientId))
+              ),
+            },
+            "usda",
+            now,
+          ),
+        ];
+      },
+    );
+    const result = select(query, records, "usda");
+    if (result) return result;
+  }
+  return unavailable();
+}
+
+/** Fixed operator-owned destination; no model/user URL or Google lead list. */
+export function loadGistNutrition(signal:AbortSignal,fetcher?:typeof fetch):Promise<unknown> {
+  return apiJson(TRACKBING_GIST_URL,{headers:{Accept:"application/json"}},{signal,fetch:fetcher,usdaApiKey:"",personal:async()=>[]});
 }

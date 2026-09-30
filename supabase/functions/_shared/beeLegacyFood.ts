@@ -27,6 +27,7 @@ export type LegacyFoodDependencies = {
   searchEnabled(): boolean;
   interpret(text: string, signal: AbortSignal, onUsage?:(usage:GeminiUsage)=>void): Promise<unknown>;
   resolve(query: FoodQuery, signal: AbortSignal, userId: string): Promise<NutritionResult>;
+  fallbackResolve?(query: FoodQuery, signal: AbortSignal, userId: string): Promise<NutritionResult>;
   ground(query: FoodQuery, signal: AbortSignal, onUsage: (usage: GeminiUsage) => void): Promise<GroundedAnswer>;
   newToken?: () => string;
 };
@@ -46,13 +47,13 @@ function parseRequest(value: unknown): LegacyFoodRequest {
   return { requestId: body.requestId, query: body.query.trim(), mode };
 }
 function toLegacyFood(food: ReviewedFood): LegacyFood | null {
-  if (!["usda", "openfoodfacts", "my_food"].includes(food.source) || typeof food.grams !== "number" || !Number.isFinite(food.grams) || food.grams <= 0 || food.grams > 10_000 || [food.calories, food.protein, food.carbs, food.fat].some(value => typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 10_000)) return null;
+  if (!["usda", "openfoodfacts", "my_food", "trackbing_gist"].includes(food.source) || typeof food.grams !== "number" || !Number.isFinite(food.grams) || food.grams <= 0 || food.grams > 10_000 || [food.calories, food.protein, food.carbs, food.fat].some(value => typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 10_000)) return null;
   const evidence = food.evidence;
   if (!evidence || !evidence.sourceId || !evidence.license || (food.source === "my_food" ? evidence.record !== "user_owned" : evidence.record !== "independent" || !isSafeGroundingUrl(evidence.url))) return null;
   if (!food.query.portion || JSON.stringify(food.query.portion) !== JSON.stringify(food.portion) || (food.portion.unit === "g" && food.portion.amount !== food.grams)) return null;
   return {
     name: food.name, serving_label: food.servingLabel, serving_grams: food.grams, kcal: food.calories, protein: food.protein, carbs: food.carbs, fat: food.fat,
-    confidence: "high", source: food.source as LegacyFood["source"], source_detail: evidence.title,
+    confidence: food.source === "trackbing_gist" ? "medium" : "high", source: food.source as LegacyFood["source"], source_detail: evidence.title,
     evidence, requested_portion: food.portion, requested_query: food.query,
     ...(food.query.brand ? { brand: food.query.brand } : {}),
   };
@@ -98,30 +99,41 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
     finally {await store.recordCall?.(request,token,interpretCall,interpretationUsage??{inputTokens:6000,outputTokens:4096,searchQueries:0});}
     const intent = retainFoodList(parseIntent(interpreted),request.query);
     if (intent.kind !== "nutrition") return await finish({ error: "needs_input", message: intent.kind === "clarify" ? intent.question : intent.kind === "multiple" ? "Look up each food separately with its portion." : "Enter one food and its portion, such as 72 g boiled egg." }, false);
-    if (request.mode !== "web") {
-      const resolved = await deps.resolve(intent.query, signal, user.id);
+    const independentResult = async (resolved:NutritionResult):Promise<Response|null> => {
       if (resolved.kind === "found") {
-        const food = toLegacyFood(resolved.food);
-        if (!food) return await finish({ error: "needs_input", message: "This record does not verify the serving weight and complete nutrition. Enter the package label or provide a weight in grams." }, false);
-        const result = { food, alternatives: [] };
-        return await finish(result, true, result);
+        const food=toLegacyFood(resolved.food);
+        if (!food) return finish({error:"needs_input",message:"This record does not verify the serving weight and complete nutrition. Enter the package label or provide a weight in grams."},false);
+        const result={food,alternatives:[]};return finish(result,true,result);
       }
-      if (resolved.kind === "clarification" || !deps.searchEnabled()) return await finish({ error: "needs_input", message: resolved.message }, false);
-    } else if (!deps.searchEnabled()) return await finish({ error: "needs_input", message: "Live Search is unavailable. Try a database lookup or enter the package label manually." }, false);
+      return resolved.kind === "clarification" ? finish({error:"needs_input",message:resolved.message},false) : null;
+    };
+    if (request.mode !== "web") {
+      const resolved=await deps.resolve(intent.query,signal,user.id);
+      const response=await independentResult(resolved);if(response)return response;
+      if (!deps.searchEnabled()) {
+        if (deps.fallbackResolve) {const fallback=await independentResult(await deps.fallbackResolve(intent.query,signal,user.id));if(fallback)return fallback;}
+        return await finish({error:"needs_input",message:resolved.kind!=="found" ? resolved.message : "Enter the label manually."},false);
+      }
+    } else if (!deps.searchEnabled()) return await finish({error:"needs_input",message:"Live Search is unavailable. Try a database lookup or enter the package label manually."},false);
     const search = await store.reserveSearch(request, token);
     // A consumed Search reservation is never reusable, even when the lookup credit was refunded.
     if (!search.ok || search.replay !== false) return await finish({ error: search.ok ? "search_unavailable" : quotaError(search.error) }, false);
     let groundedUsage:GeminiUsage|undefined; const searchCall=crypto.randomUUID();
-    let searchQueries = 3; let answer: GroundedAnswer;
+    let searchQueries = 3; let answer: GroundedAnswer | undefined; let searchFailed=false;
     try {
       answer = await deps.ground(intent.query, signal, usage => { groundedUsage=usage; searchQueries = usage.searchQueries; });
       if (!validLiveAnswer(answer)) throw new Error("invalid_response");
       searchQueries = answer.searchQueryCount;
-    } finally {
+    } catch { searchFailed=true;answer=undefined; } finally {
       // Actual queries remain accounted for even if citation/widget validation rejects the answer.
       await store.recordCall?.(request,token,searchCall,groundedUsage??{inputTokens:2000,outputTokens:4096,searchQueries:3});
       await store.measureSearch(request, token, searchQueries);
     }
+    // No grounded text or links enter this independent lookup.
+    if (request.mode !== "web" && deps.fallbackResolve && !signal.aborted) {
+      const fallback=await independentResult(await deps.fallbackResolve(intent.query,signal,user.id));if(fallback)return fallback;
+    }
+    if (searchFailed || !answer) throw new Error("search_unavailable");
     return await finish({ error: "answer_only", answer, message: "This live Search answer cannot create a food entry. Verify a matching nutrition record or enter the package label manually." }, true, { error: "needs_input", message: REFRESH_MESSAGE });
   } catch {
     if (reserved) {

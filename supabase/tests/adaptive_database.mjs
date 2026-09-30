@@ -70,6 +70,31 @@ export async function runAdaptiveDatabaseTests({assert,query,queryAsync,literal:
  assert.throws(()=>asUser(`update public.food_logs set bee_provenance='{}' where user_id=${q(actor)};`,actor));
  asUser(`update public.food_logs set name='User edited fixture egg' where user_id=${q(actor)};`,actor);assert.equal(query(`select bee_provenance->>'user_edited' from public.food_logs where user_id=${q(actor)};`),'true');
  process.stdout.write('Current tier-bound food confirmation, response-loss recovery and protected provenance passed.\n');
+ // Illustrative TEST DATA: curated source snapshots, never actual nutrition claims.
+ const gistFood={...food,source:'trackbing_gist',evidence:{...food.evidence,sourceId:'0',license:'operator-provided',attribution:'TrackBing curated foods',url:'https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json'}};
+ const gistSnapshot=()=>rpc('bee_snapshot',[q(actor),q(thread.id)]);
+ const proposeGist=(value)=>{const snapshot=gistSnapshot();return finish(begin({kind:'message',text:'Review TEST DATA gist food'},thread.id,snapshot.thread.version),{text:'Review curated TEST DATA.',draft:value,state:{awaiting:'review'}});};
+ const gistReview=proposeGist(gistFood);assert.equal(gistReview.ok,true);
+ const oldGist=gistReview.snapshot.pending;
+ assert.equal(query(`select count(*) from public.food_logs where bee_action_id=${q(oldGist.id)};`),'0');
+ assert.equal(begin({kind:'confirm',actionId:oldGist.id,reviewVersion:oldGist.review_version},thread.id,gistReview.snapshot.thread.version,stranger).error,'not_found');
+ const newGist=proposeGist({...gistFood,grams:100,servingLabel:'100 g',portion:{amount:100,unit:'g'},query:{...gistFood.query,portion:{amount:100,unit:'g'}},calories:100,protein:6,carbs:10,fat:4});assert.equal(newGist.ok,true);
+ assert.equal(query(`select status from public.bee_pending_actions where id=${q(oldGist.id)};`),'superseded');
+ const staleGist=begin({kind:'confirm',actionId:oldGist.id,reviewVersion:oldGist.review_version},thread.id,newGist.snapshot.thread.version);
+ assert.equal(staleGist.ok ? finish(staleGist,{}).error : staleGist.error,'stale_action');
+ const activeGist=gistSnapshot().pending;
+ const gistConfirm=begin({kind:'confirm',actionId:activeGist.id,reviewVersion:activeGist.review_version},thread.id,gistSnapshot().thread.version);
+ const gistResults=await Promise.all(Array.from({length:4},()=>queryAsync(`select public.bee_finish_turn(${q(actor)},${q(gistConfirm.thread_id)},${q(gistConfirm.request)},${q(gistConfirm.token)},'{}');`).then(JSON.parse)));
+ assert.ok(gistResults.every(r=>r.ok));assert.deepEqual(finish(gistConfirm,{}),gistResults[0]);
+ assert.equal(query(`select count(*) from public.food_logs where user_id=${q(actor)} and bee_action_id=${q(activeGist.id)};`),'1');
+ assert.equal(query(`select calories||':'||(bee_provenance#>>'{food,source}') from public.food_logs where bee_action_id=${q(activeGist.id)};`),'100:trackbing_gist');
+ assert.equal(query(`select has_function_privilege('authenticated','public.bee_finish_turn(uuid,uuid,uuid,uuid,jsonb)','execute');`),'f');
+ for(const bad of [ {...gistFood,evidence:{...gistFood.evidence,url:'https://gist.githubusercontent.com/towtu/unretrieved/raw/foods.json'}}, {...gistFood,evidence:{...gistFood.evidence,record:'user_owned'}}, {...gistFood,evidence:{...gistFood.evidence,basis:{...gistFood.evidence.basis,grams:1}}} ]) {
+   const isolated=begin({kind:'new_thread'}).result.snapshot.thread;
+   assert.throws(()=>finish(begin({kind:'message',text:'Invalid TEST DATA'},isolated.id,isolated.version),{draft:bad}),/Invalid reviewed food/);
+ }
+ process.stdout.write('Curated gist proposals: exact source policy, owner denial, superseded drafts and concurrent replay save exactly once.\n');
+
  assert.equal(rpc('reserve_ai_lookup',[q(actor),q(randomUUID()),q('fixture'),q(randomUUID())]).ok,false);
  for(const table of ['billing_provider_bindings','billing_purchase_credentials','billing_requests'])assert.equal(query(`select has_table_privilege('authenticated','public.${table}','SELECT,INSERT,UPDATE,DELETE');`),'f');
  const br=randomUUID(),bt=randomUUID();const started=rpc('begin_billing_request',[q(actor),q(br),q('checkout-fixture'),q(bt)]);assert.equal(started.ok,true);assert.equal(rpc('begin_billing_request',[q(actor),q(br),q('changed'),q(bt)]).error,'conflict');assert.equal(rpc('begin_billing_request',[q(actor),q(br),q('checkout-fixture'),q(bt)]).error,'busy');assert.equal(query(`select public.finish_billing_request(${q(actor)},${q(br)},${q(bt)},${json({ok:true,fixture:true})});`),'t');assert.equal(rpc('begin_billing_request',[q(actor),q(br),q('checkout-fixture'),q(bt)]).replay,true);

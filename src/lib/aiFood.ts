@@ -7,7 +7,7 @@ import type { FoodQuery, GroundedAnswer, NutritionEvidence, Portion } from "../.
 // validation live server-side; this only invokes the function and maps the
 // result into a tidy discriminated union for the UI.
 
-export type FoodSource = "my_food" | "web" | "usda" | "openfoodfacts" | "ai_estimate";
+export type FoodSource = "my_food" | "web" | "usda" | "openfoodfacts" | "ai_estimate" | "trackbing_gist";
 
 export type AiFood = {
   name: string;
@@ -129,7 +129,7 @@ export function isLoggableAiFood(value: unknown): value is AiFood {
     typeof value.serving_label === "string" && value.serving_label.trim().length > 0 &&
     typeof value.serving_grams === "number" && Number.isFinite(value.serving_grams) && value.serving_grams > 0 &&
     [value.kcal, value.protein, value.carbs, value.fat].every((number) => typeof number === "number" && Number.isFinite(number) && number >= 0) &&
-    ["usda", "openfoodfacts", "my_food"].includes(String(value.source)) &&
+    ["usda", "openfoodfacts", "my_food", "trackbing_gist"].includes(String(value.source)) &&
     ["high", "medium", "low"].includes(String(value.confidence)) &&
     [value.brand, value.source_detail, value.notes].every((text) => text === undefined || typeof text === "string") &&
     (value.evidence === undefined || isBeeNutritionEvidence(value.evidence)) &&

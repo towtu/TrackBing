@@ -4,7 +4,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handleLegacyFoodRequest, LEGACY_FOOD_HEADERS, type LegacyFoodStore } from "../_shared/beeLegacyFood.ts";
 import { geminiGrounded, geminiJson, type GeminiUsage } from "../_shared/beeProviders.ts";
-import { searchNutrition } from "../_shared/beeNutrition.ts";
+import { loadGistNutrition, searchNutrition } from "../_shared/beeNutrition.ts";
 import { INTENT_PROMPT } from "../_shared/beeConversation.ts";
 
 const boundedFetch: typeof fetch = (input, init) => fetch(input, {
@@ -62,7 +62,9 @@ Deno.serve(async (req: Request) => {
     store, configured: () => Boolean(apiKey), searchEnabled: () => Deno.env.get("GEMINI_SEARCH_ENABLED") === "true",
     interpret: (text, signal, onUsage) => geminiJson(INTENT_PROMPT, { userMessage: text }, { apiKey, model, signal, maxTokens: 4096, onUsage: value=>{usage(value);onUsage?.(value);} }),
     ground: (query, signal, measuredUsage) => geminiGrounded(query, { apiKey, model, signal, maxTokens: 4096, onUsage: value => { usage(value); measuredUsage(value); } }),
+    fallbackResolve: (query, signal) => searchNutrition(query, {usdaApiKey:Deno.env.get("USDA_API_KEY")??"",signal,personal:async()=>[]},"fallback"),
     resolve: (query, signal, userId) => searchNutrition(query, {
+        gist: () => loadGistNutrition(signal),
       usdaApiKey: Deno.env.get("USDA_API_KEY") ?? "", signal,
       personal: async food => {
         const escaped = food.name.replace(/[\\%_]/g, " ");
@@ -70,6 +72,6 @@ Deno.serve(async (req: Request) => {
         if (error) throw new Error("personal_food_unavailable");
         return data ?? [];
       },
-    }),
+    }, "preferred"),
   });
 });

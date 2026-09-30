@@ -6,7 +6,7 @@ import {
   geminiJson,
   type GeminiUsage,
 } from "../_shared/beeProviders.ts";
-import { searchNutrition } from "../_shared/beeNutrition.ts";
+import { loadGistNutrition, searchNutrition } from "../_shared/beeNutrition.ts";
 import { INTENT_PROMPT } from "../_shared/beeConversation.ts";
 
 // Fixed destinations; no user-supplied URLs. Bound auth/database requests too.
@@ -83,8 +83,10 @@ Deno.serve(async (req: Request) => {
           onUsage(usage);
         },
       }),
+    fallbackSearch: (query, signal) => searchNutrition(query, {usdaApiKey:Deno.env.get("USDA_API_KEY")??"",signal,personal:async()=>[]},"fallback"),
     search: (query, signal, userId) =>
       searchNutrition(query, {
+        gist: () => loadGistNutrition(signal),
         usdaApiKey: Deno.env.get("USDA_API_KEY") ?? "",
         signal,
         personal: async (food) => {
@@ -95,6 +97,6 @@ Deno.serve(async (req: Request) => {
           if (error) throw new Error("personal_food_unavailable");
           return data ?? [];
         },
-      }),
+      }, "preferred"),
   });
 });

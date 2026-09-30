@@ -317,6 +317,25 @@ no grounded/billing/session export and the restricted fixed-path cascade trigger
 Two SDK-compatible native modules were added for file sharing; no unrelated
 dependency upgrade was made. The 16 existing audit advisories remain unresolved.
 
+## 30 September food-chat follow-up
+
+The [food correction handoff](../bee-food-corrections.md) records the latest-reply
+mascot, readable macro names, retained raw/ra corrections and curated-gist-first,
+Google-before-USDA resolution. It includes the forward-only
+`20260930000200_gist_food_source.sql` and updated rollback/source-policy guidance.
+
+Latest verification: **46 suites / 618 tests**, app/functions typechecks, lint,
+real PostgreSQL invariants plus 17 Deno handler tests, 23-route web export and both
+native Hermes exports passed. Controlled Chrome at 375/768/1440 passed, including
+raw clarification, retained grams, superseded Add removal and no-search cancellation;
+zero unexpected console/network failures. Secret patterns/diff checks passed;
+the 16 existing dependency advisories remain. No new dependency was added.
+
+The public production bundle still shows the legacy `ai-food` UI; this follow-up
+was not deployed. Its frontend cannot establish the deployed backend provider.
+The new branch uses configurable Gemini and owner-scoped persistent threads.
+Google-only text remains transient and cannot authorize or supply a diary write.
+
 ## Twenty-item launch evidence
 
 “Implemented” below means locally implemented and checked, not production launch

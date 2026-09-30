@@ -57,6 +57,7 @@ export type ReviewedFood = {
   source:
     | "web"
     | "usda"
+    | "trackbing_gist"
     | "openfoodfacts"
     | "my_food"
     | "user_label"

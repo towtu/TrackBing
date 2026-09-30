@@ -19,6 +19,7 @@ import {
   knownHistory,
   modelContext,
   resolveNutritionIntent,
+  review,
   type TurnOutcome,
 } from "./beeConversation.ts";
 import { adaptiveTurn, type ProgressContext } from "./beeAdaptiveTurn.ts";
@@ -99,6 +100,8 @@ export type BeeDependencies = {
     signal: AbortSignal,
     userId: string,
   ): Promise<NutritionResult>;
+  /** Independent final source; never receives grounded answer text or links. */
+  fallbackSearch?(query: FoodQuery, signal: AbortSignal, userId: string): Promise<NutritionResult>;
   ground(
     query: FoodQuery,
     signal: AbortSignal,
@@ -211,6 +214,35 @@ export async function handleBeeRequest(
     }
   };
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]);
+  // Search output stays transient. The final fallback uses only the original
+  // normalized food query and independently retrieved nutrition records.
+  async function searchThenFallback(query:FoodQuery,outcome:TurnOutcome,answerOnly=false):Promise<TurnOutcome> {
+    let failed = false;
+    if (deps.searchEnabled()) {
+      const reservation=await store.reserveSearch(request,lease);
+      if (!reservation.ok || reservation.replay) return {error:reservation.ok?"search_unavailable":reservation.error};
+      let usage:GeminiUsage|undefined;const callId=crypto.randomUUID();
+      try {outcome.liveAnswer=await deps.ground(query,signal,value=>{usage=value;});}
+      catch {failed=true;}
+      finally {
+        await store.recordCall?.(request,lease,callId,usage??{inputTokens:2000,outputTokens:4096,searchQueries:3});
+        await store.measureSearch(request,lease,usage?.searchQueries??outcome.liveAnswer?.searchQueryCount??3);
+      }
+      if (outcome.liveAnswer) {
+        outcome.text="I showed a live search answer. Search again to refresh it, or use a barcode or package label to add food.";
+        outcome.state={awaiting:"none",query};
+      }
+    } else outcome.text="Live search is unavailable right now. Try a barcode, a more specific food, or enter the package label in Add Food.";
+    if (!answerOnly && deps.fallbackSearch && !signal.aborted) {
+      const result=await deps.fallbackSearch(query,signal,user!.id);
+      if (result.kind==="found") {Object.assign(outcome,review(result.food));return outcome;}
+      if (result.kind==="clarification") {
+        outcome.text=result.message;outcome.state={awaiting:"clarification",query};outcome.invalidate_pending=true;return outcome;
+      }
+    }
+    if (failed) throw new Error("search_unavailable");
+    return outcome;
+  }
   let reserved = false;
   try {
     const snapshot = await store.snapshot(lease.thread_id);
@@ -240,7 +272,8 @@ export async function handleBeeRequest(
         state: { awaiting: "clarification", query: context.state.query },
       });
     }
-    if (deterministic) return await finish(deterministic);
+    const correctionQuery = deterministic?.lookup_query;
+    if (deterministic && !correctionQuery) return await finish(deterministic);
     if (readOnlyHistory) {
       const day = shiftDay(localDay((deps.now ?? (()=>new Date()))(),request.timeZone),-readOnlyHistory.daysAgo);
       const bounds = dayBounds(day,request.timeZone);
@@ -269,16 +302,16 @@ export async function handleBeeRequest(
         try { return await deps.generate!(system,input,signal,value=>{usage=value;}); }
         finally { await store.recordCall?.(request,lease,callId,usage??{inputTokens:6000,outputTokens:4096,searchQueries:0}); }
       };
-      const outcome = await adaptiveTurn(request,context,progress,entitlement.tier,model,q=>deps.search(q,signal,user.id),(deps.now??(()=>new Date()))());
+      let missed = false;
+      const outcome = correctionQuery
+        ? { ...await resolveNutritionIntent({kind:"nutrition",query:correctionQuery},context,async q=>{
+            const result=await deps.search(q,signal,user.id);missed=result.kind==="unavailable";return result;
+          }), ...(missed ? {needsWeb:correctionQuery} : {}) }
+        : await adaptiveTurn(request,context,progress,entitlement.tier,model,q=>deps.search(q,signal,user.id),(deps.now??(()=>new Date()))());
       const {needsWeb,...persisted}=outcome;
-      if (needsWeb && deps.searchEnabled()) {
-        const searchReservation = await store.reserveSearch(request,lease);
-        if (!searchReservation.ok || searchReservation.replay) { await store.release(request,lease,false,null); reserved=false; return await finish({error:searchReservation.ok ? "search_unavailable" : searchReservation.error}); }
-        let usage:GeminiUsage|undefined;
-        const callId=crypto.randomUUID();
-        try { persisted.liveAnswer = await deps.ground(needsWeb,signal,value=>{usage=value;}); }
-        finally { await store.recordCall?.(request,lease,callId,usage??{inputTokens:2000,outputTokens:4096,searchQueries:3}); await store.measureSearch(request,lease,usage?.searchQueries??3); }
-        persisted.text="I showed a live search answer. Search again to refresh it, or use a barcode or package label to add food.";
+      if (needsWeb) {
+        const resolved = await searchThenFallback(needsWeb,persisted);
+        if (resolved.error) {await store.release(request,lease,false,null);reserved=false;return await finish(resolved);}
       }
       let insight:BeeInsight|undefined;
       if (kind === "insight" && persisted.text && store.saveInsight) insight=await store.saveInsight(progress.revision,request.timeZone,persisted.text,persisted.suggested_pose??"greeting");
@@ -313,13 +346,8 @@ export async function handleBeeRequest(
     if (!reservation.ok) return await finish({ error: reservation.error });
     if (reservation.replay) return await finish(reservation.result ?? {error:"conflict"});
     reserved = true;
-    const intent = retainFoodList(
-      parseIntent(
-        await deps.interpret(
-          modelContext(request.command.text, context),
-          signal,
-        ),
-      ),
+    const intent = correctionQuery ? {kind:"nutrition" as const,query:correctionQuery} : retainFoodList(
+      parseIntent(await deps.interpret(modelContext(request.command.text,context),signal)),
       request.command.text,
     );
     const explicitWeb =
@@ -343,43 +371,8 @@ export async function handleBeeRequest(
       outcome.state?.awaiting === "clarification" &&
       outcome.text?.startsWith("I couldn't verify")
     ) {
-      if (!deps.searchEnabled()) {
-        outcome.text =
-          "Live search is unavailable right now. Try a barcode, a more specific food, or enter the package label in Add Food.";
-      } else {
-        const searchReservation = await store.reserveSearch(request, lease);
-        if (!searchReservation.ok || searchReservation.replay) {
-          await store.release(request, lease, false, null);
-          reserved = false;
-          return await finish({
-            error: searchReservation.ok
-              ? "search_unavailable"
-              : searchReservation.error,
-          });
-        }
-        let usage: GeminiUsage | undefined;
-        let liveAnswer: GroundedAnswer;
-        try {
-          liveAnswer = await deps.ground(intent.query, signal, (value) => {
-            usage = value;
-          });
-        } finally {
-          if (usage) {
-            await store.measureSearch(request, lease, usage.searchQueries);
-          }
-        }
-        if (!usage) {
-          await store.measureSearch(
-            request,
-            lease,
-            liveAnswer.searchQueryCount,
-          );
-        }
-        outcome.liveAnswer = liveAnswer;
-        outcome.text =
-          "I showed a live search answer. Search again to refresh it, or use a barcode or package label to add food.";
-        outcome.state = { awaiting: "none", query: intent.query };
-      }
+      const resolved = await searchThenFallback(intent.query,outcome,explicitWeb);
+      if (resolved.error) {await store.release(request,lease,false,null);reserved=false;return await finish(resolved);}
     }
     // Match existing business policy: only a usable nutrition lookup costs a
     // credit. Interpretation/no-match failures retain the per-minute attempt.

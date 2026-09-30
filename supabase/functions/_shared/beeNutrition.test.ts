@@ -12,7 +12,7 @@ function deps(foods:unknown[]=[egg],products:unknown[]=[]):NutritionDependencies
 }
 describe('independent source nutrition',()=>{
  it('scales retrieved per100g boiled egg to72g in application code and preserves provenance',async()=>{
-  const d=deps(),r=await searchNutrition(q(),d);expect(r).toMatchObject({kind:'found',food:{calories:115,protein:9.4,grams:72,query:{preparation:'boiled'},source:'usda',evidence:{sourceId:'123',license:'CC0-1.0',retrievedAt:'2026-09-26T00:00:00.000Z'}}});expect(d.fetch).toHaveBeenCalledTimes(1);
+  const d=deps(),r=await searchNutrition(q(),d);expect(r).toMatchObject({kind:'found',food:{calories:115,protein:9.4,grams:72,query:{preparation:'boiled'},source:'usda',evidence:{sourceId:'123',license:'CC0-1.0',retrievedAt:'2026-09-26T00:00:00.000Z'}}});expect(d.fetch.mock.calls.filter(([url])=>url.includes("usda.gov"))).toHaveLength(1);
   if(r.kind==='found')expect(scaleEvidence(q({portion:{amount:100,unit:'g'}}),r.food.evidence,'usda')).toMatchObject({kind:'found',food:{calories:160,protein:13,grams:100}});
  });
  it.each(['Egg, whole, raw','Egg, whole, fried','Egg whites, boiled','Whole wheat bread'])('rejects incompatible identity %s',async description=>expect((await searchNutrition(q(),deps([{...egg,description}]))).kind).toBe('unavailable'));

@@ -19,7 +19,17 @@ module.exports = async function installBeeUiMock(page) {
   const entitlement={tier:"pro",remaining:{requests:250,search:50,insights:30,input_tokens:800000,output_tokens:200000},limits:{requests:250,search:50,insights:30,input_tokens:800000,output_tokens:200000},reset_at:"2026-10-27T00:00:00Z"};
   let snapshot = {entitlement, thread: { id: "22222222-2222-4222-8222-222222222222", version: 0 }, messages: [], memories: [{ key: "usual_preparation", value: "I measure rice cooked", updated_at: "2026-09-26T00:00:00Z" }], profile: { preferred_name: "Demo", calorie_target: 2000 }, pending: null };
   let searchCount = 0;
-  const message = (role, text, draft) => ({ id: `message-${snapshot.thread.version}-${snapshot.messages.length}`, role, text, created_at: new Date().toISOString(), ...(draft ? { draft } : {}) });
+  let chickenContext = false, rawSuggestion = false;
+  const message = (role, text, draft) => ({ id: `message-${snapshot.thread.version}-${role}-${snapshot.messages.length}`, role, text, created_at: new Date().toISOString(), ...(draft ? { draft } : {}) });
+  const invalidateChicken = () => {if(snapshot.pending)snapshot.pending.status="superseded";snapshot.pending=null;};
+  const reviewChicken = (amount) => {
+    invalidateChicken();rawSuggestion=false;
+    // Deliberately artificial TEST DATA; exercise arithmetic/labels, not live values.
+    const basis={grams:100,unit:"g",count:null,milliliters:null,nutrients:{calories:100,protein:10,carbs:2,fat:4}};
+    const food={name:"TEST DATA Chicken Breast (Skinless, Raw)",query:{name:"chicken breast",preparation:"raw skinless",brand:null,variant:null,market:null,packageGrams:null,portion:{amount,unit:"g"}},portion:{amount,unit:"g"},grams:amount,servingLabel:`${amount} g`,source:"trackbing_gist",calories:amount,protein:Math.round(amount)/10,carbs:Math.round(amount*.2)/10,fat:Math.round(amount*.4)/10,evidence:{identity:"TEST DATA Chicken Breast (Skinless, Raw)",title:"TrackBing curated foods — TEST DATA",url:"https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json",sourceId:"fixture",record:"independent",license:"operator-provided",retrievedAt:new Date().toISOString(),excerpt:"Controlled illustrative TEST DATA",basis}};
+    const draft={id:`33333333-3333-4333-8333-${String(snapshot.thread.version).padStart(12,"0")}`,kind:"food",thread_id:snapshot.thread.id,review_version:snapshot.thread.version,status:"pending",expires_at:"2099-01-01T00:00:00Z",local_date:new Date().toLocaleDateString("en-CA"),time_zone:"Asia/Manila",food};
+    snapshot.pending=draft;snapshot.messages.push(message("assistant",`TEST DATA: ${amount} g raw chicken breast: ${amount} kcal, P${food.protein} C${food.carbs} F${food.fat}. Add this to today's food?`,draft));
+  };
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
   await page.route("**/auth/v1/**", async (route) => {
@@ -68,7 +78,19 @@ module.exports = async function installBeeUiMock(page) {
     } else if (command.kind === "message") {
       snapshot.thread.version++;
       snapshot.messages.push(message("user", command.text));
-      if (/^yes\b/i.test(command.text) && !snapshot.pending) {
+      if (/609.*chicken.*breast/i.test(command.text)) {
+        chickenContext=true;rawSuggestion=false;invalidateChicken();snapshot.messages.push(message("assistant","Was the chicken breast weighed raw or after cooking?"));
+      } else if (chickenContext && /^ra[.!? ]*$/i.test(command.text)) {
+        rawSuggestion=true;invalidateChicken();snapshot.messages.push(message("assistant","Did you mean raw chicken breast?"));
+      } else if (chickenContext && rawSuggestion && /^yes[.! ]*$/i.test(command.text)) {
+        reviewChicken(609);
+      } else if (chickenContext && /^raw[.! ]*$/i.test(command.text)) {
+        reviewChicken(609);
+      } else if (chickenContext && /(?:actually|make it).*100\s*(?:g|grams)/i.test(command.text)) {
+        reviewChicken(100);
+      } else if (/^(no|cancel)[.! ]*$/i.test(command.text)) {
+        invalidateChicken();rawSuggestion=false;chickenContext=false;snapshot.messages.push(message("assistant","Cancelled. Nothing was saved."));
+      } else if (/^yes\b/i.test(command.text) && !snapshot.pending) {
         snapshot.messages.push(message("assistant", "There isn't a reviewed food ready to add. Scan a barcode or enter your package label to review a serving."));
       } else if (/egg/i.test(command.text)) {
         const draft = {

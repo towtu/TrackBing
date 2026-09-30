@@ -35,7 +35,7 @@ export function createBeeRequest(
     requestId: createBeeRequestId(),
     ...(snapshot && { threadId: snapshot.thread.id, expectedVersion: snapshot.thread.version }),
     timeZone,
-    command: command.kind === "message" && pending?.status === "pending"
+    command: (command.kind === "message" || command.kind === "food_assist") && pending?.status === "pending"
       ? { ...command, actionId: pending.id, reviewVersion: pending.review_version }
       : { ...command },
   };
@@ -249,7 +249,7 @@ function isDraft(value: unknown): value is PendingAction {
   if (value.kind === "goal") {const goal=value.goal;if(!record(goal)||!record(goal.previous)||!record(goal.next))return false;const next=goal.next;return ["calorie_target","protein_grams","carbs_grams","fat_grams"].every(key=>typeof next[key]==="number" && Number.isFinite(next[key]) && next[key]>=0);}
   if (!record(value.food)) return false;
   const food = value.food;
-  return ["usda", "openfoodfacts", "my_food", "user_label"].includes(String(food.source)) &&
+  return ["usda", "openfoodfacts", "my_food", "user_label", "trackbing_gist"].includes(String(food.source)) &&
     typeof food.name === "string" && typeof food.servingLabel === "string" &&
     (food.grams === null || (typeof food.grams === "number" && Number.isFinite(food.grams) && food.grams > 0)) &&
     [food.calories, food.protein, food.carbs, food.fat].every((number) => typeof number === "number" && Number.isFinite(number) && number >= 0) &&

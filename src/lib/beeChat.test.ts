@@ -261,3 +261,7 @@ describe("Bee review and environment boundaries", () => {
     expect(getBeeSourceUrl("http://10.0.0.1/nutrition")).toBeNull();
   });
 });
+
+it('binds Plus food-assistance confirmation text to the exact reviewed action',()=>{
+ expect(createBeeRequest({kind:'food_assist',text:'yes'},{...snapshot,pending:servingDraft}).command).toMatchObject({kind:'food_assist',text:'yes',actionId:servingDraft.id,reviewVersion:servingDraft.review_version});
+});

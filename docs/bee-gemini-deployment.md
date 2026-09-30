@@ -22,7 +22,9 @@ the preceding adaptive food/weight/goal brief.
 - `beeAdaptiveTurn.ts` implements adaptive conversation/insights. Plus receives
   only food assistance without goal/weight/preference context. Basic makes no
   model calls. Saved context is reassembled each request; no Google-side session.
-- `beeNutrition.ts` searches private foods, USDA and Open Food Facts. Brand,
+- `beeNutrition.ts` searches the fixed operator gist first, then exact private
+  foods/Open Food Facts, Google on a true miss, and USDA as the final independent
+  fallback. See [food corrections and source policy](bee-food-corrections.md). Brand,
   preparation, whole/white, variant, package and serving compatibility are
   checked before a result can produce a draft. Explicit numeric portions are
   retained from the user's text even if the model misinterprets the amount.
@@ -94,6 +96,9 @@ New feature migrations:
 6. `20260930000100_account_cascade_context.sql` — skip context recreation when
    Auth account deletion cascades into private weight/memory records. No data
    removal, policy relaxation or new client grants.
+7. `20260930000200_gist_food_source.sql` — permit fixed-source, per-100-g curated
+   gist evidence in the existing atomic review RPC; preserve owner/lease/replay
+   guards and service-only grants. Apply before updated food functions/clients.
 
 Every user-owned addition has RLS. Clients can read only their own permitted
 records; service-only data/RPCs are revoked from anon/authenticated/public. Manual

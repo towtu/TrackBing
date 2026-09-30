@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Calculator, CheckCircle, X } from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
+import { Calculator, CheckCircle, X } from "@/src/components/icons";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -13,11 +13,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
+import { BeeGroundedAnswerDialog } from "@/src/components/ai/BeeGroundedAnswer.dialog";
 import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
 import { requestAiFood, type AiFood } from "@/src/lib/aiFood";
+import type { GroundedAnswer } from "@/src/lib/beeChat";
 import {
   getAiFoodFeedback,
   shouldMarkAiEstimated,
@@ -27,7 +29,8 @@ import {
   sanitizeBarcodeInput,
 } from "@/src/lib/barcodes";
 import { calculateCaloriesFromMacros } from "@/src/lib/macros";
-import { supabase } from "@/src/lib/supabase";
+import { parseManualFood } from "@/src/lib/foodValidation";
+import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -54,6 +57,12 @@ export default function CreateFoodPage() {
   const params = useLocalSearchParams<{ barcode?: string | string[] }>();
   const { width, isDesktop } = useResponsive();
   const compactForm = width < 390;
+  const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
+  useEffect(() => {
+    const guard = createFoodAccountGuard();
+    accountRef.current = guard;
+    return () => { guard.dispose(); accountRef.current = null; };
+  }, []);
   const [name, setName] = useState("");
   const [prot, setProt] = useState("");
   const [carbs, setCarbs] = useState("");
@@ -64,6 +73,7 @@ export default function CreateFoodPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [aiFillLoading, setAiFillLoading] = useState(false);
+  const [liveAnswer, setLiveAnswer] = useState<GroundedAnswer | null>(null);
   const [aiFillSource, setAiFillSource] = useState<AiFood["source"] | null>(
     null,
   );
@@ -106,12 +116,9 @@ export default function CreateFoodPage() {
       return;
     }
 
-    if (!name.trim()) {
-      setFeedback({
-        type: "warning",
-        title: "Missing info",
-        message: "Please enter a food name.",
-      });
+    const checked = parseManualFood(name, prot, carbs, fat);
+    if (!checked.ok) {
+      setFeedback({ type: "warning", title: "Check the food values", message: checked.message });
       return;
     }
 
@@ -120,10 +127,10 @@ export default function CreateFoodPage() {
       : false;
 
     setSubmitting(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
+    const guard = accountRef.current;
+    const writer = await guard?.authorize();
+    if (!writer?.isActive()) {
+      if (!guard?.isActive()) return;
       setSubmitting(false);
       setFeedback({
         type: "warning",
@@ -133,19 +140,21 @@ export default function CreateFoodPage() {
       return;
     }
 
-    const { error } = await supabase.from("personal_foods").insert([
+    if (!writer.isActive()) return;
+    const { error } = await writer.client.from("personal_foods").insert([
       {
-        user_id: user.id,
-        name: name.trim(),
-        calories: calculatedCalories,
-        protein: parseFloat(prot) || 0,
-        carbs: parseFloat(carbs) || 0,
-        fat: parseFloat(fat) || 0,
+        user_id: writer.userId,
+        name: checked.value.name,
+        calories: checked.value.calories,
+        protein: checked.value.protein,
+        carbs: checked.value.carbs,
+        fat: checked.value.fat,
         default_unit: unit,
         barcode: parsedBarcode.barcode,
         ai_estimated: aiEstimated,
       },
     ]);
+    if (!writer.isActive()) return;
 
     if (error) {
       const duplicateBarcode =
@@ -182,11 +191,16 @@ export default function CreateFoodPage() {
     }
 
     setAiFillLoading(true);
+    setLiveAnswer(null);
     const result = await requestAiFood(trimmed, "fill");
     setAiFillLoading(false);
 
     if (!result.ok) {
-      setFeedback(getAiFoodFeedback(result.reason));
+      if (result.reason === "answer_only") {
+        setLiveAnswer(result.answer);
+        return;
+      }
+      setFeedback({ ...getAiFoodFeedback(result.reason), ...(result.reason === "needs_input" ? { message: result.message } : {}) });
       return;
     }
 
@@ -238,10 +252,12 @@ export default function CreateFoodPage() {
         <Text style={styles.label}>Food Name</Text>
         <TextInput
           style={styles.input}
+          accessibilityLabel="Food name"
+          maxLength={160}
           placeholder="e.g. Mama's Adobo"
-          placeholderTextColor="#666"
+          placeholderTextColor={Colors.textMuted}
           value={name}
-          onChangeText={setName}
+          onChangeText={(value) => { setName(value); setAiFillSource(null); }}
           autoFocus
         />
 
@@ -273,7 +289,7 @@ export default function CreateFoodPage() {
                 : "emptyCollection"
           }
           title="Want Bee to fill it?"
-          message="Add a name, then Bee can draft per-serving macros you can edit."
+          message="Add a name and portion, then Bee checks matching food records. Review the values before saving."
           style={styles.aiFillCard}
           footer={aiFillSource ? <AiEstimateBadge source={aiFillSource} compact /> : null}
           action={
@@ -309,7 +325,7 @@ export default function CreateFoodPage() {
               accessibilityRole="button"
               accessibilityState={{ selected: unit === u }}
               key={u}
-              onPress={() => setUnit(u)}
+              onPress={() => { setUnit(u); setAiFillSource(null); }}
               style={{
                 backgroundColor: unit === u ? Colors.accent : "#333",
                 paddingHorizontal: 20,
@@ -337,10 +353,12 @@ export default function CreateFoodPage() {
             <TextInput
               style={styles.input}
               placeholder="0"
-              placeholderTextColor="#666"
+              placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
+              accessibilityLabel="Protein in grams"
+              maxLength={16}
               value={prot}
-              onChangeText={(t) => setProt(t.replace(/[^0-9.]/g, ""))}
+              onChangeText={(t) => { setProt(t); setAiFillSource(null); }}
             />
           </View>
           <View style={styles.gridItem}>
@@ -348,10 +366,12 @@ export default function CreateFoodPage() {
             <TextInput
               style={styles.input}
               placeholder="0"
-              placeholderTextColor="#666"
+              placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
+              accessibilityLabel="Carbohydrate in grams"
+              maxLength={16}
               value={carbs}
-              onChangeText={(t) => setCarbs(t.replace(/[^0-9.]/g, ""))}
+              onChangeText={(t) => { setCarbs(t); setAiFillSource(null); }}
             />
           </View>
         </View>
@@ -362,10 +382,12 @@ export default function CreateFoodPage() {
             <TextInput
               style={styles.input}
               placeholder="0"
-              placeholderTextColor="#666"
+              placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
+              accessibilityLabel="Fat in grams"
+              maxLength={16}
               value={fat}
-              onChangeText={(t) => setFat(t.replace(/[^0-9.]/g, ""))}
+              onChangeText={(t) => { setFat(t); setAiFillSource(null); }}
             />
           </View>
 
@@ -408,6 +430,12 @@ export default function CreateFoodPage() {
         confirmText={feedback?.confirmText}
         autoDismissMs={feedback?.autoDismissMs}
         onClose={closeFeedback}
+      />
+      <BeeGroundedAnswerDialog
+        answer={liveAnswer}
+        onClose={() => setLiveAnswer(null)}
+        onManual={() => setLiveAnswer(null)}
+        onScan={() => { setLiveAnswer(null); router.push("/scan"); }}
       />
     </SafeAreaView>
   );

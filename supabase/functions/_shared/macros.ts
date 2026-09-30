@@ -2,7 +2,7 @@
 // No Deno-specific APIs, so this file is unit-testable with vitest and reused
 // by the ai-food edge function.
 
-export type FoodSource = "my_food" | "web" | "usda" | "openfoodfacts" | "ai_estimate";
+export type FoodSource = "my_food" | "web" | "usda" | "openfoodfacts" | "ai_estimate" | "trackbing_gist";
 
 export type AiFood = {
   name: string;
@@ -85,6 +85,7 @@ export function validateAndNormalize(raw: unknown): AiFood | null {
     confidence,
     source:
       r.source === "my_food" ||
+      r.source === "trackbing_gist" ||
       r.source === "web" ||
       r.source === "usda" ||
       r.source === "openfoodfacts" ||

@@ -16,10 +16,10 @@ import {
 import {
   getBeeAccessibilityLabel,
   getBeePose,
-  getBeeTapReaction,
   type BeePose,
   type BeeSituation,
 } from "@/src/lib/beeCompanion";
+import { openBee } from "@/src/lib/beeEvents";
 import { Colors, Radii } from "@/src/styles/colors";
 
 export type BeeMascotSize = "small" | "medium" | "large";
@@ -81,23 +81,7 @@ export function BeeGuide({
   style,
 }: BeeGuideProps) {
   const activeSituation = situation ?? "greeting";
-  const [tapCount, setTapCount] = useState(0);
-  const [reaction, setReaction] = useState<string | null>(null);
-  const lastTapAt = useRef(0);
-
-  useEffect(() => {
-    setTapCount(0);
-    setReaction(null);
-  }, [activeSituation, message]);
-
-  const handleMascotPress = () => {
-    const now = Date.now();
-    if (now - lastTapAt.current < 450) return;
-    lastTapAt.current = now;
-
-    setReaction(getBeeTapReaction(activeSituation, tapCount));
-    setTapCount((current) => Math.min(current + 1, 4));
-  };
+  const handleMascotPress = openBee;
 
   return (
     <View
@@ -141,11 +125,6 @@ export function BeeGuide({
           >
             {message}
           </Text>
-          {reaction ? (
-            <Text accessibilityLiveRegion="polite" style={styles.reaction}>
-              {reaction}
-            </Text>
-          ) : null}
           {footer ? <View style={styles.footer}>{footer}</View> : null}
         </View>
         {action ? <View style={styles.action}>{action}</View> : null}

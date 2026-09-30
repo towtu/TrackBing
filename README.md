@@ -41,3 +41,10 @@ plan.
 * Node.js installed on your machine
 * Expo Go app installed on your physical mobile device (or Android Studio / Xcode for emulators)
 * A Supabase project
+
+
+## Adaptive Bee and launch implementation
+
+The controlling brief is [TrackBing_Gemini_Search_Migration_README.md](TrackBing_Gemini_Search_Migration_README.md). Basic manual tracking stays free; Plus offers limited food assistance; Pro enables adaptive Bee. Server-confirmed food, weight and goal reviews, account-controlled memories, Gemini Search, subscription verification and monthly allowances share one Supabase backend across Expo clients.
+
+See [deployment and provider setup](docs/bee-gemini-deployment.md) and the [20-item launch evidence report](docs/launch/2026-09-27-implementation-report.md). These documents distinguish local code/tests from missing live credentials, legal decisions, payment/store setup and production/native-device verification. No production deployment is implied.

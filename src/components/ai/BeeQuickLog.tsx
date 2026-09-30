@@ -1,12 +1,11 @@
-import {
-  ChatCircleText,
-  PaperPlaneTilt,
-  X,
-} from "phosphor-react-native";
-import React, { useRef, useState } from "react";
+import { ChatCircleText, PaperPlaneTilt, X } from "@/src/components/icons";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -14,817 +13,568 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
-import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeMascot } from "@/src/components/ai/BeeGuide";
-import {
-  SweetFeedback,
-  type SweetFeedbackType,
-} from "@/src/components/feedback/SweetFeedback";
-import { requestAiFood, type AiFood } from "@/src/lib/aiFood";
-import { getAiFoodFeedback } from "@/src/lib/aiFoodUi";
-import type { BeeSituation } from "@/src/lib/beeCompanion";
-import {
-  buildAiFoodLogInsert,
-  getBeeQuickLogClarification,
-  isBeeQuickLogConfirmation,
-  mergeBeeQuickLogClarification,
-  type BeeQuickLogClarification,
-} from "@/src/lib/beeQuickLog";
-import { upsertDailySummary } from "@/src/lib/dailySummary";
-import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
-import { supabase } from "@/src/lib/supabase";
-import { Colors } from "@/src/styles/colors";
+import { BeeAction, BeeMemories } from "@/src/components/ai/BeeMemories";
+import { BeeGroundedAnswer } from "@/src/components/ai/BeeGroundedAnswer";
 import { useResponsive } from "@/src/hooks/useResponsive";
+import {
+  createBeeClient,
+  createBeeRequest,
+  createBeeRetryRequest,
+  getBeeErrorFeedback,
+  getBeeSourceUrl,
+  isCurrentBeeReview,
+  type BeeCommand,
+  type BeeErrorCode,
+  type BeeRequest,
+  type BeeSnapshot,
+  type PendingFood,
+  type PendingAction,
+} from "@/src/lib/beeChat";
+import {beePoseToSituation, type BeeSituation} from "@/src/lib/beeCompanion";
+import { onOpenBee } from "@/src/lib/beeEvents";
+import { expandBeeMacroLabels, latestBeeMessageId } from "@/src/lib/beeConversationUi";
+import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
+import { Colors, Radii } from "@/src/styles/colors";
 
-type ChatMessage = {
-  id: string;
-  role: "bee" | "user";
-  text: string;
-  food?: AiFood;
-  situation?: BeeSituation;
-};
+type FailedRequest = { request: BeeRequest; error: BeeErrorCode };
+const LIVE_ANSWER_PLACEHOLDER = "I showed a live search answer. Search again to refresh it, or use a barcode or package label to add food.";
 
-type FeedbackState = {
-  type: SweetFeedbackType;
-  title: string;
-  message: string;
-  confirmText?: string;
-  autoDismissMs?: number;
-};
-
-const STARTER_MESSAGES: ChatMessage[] = [
-  {
-    id: "starter",
-    role: "bee",
-    situation: "greeting",
-    text:
-      'Tell Bee what you ate, like "600g chicken breast". If details matter, I\'ll ask before logging.',
-  },
-];
-
-export function BeeQuickLog() {
-  const { isDesktop } = useResponsive();
+export function BeeQuickLog({ userId }: { userId: string }) {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { isDesktop, height } = useResponsive();
   const scrollRef = useRef<ScrollView | null>(null);
+  const inputRef = useRef<TextInput | null>(null);
+  const clientRef = useRef<ReturnType<typeof createBeeClient> | null>(null);
+  const snapshotRef = useRef<BeeSnapshot | null>(null);
+  const busyRef = useRef(false);
+  const focusAfterOpenRef = useRef(false);
+  const lastSavedLog = useRef<string | null>(null);
   const [visible, setVisible] = useState(false);
+  const [view, setView] = useState<"chat" | "memories">("chat");
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(STARTER_MESSAGES);
-  const [pendingClarification, setPendingClarification] =
-    useState<BeeQuickLogClarification | null>(null);
-  const [pendingFood, setPendingFood] = useState<AiFood | null>(null);
-  const [pendingAlternatives, setPendingAlternatives] = useState<AiFood[]>([]);
-  const [lastQuery, setLastQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [snapshot, setSnapshot] = useState<BeeSnapshot | null>(null);
+  const [activeRequest, setActiveRequest] = useState<BeeRequest | null>(null);
+  const [failed, setFailed] = useState<FailedRequest | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [startingNew, setStartingNew] = useState(false);
+  const [clearingChat, setClearingChat] = useState(false);
+  const [editingPortion, setEditingPortion] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
-  const open = () => setVisible(true);
-  const close = () => {
-    if (!loading) setVisible(false);
-  };
-
-  const appendMessages = (
-    nextMessages: ChatMessage[],
-    options?: { replaceStarter?: boolean },
-  ) => {
-    setMessages((current) => {
-      const shouldReplaceStarter =
-        options?.replaceStarter &&
-        current.length === 1 &&
-        current[0]?.id === "starter";
-      return [...(shouldReplaceStarter ? [] : current), ...nextMessages];
-    });
-    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
-  };
-
-  const submitText = async (text: string) => {
-    const trimmed = text.trim().replace(/\s+/g, " ");
-    if (!trimmed || loading) return;
-
+  useEffect(() => {
+    const client = createBeeClient(userId);
+    clientRef.current = client;
+    snapshotRef.current = null;
+    busyRef.current = false;
+    lastSavedLog.current = null;
+    setSnapshot(null);
     setInput("");
-    appendMessages(
-      [{ id: createId("user"), role: "user", text: trimmed }],
-      { replaceStarter: true },
-    );
+    setActiveRequest(null);
+    setFailed(null);
+    setNotice(null);
+    setVisible(false);
+    return () => {
+      client.dispose();
+      clientRef.current = null;
+    };
+  }, [userId]);
 
-    if (pendingFood) {
-      if (isBeeQuickLogConfirmation(trimmed)) {
-        await logFood(pendingFood);
-        return;
-      }
+  useEffect(() => {
+    if (!visible || !snapshot?.pending) return;
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, [visible, snapshot?.pending]);
 
-      setPendingFood(null);
-      setPendingAlternatives([]);
-      appendMessages([
-        {
-          id: createId("bee"),
-          role: "bee",
-          situation: "searching",
-          text: "Got it. I will check that instead before logging.",
-        },
-      ]);
-      await resolveAndReview(trimmed);
-      return;
-    }
-
-    if (pendingClarification) {
-      const clarifiedQuery = mergeBeeQuickLogClarification(
-        pendingClarification,
-        trimmed,
-      );
-      setPendingClarification(null);
-      await resolveAndReview(clarifiedQuery);
-      return;
-    }
-
-    const clarification = getBeeQuickLogClarification(trimmed);
-    if (clarification) {
-      setPendingClarification(clarification);
-      appendMessages([
-        {
-          id: createId("bee"),
-          role: "bee",
-          situation: "needsClarification",
-          text: clarification.question,
-        },
-      ]);
-      return;
-    }
-
-    await resolveAndReview(trimmed);
-  };
-
-  const resolveAndReview = async (query: string) => {
-    setLoading(true);
-    appendMessages([
-      {
-        id: createId("bee"),
-        role: "bee",
-        situation: "searching",
-        text: "Checking the best match before logging...",
-      },
-    ]);
-
-    const result = await requestAiFood(query, "auto");
+  const execute = async (request: BeeRequest): Promise<boolean> => {
+    const client = clientRef.current;
+    if (!client || busyRef.current) return false;
+    busyRef.current = true;
+    setActiveRequest(request);
+    setFailed(null);
+    setNotice(null);
+    const result = await client.send(request);
+    if (clientRef.current !== client) return false;
+    busyRef.current = false;
+    setActiveRequest(null);
+    if (!result) return false;
     if (!result.ok) {
-      const aiFeedback = getAiFoodFeedback(result.reason);
-      setLoading(false);
-      appendMessages([
-        {
-          id: createId("bee"),
-          role: "bee",
-          situation: "lookupError",
-          text: aiFeedback.message,
-        },
-      ]);
-      setFeedback(aiFeedback);
-      return;
+      setFailed({ request, error: result.error });
+      return false;
     }
 
-    setLoading(false);
-    setPendingFood(result.food);
-    setPendingAlternatives(result.alternatives);
-    setLastQuery(query);
-    appendMessages([
-      {
-        id: createId("bee"),
-        role: "bee",
-        situation: "reviewingMatch",
-        food: result.food,
-        text: `I found ${result.food.serving_label} of ${result.food.name}: ${Math.round(
-          result.food.kcal,
-        )} kcal, P${Math.round(result.food.protein)} C${Math.round(
-          result.food.carbs,
-        )} F${Math.round(result.food.fat)}. Does this look right?`,
-      },
-    ]);
+    snapshotRef.current = result.snapshot;
+    setSnapshot(result.snapshot);
+    setNow(Date.now());
+    setEditingPortion(false);
+    if (result.snapshot.saved_action && result.snapshot.saved_action.kind !== "food") {
+      const action = result.snapshot.saved_action;
+      if(lastSavedLog.current !== (action.pending_id ?? action.id)) {lastSavedLog.current=action.pending_id ?? action.id;emitFoodLogChanged();setNotice(action.kind === "weight" ? "Weight check-in saved." : "Reviewed goals saved.");}
+    }
+    if (result.snapshot.saved_log_id && result.snapshot.saved_log_id !== lastSavedLog.current) {
+      lastSavedLog.current = result.snapshot.saved_log_id;
+      // The server owns both the food write and summary recomputation.
+      emitFoodLogChanged();
+      setNotice(result.snapshot.summary_warning
+        ? "Food saved. Your daily summary still needs to refresh."
+        : "Added to today's food log.");
+    }
+    if ((request.command.kind === "message" || request.command.kind === "food_assist")) {
+      const sent = request.command.text;
+      setInput((current) => current.trim() === sent ? "" : current);
+    }
+    if (request.command.kind === "new_thread") {
+      setInput("");
+      setView("chat");
+      setStartingNew(false);
+      setNotice("New conversation started. Your saved preferences are still available.");
+    }
+    if (request.command.kind === "clear_chat") {
+      setInput("");
+      setView("chat");
+      setClearingChat(false);
+      setNotice("This conversation was cleared. Your saved preferences and food diary are still available.");
+    }
+    return true;
   };
 
-  const findMoreOnWeb = async () => {
-    if (!lastQuery || loading) return;
-    setLoading(true);
-    setPendingFood(null);
-    setPendingAlternatives([]);
-    appendMessages([
-      {
-        id: createId("bee"),
-        role: "bee",
-        situation: "searching",
-        text: "Searching the web for a better match (this uses 1 AI credit)...",
-      },
-    ]);
-
-    const result = await requestAiFood(lastQuery, "web");
-    setLoading(false);
-    if (!result.ok) {
-      const aiFeedback = getAiFoodFeedback(result.reason);
-      appendMessages([
-        {
-          id: createId("bee"),
-          role: "bee",
-          situation: "lookupError",
-          text: aiFeedback.message,
-        },
-      ]);
-      setFeedback(aiFeedback);
+  const sendCommand = (command: BeeCommand) => execute(createBeeRequest(command, snapshotRef.current));
+  const retryFailed = async (failure: FailedRequest) => {
+    if (failure.error === "provider_unavailable" || failure.error === "save_failed") {
+      if (!await execute(createBeeRequest({ kind: "load" }, snapshotRef.current))) return;
+      const retry = createBeeRetryRequest(failure.request, failure.error, snapshotRef.current);
+      if (retry) await execute(retry);
+      else setNotice("Conversation refreshed. Check the latest food review or saved entry before continuing.");
       return;
     }
-
-    setPendingFood(result.food);
-    setPendingAlternatives(result.alternatives);
-    appendMessages([
-      {
-        id: createId("bee"),
-        role: "bee",
-        situation: "reviewingMatch",
-        food: result.food,
-        text: `From the web: ${result.food.serving_label} of ${result.food.name} — ${Math.round(
-          result.food.kcal,
-        )} kcal, P${Math.round(result.food.protein)} C${Math.round(
-          result.food.carbs,
-        )} F${Math.round(result.food.fat)}. Better?`,
-      },
-    ]);
+    await execute(failure.request);
+  };
+  const open = () => {
+    focusAfterOpenRef.current = true;
+    setVisible(true);
+    setNow(Date.now());
+    if (!busyRef.current && !failed) void sendCommand({ kind: "load" });
+  };
+  useEffect(()=>onOpenBee(()=>{setVisible(true);focusAfterOpenRef.current=true; if(!busyRef.current)void execute(createBeeRequest({kind:"load"},snapshotRef.current));}),[userId]);
+  const close = () => setVisible(false);
+  const enterManually = () => {
+    close();
+    router.push("/create-food");
+  };
+  const scanBarcode = () => {
+    close();
+    router.push("/scan");
+  };
+  const submitText = () => {
+    const text = input.trim();
+    if (!text || !snapshot || failed || busyRef.current) return;
+    void sendCommand({ kind: snapshot.entitlement?.tier === "plus" ? "food_assist" : "message", text });
+  };
+  const confirmDraft = (draft: PendingAction) => {
+    if (!failed && isCurrentBeeReview(draft, snapshotRef.current)) {
+      void sendCommand({ kind: "confirm", actionId: draft.id, reviewVersion: draft.review_version });
+    }
+  };
+  const editPortion = () => {
+    setEditingPortion(true);
+    inputRef.current?.focus();
   };
 
-  const logFood = async (food: AiFood) => {
-    if (loading) return;
-    setLoading(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setLoading(false);
-      setFeedback({
-        type: "warning",
-        title: "Sign in required",
-        message: "Please sign in again before Bee logs this food.",
-      });
-      return;
+  const loading = activeRequest !== null;
+  const feedback = failed ? getBeeErrorFeedback(failed.error) : null;
+  const messages = snapshot?.messages.slice(-50) ?? [];
+  const lastMessage = messages[messages.length - 1];
+  const displayedMessages = snapshot?.liveAnswer && lastMessage?.role === "assistant" && lastMessage.text === LIVE_ANSWER_PLACEHOLDER
+    ? messages.slice(0, -1)
+    : messages;
+  const latestReplyId = latestBeeMessageId(displayedMessages, Boolean(snapshot?.liveAnswer));
+  const pending = snapshot?.pending;
+  const pendingInMessages = pending && messages.some((message) =>
+    message.draft?.id === pending.id && message.draft.review_version === pending.review_version);
+  const headerSituation: BeeSituation = loading ? "searching" : failed ? "lookupError" : pending ? "reviewingMatch" : beePoseToSituation(snapshot?.suggested_pose ?? "greeting");
+  const blocked = loading || failed !== null || snapshot === null;
+  useEffect(() => {
+    if (Platform.OS === "web" && visible && view === "chat" && !blocked && focusAfterOpenRef.current) {
+      focusAfterOpenRef.current = false;
+      inputRef.current?.focus();
     }
+  }, [visible, view, blocked]);
 
-    const logRow = buildAiFoodLogInsert(user.id, food);
-    const { error } = await supabase.from("food_logs").insert([logRow]);
-    setLoading(false);
-
-    if (error) {
-      appendMessages([
-        {
-          id: createId("bee"),
-          role: "bee",
-          situation: "lookupError",
-          text: "I found the food, but logging failed. Please try again.",
-        },
-      ]);
-      setFeedback({
-        type: "error",
-        title: "Bee couldn't log it",
-        message: "Please try again in a moment.",
-      });
-      return;
-    }
-
-    setPendingFood(null);
-    setPendingAlternatives([]);
-    await upsertDailySummary();
-    emitFoodLogChanged();
-    appendMessages([
-      {
-        id: createId("bee"),
-        role: "bee",
-        situation: "logSuccess",
-        food,
-        text: `Logged ${food.serving_label} of ${food.name}.`,
-      },
-    ]);
-    setFeedback({
-      type: "success",
-      title: "Bee logged it",
-      message: `${food.name} was added to today's log.`,
-      autoDismissMs: 1200,
-    });
-  };
-
-  const options = pendingClarification?.options ?? [];
-  const inputPlaceholder = pendingFood
-    ? "Type a correction, or tap Log it"
-    : "I ate 600g chicken breast";
-  const headerSituation: BeeSituation = loading
-    ? "searching"
-    : pendingClarification
-      ? "needsClarification"
-      : pendingFood
-        ? "reviewingMatch"
-        : "greeting";
+  const renderReview = (draft: PendingAction) => draft.kind === "weight" || draft.kind === "goal" ? (
+    <ActionReview draft={draft} current={isCurrentBeeReview(draft,snapshot,now)} busy={blocked} onConfirm={()=>confirmDraft(draft)} onEdit={editPortion} onCancel={()=>void sendCommand({kind:"cancel",actionId:draft.id,reviewVersion:draft.review_version})}/>
+  ) : (
+    <FoodReview
+      draft={draft}
+      current={isCurrentBeeReview(draft, snapshot, now)}
+      busy={blocked}
+      onConfirm={() => confirmDraft(draft)}
+      onEdit={editPortion}
+      onCancel={() => void sendCommand({ kind: "cancel", actionId: draft.id, reviewVersion: draft.review_version })}
+    />
+  );
 
   return (
     <>
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityLabel="Open Bee quick log"
-        activeOpacity={0.86}
+      <BeeAction
+        label="Open Bee quick log"
+        iconOnly
         onPress={open}
-        style={[
-          styles.floatingButton,
-          isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile,
-        ]}
-      >
-        <View style={styles.launcherMascotViewport}>
-          <BeeMascot size="small" situation="greeting" />
-        </View>
-        <View style={styles.floatingBadge}>
-          <ChatCircleText size={13} color={Colors.textOnAccent} weight="fill" />
-        </View>
-      </TouchableOpacity>
+        style={[styles.floatingButton, isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile]}
+        icon={(
+          <>
+            <View style={styles.launcherMascotViewport}><BeeMascot size="small" situation="greeting" /></View>
+            <View style={styles.floatingBadge}><ChatCircleText size={13} color={Colors.textOnAccent} weight="fill" /></View>
+          </>
+        )}
+      />
 
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-        <Pressable style={styles.backdrop} onPress={close}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={styles.keyboardAvoid}
-          >
+      <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
+        <Pressable style={styles.backdrop} onPress={close} accessible={false} tabIndex={-1}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboardAvoid}>
             <Pressable
               accessibilityViewIsModal
-              style={[styles.sheet, isDesktop && styles.sheetDesktop]}
+              accessibilityLabel="Bee conversation"
+              role="dialog"
+              aria-modal
+              accessible={false}
+              tabIndex={-1}
+              style={[
+                styles.sheet,
+                { height: Math.max(260, Math.min(height * 0.9, 760)), paddingBottom: Math.max(16, insets.bottom) },
+                isDesktop && styles.sheetDesktop,
+              ]}
               onPress={(event) => event.stopPropagation()}
             >
               <View style={styles.header}>
-                <View style={styles.headerAvatar}>
-                  <BeeMascot size="small" situation={headerSituation} />
-                </View>
+                <View style={styles.headerAvatar}><BeeMascot size="small" situation={headerSituation} /></View>
                 <View style={styles.headerCopy}>
-                  <Text style={styles.title}>Bee quick log</Text>
-                  <Text style={styles.subtitle}>
-                    Describe it. I will ask if I need one detail.
-                  </Text>
+                  <Text accessibilityRole="header" style={styles.title}>Bee</Text>
+                  <Text style={styles.subtitle}>Food, weight and progress</Text>
                 </View>
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Close Bee quick log"
-                  onPress={close}
-                  disabled={loading}
-                  style={styles.closeButton}
-                >
-                  <X size={18} color={Colors.textSecondary} weight="bold" />
-                </TouchableOpacity>
+                <BeeAction label="Close Bee quick log" iconOnly onPress={close} icon={<X size={18} color={Colors.textSecondary} weight="bold" />} />
               </View>
+
+              <View style={styles.toolbar}>
+                <BeeAction label={view === "chat" ? "Saved preferences" : "Back to conversation"} disabled={!snapshot} onPress={() => setView(view === "chat" ? "memories" : "chat")} />
+                {view === "chat" ? (
+                  <>
+                    <BeeAction label="New conversation" disabled={blocked} onPress={() => { setClearingChat(false); setStartingNew((current) => !current); }} />
+                    <BeeAction label="Clear chat" disabled={blocked || messages.length === 0} onPress={() => { setStartingNew(false); setClearingChat((current) => !current); }} />
+                  </>
+                ) : null}
+              </View>
+
+              {startingNew ? (
+                <View style={styles.newConversation}>
+                  <Text style={styles.messageText}>Start fresh here? Bee keeps your saved preferences and earlier conversations. Unconfirmed food stays unlogged.</Text>
+                  <View style={styles.actions}>
+                    <BeeAction label="Start new" primary disabled={blocked} onPress={() => void sendCommand({ kind: "new_thread" })} />
+                    <BeeAction label="Keep chatting" disabled={loading} onPress={() => setStartingNew(false)} />
+                  </View>
+                </View>
+              ) : null}
+
+              {clearingChat ? (
+                <View style={styles.newConversation}>
+                  <Text style={styles.messageText}>Delete this conversation? Your saved preferences, earlier conversations, and food diary stay available.</Text>
+                  <View style={styles.actions}>
+                    <BeeAction label="Delete this chat" primary disabled={blocked} onPress={() => void sendCommand({ kind: "clear_chat" })} />
+                    <BeeAction label="Keep chatting" disabled={loading} onPress={() => setClearingChat(false)} />
+                  </View>
+                </View>
+              ) : null}
 
               <ScrollView
                 ref={scrollRef}
                 style={styles.messages}
                 contentContainerStyle={styles.messagesContent}
                 keyboardShouldPersistTaps="handled"
-                onContentSizeChange={() =>
-                  scrollRef.current?.scrollToEnd({ animated: true })
-                }
+                onContentSizeChange={() => {
+                  if (view === "chat") scrollRef.current?.scrollToEnd({ animated: false });
+                }}
               >
-                {messages.map((message) => (
-                  <View
-                    key={message.id}
-                    style={[
-                      styles.messageRow,
-                      message.role === "user"
-                        ? styles.userMessageRow
-                        : styles.beeMessageRow,
-                    ]}
-                  >
-                    {message.role === "bee" ? (
-                      <BeeMascot
-                        size="small"
-                        situation={message.situation ?? "greeting"}
-                        style={styles.messageMascot}
-                      />
+                {view === "memories" && snapshot ? (
+                  <BeeMemories
+                    canWrite={snapshot.entitlement?.tier === "pro"}
+                    memories={snapshot.memories}
+                    busy={blocked}
+                    onCommand={sendCommand}
+                    onProfile={() => { close(); router.push("/(tabs)/profile"); }}
+                  />
+                ) : (
+                  <>
+                    {!snapshot && loading ? (
+                      <View accessible={false} style={styles.loadingSkeleton}>
+                        <View style={styles.skeletonLine} />
+                        <View style={[styles.skeletonLine, styles.skeletonShort]} />
+                      </View>
                     ) : null}
-                    <View
-                      style={[
-                        styles.messageBubble,
-                        message.role === "user"
-                          ? styles.userBubble
-                          : styles.beeBubble,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.messageText,
-                          message.role === "user"
-                            ? styles.userMessageText
-                            : styles.beeMessageText,
-                        ]}
-                      >
-                        {message.text}
-                      </Text>
-                      {message.food ? (
-                        <View style={styles.badgeRow}>
-                          <AiEstimateBadge source={message.food.source} compact />
-                          <Text style={styles.confidenceText}>
-                            {message.food.confidence} confidence
-                          </Text>
-                          {message.food.source_detail ? (
-                            <Text style={styles.sourceDetailText} numberOfLines={1}>
-                              {message.food.source === "web" ? "from " : "matched: "}
-                              {message.food.source_detail}
-                            </Text>
-                          ) : null}
+                    {snapshot?.insight ? <View style={styles.welcome}><Text style={styles.messageText}>{snapshot.insight.text}</Text></View> : null}
+                    {snapshot && messages.length === 0 ? (
+                      <View style={styles.welcome}>
+                        <BeeMascot size="medium" situation="greeting" />
+                        <Text style={styles.welcomeTitle}>What can I help with?</Text>
+                        <Text style={styles.welcomeText}>
+                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds one-food AI help; Pro adds adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Describe one food and its portion for AI food help. Pro adds adaptive conversations, preferences and progress guidance." : "Ask about food or your recorded progress. Food, weight and goal changes always need your review."}
+                        </Text>
+                        <View style={styles.starters}>
+                          <BeeAction label="What do you know about me?" disabled={blocked} onPress={() => void sendCommand({ kind: "message", text: "What do you know about me?" })} />
+                          <BeeAction label="Help me log a food" disabled={blocked} onPress={() => { setInput("I ate "); inputRef.current?.focus(); }} />
                         </View>
-                      ) : null}
-                    </View>
+                      </View>
+                    ) : null}
+                    {displayedMessages.map((message) => (
+                      <View key={message.id} style={[styles.messageRow, message.role === "user" ? styles.userMessageRow : styles.beeMessageRow]}>
+                        {message.role === "assistant" ? (
+                          <View style={styles.messageAvatarSlot}>
+                            {message.id === latestReplyId ? <View testID="bee-latest-message-mascot"><BeeMascot size="small" situation={message.draft ? "reviewingMatch" : "greeting"} style={styles.messageMascot} /></View> : null}
+                          </View>
+                        ) : null}
+                        <View style={[styles.messageBubble, message.role === "user" ? styles.userBubble : styles.beeBubble]}>
+                          <Text selectable style={[styles.messageText, message.role === "user" && styles.userMessageText]}>{message.role === "assistant" ? expandBeeMacroLabels(message.text) : message.text}</Text>
+                          {message.draft ? renderReview(message.draft) : null}
+                        </View>
+                      </View>
+                    ))}
+                    {snapshot?.liveAnswer ? (
+                      <View style={[styles.messageRow, styles.beeMessageRow]}>
+                        <View style={styles.messageAvatarSlot} testID="bee-latest-message-mascot"><BeeMascot size="small" situation="greeting" style={styles.messageMascot} /></View>
+                        <View style={[styles.messageBubble, styles.beeBubble]}>
+                          <BeeGroundedAnswer key={`${snapshot.thread.id}:${snapshot.thread.version}`} answer={snapshot.liveAnswer} />
+                        </View>
+                      </View>
+                    ) : null}
+                    {pending && !pendingInMessages ? renderReview(pending) : null}
+                  </>
+                )}
+
+                {loading ? (
+                  <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color={Colors.accent} />
+                    <Text style={styles.subtitle}>
+                      {activeRequest.command.kind === "load" ? "Opening your conversation…" : activeRequest.command.kind === "confirm" ? "Saving your review…" : activeRequest.command.kind.startsWith("memory_") ? "Updating your preferences…" : "Bee is thinking…"}
+                    </Text>
                   </View>
-                ))}
+                ) : null}
+                {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
+                {view === "chat" ? (
+                  <View style={styles.actions}>
+                    <BeeAction label="Plans and usage" onPress={()=>{close();router.push("/plans");}} style={styles.manualButton}/>
+                    <BeeAction label="Enter food manually" onPress={enterManually} style={styles.manualButton} />
+                    <BeeAction label="Scan a barcode" onPress={scanBarcode} style={styles.manualButton} />
+                  </View>
+                ) : null}
+                {view === "chat" && messages.length > 0 ? <Text style={styles.retention}>Chats are kept for up to 30 days. Showing the latest 50 messages.</Text> : null}
               </ScrollView>
 
-              {options.length > 0 ? (
-                <View style={styles.optionWrap}>
-                  {options.map((option) => (
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      key={option}
-                      activeOpacity={0.82}
-                      disabled={loading}
-                      onPress={() => submitText(option)}
-                      style={styles.optionChip}
-                    >
-                      <Text style={styles.optionText}>{option}</Text>
-                    </TouchableOpacity>
-                  ))}
+              {failed && feedback ? (
+                <View style={styles.feedback}>
+                  <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.messageText}>{feedback.message}</Text>
+                  <View style={styles.actions}>
+                    <BeeAction label="Plans and usage" onPress={()=>{close();router.push("/plans");}}/>
+                    {feedback.action === "retry" ? <BeeAction label="Retry" primary disabled={loading} onPress={() => void retryFailed(failed)} /> : null}
+                    {feedback.action !== "none" ? (
+                      <BeeAction label="Refresh conversation" disabled={loading} onPress={() => void execute(createBeeRequest({ kind: "load" }, failed.error === "not_found" ? null : snapshotRef.current))} />
+                    ) : null}
+                  </View>
                 </View>
               ) : null}
 
-              {pendingFood ? (
-                <View style={styles.optionWrap}>
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    activeOpacity={0.82}
-                    disabled={loading}
-                    onPress={() => pendingFood && logFood(pendingFood)}
-                    style={[styles.optionChip, styles.optionChipPrimary]}
-                  >
-                    <Text style={[styles.optionText, styles.optionTextPrimary]}>
-                      Log it
-                    </Text>
-                  </TouchableOpacity>
-                  {pendingAlternatives.map((alt) => (
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      key={`${alt.source}-${alt.name}`}
-                      activeOpacity={0.82}
-                      disabled={loading}
-                      onPress={() => {
-                        setPendingFood(alt);
-                        appendMessages([
-                          {
-                            id: createId("bee"),
-                            role: "bee",
-                            situation: "reviewingMatch",
-                            food: alt,
-                            text: `Swapped to ${alt.name}: ${Math.round(alt.kcal)} kcal, P${Math.round(
-                              alt.protein,
-                            )} C${Math.round(alt.carbs)} F${Math.round(alt.fat)}. Log it?`,
-                          },
-                        ]);
-                      }}
-                      style={styles.optionChip}
-                    >
-                      <Text style={styles.optionText} numberOfLines={1}>
-                        {alt.name} · {Math.round(alt.kcal)} kcal
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  {lastQuery ? (
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      activeOpacity={0.82}
-                      disabled={loading}
-                      onPress={findMoreOnWeb}
-                      style={styles.optionChip}
-                    >
-                      <Text style={styles.optionText}>🔎 Find more</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    activeOpacity={0.82}
-                    disabled={loading}
-                    onPress={() => {
-                      setPendingFood(null);
-                      setPendingAlternatives([]);
-                      appendMessages([
-                        {
-                          id: createId("bee"),
-                          role: "bee",
-                          situation: "needsClarification",
-                          text: "No problem. Type the correction and I will search again.",
-                        },
-                      ]);
-                    }}
-                    style={styles.optionChip}
-                  >
-                    <Text style={styles.optionText}>Not right</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              <View style={styles.inputRow}>
-                <TextInput
-                  accessibilityHint="Describe one food or meal, including the amount when you know it"
-                  accessibilityLabel="Food description for Bee"
-                  maxLength={200}
-                  value={input}
-                  onChangeText={setInput}
-                  editable={!loading}
-                  placeholder={inputPlaceholder}
-                  placeholderTextColor={Colors.textMuted}
-                  returnKeyType="send"
-                  onSubmitEditing={() => submitText(input)}
-                  style={styles.input}
-                />
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Send to Bee"
-                  activeOpacity={0.86}
-                  disabled={loading || input.trim().length === 0}
-                  onPress={() => submitText(input)}
-                  style={[
-                    styles.sendButton,
-                    (loading || input.trim().length === 0) &&
-                      styles.sendButtonDisabled,
-                  ]}
-                >
-                  {loading ? (
-                    <ActivityIndicator color={Colors.textOnAccent} size="small" />
-                  ) : (
-                    <PaperPlaneTilt
-                      size={18}
-                      color={Colors.textOnAccent}
-                      weight="fill"
+              {view === "chat" ? (
+                <View style={styles.composer}>
+                  {editingPortion ? <Text style={styles.subtitle}>Enter the new amount and unit. Bee will show an updated review.</Text> : null}
+                  <View style={styles.inputRow}>
+                    <TextInput
+                      ref={inputRef}
+                      accessibilityLabel="Message to Bee"
+                      accessibilityHint="Ask a question, describe a food, or correct the reviewed portion"
+                      maxLength={1000}
+                      multiline
+                      submitBehavior="submit"
+                      value={input}
+                      onChangeText={setInput}
+                      onFocus={() => setInputFocused(true)}
+                      onBlur={() => setInputFocused(false)}
+                      editable={!loading}
+                      placeholder={editingPortion ? "For example, make that 150 g" : pending ? "Change the portion or say yes" : "Ask Bee or describe a food"}
+                      placeholderTextColor={Colors.textSecondary}
+                      returnKeyType="send"
+                      onSubmitEditing={submitText}
+                      style={[styles.input, inputFocused && styles.inputFocused]}
                     />
-                  )}
-                </TouchableOpacity>
-              </View>
+                    <BeeAction
+                      label="Send to Bee"
+                      iconOnly
+                      primary
+                      disabled={blocked || input.trim().length === 0}
+                      onPress={submitText}
+                      style={styles.sendButton}
+                      icon={<PaperPlaneTilt size={18} color={Colors.textOnAccent} weight="fill" />}
+                    />
+                  </View>
+                </View>
+              ) : null}
             </Pressable>
           </KeyboardAvoidingView>
         </Pressable>
       </Modal>
-
-      {feedback && (
-        <SweetFeedback
-          visible
-          type={feedback.type}
-          title={feedback.title}
-          message={feedback.message}
-          confirmText={feedback.confirmText}
-          autoDismissMs={feedback.autoDismissMs}
-          onClose={() => setFeedback(null)}
-        />
-      )}
     </>
   );
 }
 
-function createId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function ActionReview({draft,current,busy,onConfirm,onEdit,onCancel}:{draft:Extract<PendingAction,{kind:"weight"|"goal"}>;current:boolean;busy:boolean;onConfirm:()=>void;onEdit:()=>void;onCancel:()=>void}) {
+  return <View style={styles.review}>
+    <Text style={styles.foodName}>{draft.kind === "weight" ? "Weight check-in" : "Nutrition goal review"}</Text>
+    {draft.kind === "weight" ? <><Text style={styles.calories}>{draft.weight.originalAmount} {draft.weight.unit}</Text><Text style={styles.serving}>For {draft.weight.localDate}</Text><Text style={styles.calculation}>{draft.weight.updatesCurrentWeight ? "Updates your current profile weight." : "Backdated entry: your newer current weight stays."} Your nutrition targets stay unchanged.</Text></> : <><Text style={styles.serving}>Daily calories: {draft.goal.previous.calorie_target} → {draft.goal.next.calorie_target} kcal</Text><Text style={styles.macro}>Protein {draft.goal.previous.protein_grams ?? "unset"} → {draft.goal.next.protein_grams} g · Carbohydrates {draft.goal.previous.carbs_grams ?? "unset"} → {draft.goal.next.carbs_grams} g · Fat {draft.goal.previous.fat_grams ?? "unset"} → {draft.goal.next.fat_grams} g</Text><Text style={styles.calculation}>Goal: {draft.goal.previous.goal_mode ?? "custom"} → {draft.goal.next.goal_mode}. Target weight stays {draft.goal.next.target_weight ?? "unset"} kg.</Text></>}
+    {current ? <><Text style={styles.messageText}>{draft.kind === "weight" ? `Save ${draft.weight.originalAmount} ${draft.weight.unit} for ${draft.weight.localDate}?` : "Save these reviewed nutrition goals?"}</Text><View style={styles.actions}><BeeAction label="Confirm" primary disabled={busy} onPress={onConfirm}/><BeeAction label="Edit review" disabled={busy} onPress={onEdit}/><BeeAction label="Cancel" disabled={busy} onPress={onCancel}/></View></> : <Text style={styles.calculation}>{draft.status === "confirmed" ? "Saved" : draft.status === "pending" ? "Review expired or replaced" : draft.status}</Text>}
+  </View>;
+}
+function FoodReview({ draft, current, busy, onConfirm, onEdit, onCancel }: {
+  draft: PendingFood;
+  current: boolean;
+  busy: boolean;
+  onConfirm: () => void;
+  onEdit: () => void;
+  onCancel: () => void;
+}) {
+  const [sourceError, setSourceError] = useState(false);
+  const food = draft.food;
+  const source = food.evidence;
+  const sourceUrl = getBeeSourceUrl(source.url);
+  const expired = draft.status === "expired" || Date.parse(draft.expires_at) <= Date.now();
+  const status = draft.status === "confirmed" ? "Added to food log" : draft.status === "cancelled" ? "Cancelled" : expired ? "Review expired — send the portion again" : "Previous review — use the latest portion";
+
+  const openSource = async () => {
+    if (!sourceUrl) return;
+    try {
+      await Linking.openURL(sourceUrl);
+      setSourceError(false);
+    } catch {
+      setSourceError(true);
+    }
+  };
+
+  return (
+    <View style={styles.review}>
+      <Text style={styles.foodName}>{food.name}</Text>
+      <Text style={styles.serving}>{food.servingLabel}{food.grams === null || /\d[\d.,]*\s*(?:g|grams?)\b/i.test(food.servingLabel) ? "" : ` · ${formatNumber(food.grams)} g`}</Text>
+      <Text style={styles.calories}>{Math.round(food.calories)} kcal</Text>
+      <View style={styles.macros}>
+        <Text style={styles.macro}>Protein {formatNumber(food.protein)} g</Text>
+        <Text style={styles.macro}>Carbohydrates {formatNumber(food.carbs)} g</Text>
+        <Text style={styles.macro}>Fat {formatNumber(food.fat)} g</Text>
+      </View>
+      <Text style={styles.sourceType}>{food.source === "user_label" ? "Your nutrition label" : food.source === "my_food" ? "Your saved food" : food.source === "openfoodfacts" ? "Open Food Facts product label" : food.source === "usda" ? "USDA nutrition" : food.source === "trackbing_gist" ? "TrackBing curated foods — check preparation and portion" : "Nutrition source"}</Text>
+      <Text style={styles.calculation}>
+        {food.grams !== null && source.basis.grams !== null
+          ? `${formatNumber(food.grams)} g ÷ ${formatNumber(source.basis.grams)} g × ${formatNumber(source.basis.nutrients.calories)} kcal = ${Math.round(food.calories)} kcal`
+          : `Source serving: ${source.basis.count === null ? "" : `${formatNumber(source.basis.count)} `}${source.basis.unit} · ${formatNumber(source.basis.nutrients.calories)} kcal`}
+      </Text>
+      {source.attribution ? <Text style={styles.calculation}>{source.attribution}{source.license ? ` · ${source.license}` : ""}</Text> : null}
+      {sourceUrl ? (
+        <BeeAction label={source.title || "View nutrition source"} accessibilityLabel={"Open nutrition source: " + (source.title || sourceUrl)} role="link" onPress={() => void openSource()} style={styles.sourceButton} />
+      ) : <Text style={styles.calculation}>{source.title}</Text>}
+      {sourceError ? <Text accessibilityLiveRegion="polite" style={styles.calculation}>Couldn’t open the source. Try the link again.</Text> : null}
+      <Text style={styles.reviewDate}>For {draft.local_date}</Text>
+      {current ? (
+        <View style={styles.reviewActions}>
+          <Text style={styles.reviewStatus}>{`Add ${food.servingLabel} of ${food.name} to today's food?`}</Text>
+          <BeeAction label="Add to today" primary disabled={busy} onPress={onConfirm} style={styles.addButton} />
+          <View style={styles.actions}>
+            <BeeAction label="Edit portion" disabled={busy} onPress={onEdit} />
+            <BeeAction label="Cancel" accessibilityLabel={"Cancel " + food.name} disabled={busy} onPress={onCancel} />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.reviewActions}>
+          <Text style={styles.reviewStatus}>{status}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function formatNumber(value: number): string {
+  return Number(value.toFixed(1)).toString();
 }
 
 const styles = StyleSheet.create({
   floatingButton: {
-    position: "absolute",
-    zIndex: 50,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    elevation: 4,
-    overflow: "visible",
+    position: "absolute", zIndex: 50, width: 56, height: 56, borderRadius: 28,
+    alignItems: "center", justifyContent: "center", backgroundColor: Colors.surface,
+    borderWidth: 1, borderColor: Colors.border, elevation: 4, overflow: "visible", padding: 0,
   },
-  launcherMascotViewport: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  floatingButtonMobile: {
-    right: 16,
-    bottom: 112,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-  },
-  floatingButtonDesktop: {
-    right: 24,
-    bottom: 24,
-  },
+  launcherMascotViewport: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  floatingButtonMobile: { right: 16, bottom: 112, width: 52, height: 52, borderRadius: 26 },
+  floatingButtonDesktop: { right: 24, bottom: 24 },
   floatingBadge: {
-    position: "absolute",
-    right: -1,
-    bottom: -1,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.accent,
-    borderWidth: 2,
-    borderColor: Colors.primary,
+    position: "absolute", right: -1, bottom: -1, width: 22, height: 22, borderRadius: 11,
+    alignItems: "center", justifyContent: "center", backgroundColor: Colors.accent, borderWidth: 2, borderColor: Colors.primary,
   },
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.58)",
-    justifyContent: "flex-end",
-  },
-  keyboardAvoid: {
-    justifyContent: "flex-end",
-  },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.58)", justifyContent: "flex-end" },
+  keyboardAvoid: { flex: 1, justifyContent: "flex-end" },
   sheet: {
-    width: "100%",
-    minHeight: 400,
-    maxHeight: "86%",
-    backgroundColor: Colors.secondary,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 16,
+    width: "100%", maxWidth: 620, alignSelf: "center", flexShrink: 1, backgroundColor: Colors.secondary,
+    borderTopLeftRadius: Radii.card, borderTopRightRadius: Radii.card,
+    borderWidth: 1, borderColor: Colors.border, padding: 16,
   },
-  sheetDesktop: {
-    width: 460,
-    maxHeight: 640,
-    borderRadius: 24,
-    alignSelf: "flex-end",
-    marginRight: 24,
-    marginBottom: 92,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  headerAvatar: {
-    width: 46,
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  title: {
-    color: Colors.text,
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  messages: {
-    maxHeight: 360,
-  },
-  messagesContent: {
-    gap: 10,
-    paddingTop: 14,
-    paddingBottom: 22,
-  },
-  messageRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  beeMessageRow: {
-    alignSelf: "stretch",
-    gap: 6,
-  },
-  userMessageRow: {
-    alignSelf: "flex-end",
-    justifyContent: "flex-end",
-    maxWidth: "88%",
-  },
-  messageMascot: {
-    marginTop: 1,
-  },
-  messageBubble: {
-    borderRadius: 16,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-  },
-  beeBubble: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  userBubble: {
-    backgroundColor: Colors.accent,
-  },
-  messageText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-  },
-  beeMessageText: {
-    color: Colors.text,
-  },
-  userMessageText: {
-    color: Colors.textOnAccent,
-  },
-  badgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 9,
-  },
-  confidenceText: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  sourceDetailText: {
-    color: Colors.textMuted,
-    fontSize: 10,
-    fontWeight: "600",
-    flexShrink: 1,
-  },
-  optionWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  optionChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.accentDim,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  optionChipPrimary: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
-  },
-  optionText: {
-    color: Colors.accent,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  optionTextPrimary: {
-    color: Colors.textOnAccent,
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
+  sheetDesktop: { width: 480, maxHeight: 680, borderRadius: Radii.card, alignSelf: "flex-end", marginRight: 24, marginBottom: 24 },
+  header: { flexDirection: "row", alignItems: "center", gap: 10, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  headerAvatar: { width: 46, height: 52, alignItems: "center", justifyContent: "center" },
+  headerCopy: { flex: 1, minWidth: 0 },
+  title: { color: Colors.text, fontSize: 18, fontWeight: "700" },
+  subtitle: { color: Colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 2 },
+  toolbar: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingVertical: 10 },
+  newConversation: { gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  messages: { flex: 1, minHeight: 0 },
+  messagesContent: { gap: 14, paddingTop: 6, paddingBottom: 14 },
+  messageRow: { flexDirection: "row", alignItems: "flex-start" },
+  beeMessageRow: { alignSelf: "stretch", gap: 6 },
+  userMessageRow: { alignSelf: "flex-end", justifyContent: "flex-end", maxWidth: "88%" },
+  messageMascot: { width: 34, marginTop: 1 },
+  messageAvatarSlot: { width: 34 },
+  messageBubble: { borderRadius: Radii.card, paddingHorizontal: 12, paddingVertical: 11 },
+  beeBubble: { flex: 1, minWidth: 0, backgroundColor: Colors.surface },
+  userBubble: { backgroundColor: Colors.accent },
+  messageText: { color: Colors.text, fontSize: 14, lineHeight: 21 },
+  userMessageText: { color: Colors.textOnAccent },
+  welcome: { alignItems: "center", gap: 12, paddingVertical: 12 },
+  welcomeTitle: { color: Colors.text, fontSize: 18, fontWeight: "700" },
+  welcomeText: { color: Colors.textSecondary, fontSize: 14, lineHeight: 21, textAlign: "center", maxWidth: 360 },
+  starters: { gap: 8, alignSelf: "stretch", marginTop: 4 },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 },
+  loadingSkeleton: { gap: 12, paddingVertical: 12 },
+  skeletonLine: { height: 54, borderRadius: Radii.inner, backgroundColor: Colors.surface },
+  skeletonShort: { width: "70%", height: 38 },
+  notice: { color: Colors.text, fontSize: 13, lineHeight: 19, paddingVertical: 8 },
+  manualButton: { alignSelf: "flex-start" },
+  retention: { color: Colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  feedback: { gap: 10, paddingVertical: 12, borderTopWidth: 1, borderTopColor: Colors.border },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  composer: { gap: 6, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.border },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
   input: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.inputBg,
-    color: Colors.text,
-    paddingHorizontal: 14,
-    fontSize: 14,
-    fontWeight: "500",
+    flex: 1, minWidth: 0, minHeight: 48, maxHeight: 112, borderRadius: Radii.inner,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.inputBg,
+    color: Colors.text, paddingHorizontal: 12, paddingVertical: 12, fontSize: 14, lineHeight: 20, textAlignVertical: "top",
   },
-  sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.accent,
-  },
-  sendButtonDisabled: {
-    opacity: 0.55,
-  },
+  inputFocused: { borderColor: Colors.accent, outlineColor: Colors.accent, outlineWidth: 2, outlineOffset: 1 },
+  sendButton: { width: 48, height: 48 },
+  review: { gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.border },
+  foodName: { color: Colors.text, fontSize: 15, lineHeight: 21, fontWeight: "700" },
+  serving: { color: Colors.textSecondary, fontSize: 13, lineHeight: 19 },
+  calories: { color: Colors.accent, fontSize: 21, fontWeight: "700" },
+  macros: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  macro: { color: Colors.text, fontSize: 12, lineHeight: 18 },
+  sourceType: { color: Colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 3 },
+  calculation: { color: Colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  sourceButton: { alignSelf: "flex-start", maxWidth: "100%" },
+  reviewDate: { color: Colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  reviewActions: { gap: 8, marginTop: 3 },
+  addButton: { alignSelf: "stretch" },
+  reviewStatus: { color: Colors.textSecondary, fontSize: 12, lineHeight: 18 },
 });

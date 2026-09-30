@@ -3,6 +3,7 @@
 // data, and OpenFoodFacts. Both the Find Food screen and the Recipe builder
 // use this so the two stay in lockstep.
 
+import {completeOffNutrition,labeledServingWeight} from "./independentNutrition";
 import { supabase } from "./supabase";
 import { searchUSDA } from "./usda";
 import { parseBarcode } from "./barcodes";
@@ -152,18 +153,18 @@ export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
 async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
   try {
     const res = await fetch(
-      `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
         query
       )}&search_simple=1&action=process&json=1&page_size=10&lc=en`
     );
     const offData = await res.json();
     return (
-      offData.products?.map((item: any, index: number) => ({
+      offData.products?.filter((item: {nutriments?:unknown})=>completeOffNutrition(item.nutriments)!==null).map((item: any, index: number) => ({
         code: item.code || `off-${index}`,
         product_name: item.product_name || "Unknown Food",
         brands: item.brands || "Packaged",
         default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
-        serving_quantity: item.serving_quantity || 100,
+        serving_weight: labeledServingWeight(item.serving_size,item.product_quantity_unit === "ml" ? "ml" : "g"),
         nutriments: {
           "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
           proteins_100g: item.nutriments?.proteins_100g || 0,
@@ -240,11 +241,8 @@ export async function lookupBarcode(code: string): Promise<BarcodeResult> {
 
       const p = json.product;
       const n = p.nutriments || {};
-      const kcal =
-        n["energy-kcal_100g"] || n["energy-kcal"] || n["energy_value"] || 0;
-      const protein = n.proteins_100g || n.proteins || 0;
-      const carbs = n.carbohydrates_100g || n.carbohydrates || 0;
-      const fat = n.fat_100g || n.fat || 0;
+      const complete=completeOffNutrition(n);
+      const kcal=complete?.["energy-kcal_100g"]??NaN,protein=complete?.proteins_100g??NaN,carbs=complete?.carbohydrates_100g??NaN,fat=complete?.fat_100g??NaN;
       const isLiquid =
         p.product_quantity_unit === "ml" ||
         p.product_quantity_unit === "cl" ||
@@ -252,13 +250,13 @@ export async function lookupBarcode(code: string): Promise<BarcodeResult> {
 
       return {
         ok: true,
-        hasNutrition: kcal > 0 || protein > 0 || carbs > 0 || fat > 0,
+        hasNutrition: complete!==null,
         food: {
           code,
           product_name: p.product_name || "Unknown Product",
           brands: p.brands || "Packaged Item",
           default_unit: isLiquid ? "ml" : "g",
-          serving_quantity: p.serving_quantity || 100,
+          serving_weight: labeledServingWeight(p.serving_size,isLiquid ? "ml" : "g"),
           nutriments: {
             "energy-kcal_100g": kcal,
             proteins_100g: protein,

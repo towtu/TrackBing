@@ -17,6 +17,22 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npx tsc --noEmit
+      - name: Unit and mocked integration tests
+        run: npm test
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Edge Function type check
+        run: npm run typecheck:functions
+      - name: PostgreSQL ownership and confirmation tests
+        run: npm run test:db
+      - name: Expo web build
+        run: npm run build:web
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: build-only-placeholder
+      - name: Check tracked and exported secret patterns
+        run: node scripts/check-secrets.mjs --dist
       - name: Lint
         run: npx expo lint
       - name: Audit production deps

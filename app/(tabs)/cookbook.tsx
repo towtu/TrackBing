@@ -8,7 +8,7 @@ import {
   SlidersHorizontal,
   Trash,
   X,
-} from "phosphor-react-native";
+} from "@/src/components/icons";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,

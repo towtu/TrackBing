@@ -68,6 +68,7 @@ try {
   fixture("supabase/migrations/20260928000000_adaptive_bee.sql");
   fixture("supabase/migrations/20260929000000_subscription_budgets.sql");
   fixture("supabase/migrations/20260930000000_billing_actions.sql");
+  fixture("supabase/migrations/20260930000100_account_cascade_context.sql");
   const { runAdaptiveDatabaseTests } = await import("../supabase/tests/adaptive_database.mjs");
   await runAdaptiveDatabaseTests(context);
   const edge = spawnSync(process.env.DENO_BINARY ?? "deno", ["test", "--cached-only", "--config", "supabase/functions/deno.json", "--allow-env", "supabase/tests/usda_proxy_deno.mts", "supabase/tests/billing_deno.mts"], { cwd: root, stdio: "inherit" });

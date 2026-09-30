@@ -82,4 +82,14 @@ export async function runAdaptiveDatabaseTests({assert,query,queryAsync,literal:
  assert.throws(()=>asUser(`select public.get_weekly_stats('2026-11-02T05:00:00Z','2026-11-01T05:00:00Z');`,dstOwner));assert.equal(query(`select has_function_privilege('anon','public.get_weekly_stats(timestamptz,timestamptz)','execute');`),'f');
  process.stdout.write('Owner-scoped weekly stats use explicit local boundaries across DST and exclude the next day.\n');
 
+ // Operator account erasure must not recreate context rows during FK cascades.
+ // All records below belong to disposable TEST DATA owners in this database.
+ const removed=randomUUID();
+ query(`insert into auth.users values(${q(removed)}); insert into public.user_goals(user_id,calorie_target,current_weight) values(${q(removed)},2000,72); insert into public.bee_memories(user_id,key,value) values(${q(removed)},'preferred_units','grams'); delete from public.user_goals where user_id=${q(removed)};`);
+ assert.equal(Number(query(`select count(*) from public.weight_logs where user_id=${q(removed)};`)),1);
+ query(`delete from auth.users where id=${q(removed)};`);
+ for(const table of ['weight_logs','bee_memories','bee_context_revisions']) assert.equal(query(`select count(*) from public.${table} where user_id=${q(removed)};`),'0');
+ assert.equal(query(`select has_function_privilege('authenticated','public.adaptive_bump_context()','execute');`),'f');
+ process.stdout.write('Auth account cascades remove private context and weight rows without recreating deleted owners.\n');
+
 }

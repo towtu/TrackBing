@@ -551,6 +551,7 @@ export function DashboardScreen() {
                 {/* ── TIMELINE HEADER ── */}
                 <View style={styles.timelineHeader}>
                   <Text style={styles.timelineTitle}>Today&apos;s log</Text>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Browse food diary" onPress={()=>router.push('/diary')} style={{minHeight:44,padding:10,justifyContent:'center'}}><Text style={{color:Colors.accent}}>History</Text></TouchableOpacity>
                   <Text style={styles.itemCountText}>{logs.length} items</Text>
                 </View>
 
@@ -703,6 +704,7 @@ export function DashboardScreen() {
                 {/* ── TIMELINE HEADER ── */}
                 <View style={styles.timelineHeader}>
                   <Text style={styles.timelineTitle}>Today&apos;s log</Text>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Browse food diary" onPress={()=>router.push('/diary')} style={{minHeight:44,padding:10,justifyContent:'center'}}><Text style={{color:Colors.accent}}>History</Text></TouchableOpacity>
                   <Text style={styles.itemCountText}>{logs.length} items</Text>
                 </View>
               </>

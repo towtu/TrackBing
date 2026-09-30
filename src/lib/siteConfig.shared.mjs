@@ -24,7 +24,7 @@ export function makeSiteConfig(values = {}) {
 
 export const PUBLIC_PATHS = ["/", "/privacy", "/terms"];
 export const PRIVATE_PATHS = ["/add", "/cookbook", "/stats", "/profile", "/plans", "/scan",
-  "/my-foods", "/create-food", "/create-recipe"];
+  "/my-foods", "/create-food", "/create-recipe", "/diary", "/data"];
 
 export function routeKind(pathname) {
   if (PUBLIC_PATHS.includes(pathname) || pathname === "/auth" || pathname === "/recover") return "public";

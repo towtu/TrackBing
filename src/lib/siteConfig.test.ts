@@ -33,6 +33,10 @@ describe("public launch configuration", () => {
     expect(pageMetadata("/auth", config).canonical).toBeNull();
   });
   it("distinguishes reachable legal routes from private and unknown routes", () => {
+    expect(routeKind('/recover')).toBe('public');
+    for (const path of ['/diary','/data']) expect(routeKind(path)).toBe('private');
+    for (const path of ['/recover','/diary','/data']) expect(pageMetadata(path,makeSiteConfig(reviewed)).robots).toBe('noindex,nofollow');
+    for (const path of ['/recover','/diary','/data']) expect(crawlerFiles(makeSiteConfig(reviewed)).sitemap).not.toContain(path);
     expect(routeKind("/privacy")).toBe("public");
     expect(routeKind("/terms")).toBe("public");
     expect(routeKind("/auth")).toBe("public");

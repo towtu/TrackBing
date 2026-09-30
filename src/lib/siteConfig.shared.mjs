@@ -27,7 +27,7 @@ export const PRIVATE_PATHS = ["/add", "/cookbook", "/stats", "/profile", "/plans
   "/my-foods", "/create-food", "/create-recipe"];
 
 export function routeKind(pathname) {
-  if (PUBLIC_PATHS.includes(pathname) || pathname === "/auth") return "public";
+  if (PUBLIC_PATHS.includes(pathname) || pathname === "/auth" || pathname === "/recover") return "public";
   return PRIVATE_PATHS.includes(pathname) ? "private" : "not-found";
 }
 
@@ -35,6 +35,7 @@ export function pageMetadata(pathname, config) {
   const pages = {
     "/": ["TrackBing — calorie and macro tracking", "Track your food, review portions, and follow your daily calorie and macro goals with TrackBing."],
     "/auth": ["Sign in to TrackBing", "Sign in or create a TrackBing account to keep your food diary and nutrition goals together."],
+    "/recover": ["Reset your password — TrackBing", "Recover your TrackBing account with an email verification code."],
     "/privacy": ["Privacy policy — TrackBing", "How TrackBing handles your account, food diary, body measurements, Bee chat, and saved preferences."],
     "/terms": ["Terms and conditions — TrackBing", "Read TrackBing's terms and the limits of nutrition estimates, food records, and Bee answers."],
   };
@@ -49,7 +50,7 @@ export function crawlerFiles(config) {
   if (!config.indexable) return { robots: "User-agent: *\nDisallow: /\n",
     sitemap: '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n' };
   return {
-    robots: "User-agent: *\nAllow: /\n" + ["/auth", "/(tabs)", "/_sitemap", "/+not-found", ...PRIVATE_PATHS].map(path => "Disallow: " + path).join("\n") +
+    robots: "User-agent: *\nAllow: /\n" + ["/auth", "/recover", "/(tabs)", "/_sitemap", "/+not-found", ...PRIVATE_PATHS].map(path => "Disallow: " + path).join("\n") +
       "\nSitemap: " + config.origin + "/sitemap.xml\n",
     sitemap: '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
       PUBLIC_PATHS.map(path => "  <url><loc>" + config.origin + path + "</loc></url>").join("\n") + "\n</urlset>\n",

@@ -1293,6 +1293,7 @@ export function ProfileScreen() {
           </>
         )}
         <View style={{ marginTop: 24, gap: 16 }}>
+          <Pressable accessibilityRole="button" onPress={()=>router.push('/recover')} style={{minHeight:48,padding:16}}><Text style={{color:Colors.accent}}>Change password</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Plans and usage" onPress={()=>router.push("/plans")} style={{padding:16}}><Text style={{color:Colors.accent}}>Plans and usage</Text></Pressable>
           <WeightHistory />
           <AnalyticsPrivacyControls />

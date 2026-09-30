@@ -921,6 +921,7 @@ export function AuthScreen() {
         </View>
       </View>
 
+      {isLogin && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Forgot password?" disabled={loading} onPress={() => router.push('/recover')} style={{minHeight:44,paddingVertical:12,alignItems:'flex-end'}}><Text style={{color:Colors.accent}}>Forgot password?</Text></TouchableOpacity>}
       <View style={{ marginBottom: 24 }}>
         {loading ? (
           <View style={{ paddingVertical: 16 }}>

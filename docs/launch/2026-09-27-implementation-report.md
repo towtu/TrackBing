@@ -276,6 +276,14 @@ fixtures. The updated web export has 23 routes; iOS/Android Hermes exports passe
 Device keyboards, actual share-sheet/file saving, Gmail delivery and production
 Auth settings still require operator checks. Native modules need a new app binary.
 
+The food-search/accessibility and account/diary follow-ups were published to
+`feat/bee-conversation` with the required `towtu` author and are included in draft
+[PR #10](https://github.com/towtu/TrackBing/pull/10). Earlier blocked Git attempts
+were resolved when direct push succeeded; the remote head was verified. An
+alternate patch is retained under `output/review/trackbing-account-ux.patch` and
+was applied successfully in a disposable checkout. `codex.diff` remains untouched.
+Publication of the branch does not imply a production deployment or merge.
+
 ## Security review
 
 **Security check:** session validation, explicit owner-scoped service calls, RLS,

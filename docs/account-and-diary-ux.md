@@ -51,17 +51,17 @@ Latest verification and remaining launch blockers are recorded in the [implement
 
 ## Review delivery
 
-The follow-up commits are on the local `feat/bee-conversation` branch, authored by
-`towtu <fatowtu123@gmail.com>`. Draft [PR #10](https://github.com/towtu/TrackBing/pull/10)
-contains the earlier Bee work; its notes distinguish the unpublished follow-up.
-Git push credentials are unavailable in this workspace. The connected GitHub
-commit API cannot preserve the repository-required author, so it is not used to
-publish replacement commits.
+The follow-up commits are published on `feat/bee-conversation`, authored by
+`towtu <fatowtu123@gmail.com>`, and included in draft
+[PR #10](https://github.com/towtu/TrackBing/pull/10). Earlier publication attempts
+were blocked; the direct Git push subsequently succeeded and the remote head was
+verified. The connected GitHub commit API was not used to replace commit authors.
 
 `output/review/trackbing-account-ux.patch` includes all local commits after the
 published branch head, including the preceding food-search/accessibility fix.
-It is generated with `git format-patch origin/feat/bee-conversation..HEAD --stdout`.
-An authenticated operator can push the existing branch to preserve these commits,
-or use `git am` with this patch in a clean checkout of the published feature branch.
+It is generated with `git format-patch 5419ecc05df62f11e6addf242158d64b158da5db..HEAD --stdout`.
+It is an alternate review artifact for a clean checkout of that earlier head;
+the published branch already contains these changes. Applying it with `git am`
+was checked in a disposable checkout.
 Do not reset a working tree or overwrite unrelated changes to apply it. No merge
 or production deployment is part of this handoff.

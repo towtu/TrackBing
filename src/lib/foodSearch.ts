@@ -153,7 +153,7 @@ export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
 async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
   try {
     const res = await fetch(
-      `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
         query
       )}&search_simple=1&action=process&json=1&page_size=10&lc=en`
     );

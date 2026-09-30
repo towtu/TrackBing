@@ -1,6 +1,6 @@
 # Adaptive Bee and launch implementation report
 
-Implementation verified locally on 28 September 2026 (Asia/Manila).
+Implementation verified locally through 30 September 2026 (Asia/Manila).
 Branch: `feat/bee-conversation`; review: [draft PR #10](https://github.com/towtu/TrackBing/pull/10).
 **No production migration, deployment, payment activation, or merge was performed.**
 
@@ -99,7 +99,7 @@ require a new development/store binary with `expo-iap`; Expo Go is insufficient.
 | Check | Result / scope |
 | --- | --- |
 | `npm run typecheck` | Passed: application TypeScript. |
-| `npm test` | Passed: **39 suites / 569 tests**, deterministic fixtures and mocked paid providers. |
+| `npm test` | Passed: **40 suites / 570 tests**, deterministic fixtures and mocked paid providers. |
 | `npm run lint` | Passed: no errors or warnings. |
 | `npm run typecheck:functions` | Passed: all six Deno Edge Function entry points; separate from frontend TS. |
 | `npm run test:db` | Real ephemeral PostgreSQL 16: migration/ownership/concurrency/confirmation/weight/tier/retention/date tests; plus **17 actual Deno handler tests** with mocked providers. 36 legacy/launch checks plus five current-policy integration groups. |
@@ -175,6 +175,46 @@ have no horizontal overflow. Accessible names, visible public-link keyboard focu
 modal scrolling and recoverable/loading states were inspected. Headless camera
 access is denied intentionally. No real hardware scanning was claimed.
 
+**Executed against real isolated local Supabase, without Gemini or production
+accounts:** signup/onboarding and target save; create a clearly labeled
+`LOCAL-TEST-DATA` personal food; submit food search, review a 100 g serving,
+log it and observe the dashboard update immediately; reload and verify the
+entry persists. Profile's dated weight review/cancel leaves history unchanged;
+review/confirm saves one measurement and synchronizes current weight while
+preserving the calorie target. These were disposable test-account records, not
+live-source nutrition or real users' diary entries.
+
+### Follow-up fixes and verification, 30 September
+
+- Packaged-food text search now uses `world.openfoodfacts.org`, the documented
+  production host, rather than the US-market subdomain. The prior host failed
+  CORS in the local browser and restricted product coverage to the US market.
+  A real browser request to the world host returned HTTP 200 with a readable CORS
+  response; no real product calorie figure was used as demonstration data.
+  The new mocked source test checks the encoded query and that a complete
+  illustrative product record remains available to food search. See the
+  [official Open Food Facts API guide](https://openfoodfacts.github.io/openfoodfacts-server/api/).
+- Food-search header/search-clear controls and both responsive food-review
+  layouts expose button roles and accessible names. Portion unit selection and
+  save busy/disabled states are announced; Android's modal back action dismisses
+  the review. Existing layout, nutrition calculations and diary writes are unchanged.
+- The expanded browser regression exercises manual review, portion increase/
+  decrease and keyboard cancellation without inserting food, alongside the
+  existing Bee/public/account checks. All nutrition in this regression is marked
+  illustrative test data. Screenshots and results stay under ignored
+  `output/playwright/adaptive-launch/`.
+- Application/function typechecks, lint, 570 unit/integration tests, the full
+  PostgreSQL/17-handler suite, the web export and credential scan were rerun.
+  Audit remains 16 advisories (one high, 15 moderate); no dependency was changed
+  in this follow-up. The web build uses public build-only placeholders and the
+  browser harness intercepts Supabase calls, so it needs no live API credential.
+- The actual PR preview at
+  `https://track-bing-git-feat-bee-conversation-towtus-projects.vercel.app`
+  returned HTTP 308 to HTTPS. HTTPS `/privacy` returned a Vercel sign-in redirect,
+  not the app page. App headers, live 404, legal content, social previews and
+  Lighthouse therefore remain unverified on that protected preview. No attempt
+  was made to bypass protection or deploy to production.
+
 **Deterministic unit/SQL acceptance:** 72 g fixture arithmetic and cooking method,
 100 g correction, egg-white replacement, brand/package clarification, bar versus
 pack, per-serving/per100g/kJ conversion, unsupported volume/missing macros,
@@ -240,13 +280,13 @@ approval. “Partial” includes native or real deployment checks still outstand
 | 1 Privacy | Partial | `/privacy`, legal links, processor/control draft, static export and three-width Chrome checks | Approve operator/contact, rights/erasure/backups/retention and Google/billing processing; native route walk. |
 | 2 Terms | Partial | `/terms`, signed-out access, Basic/Plus/Pro/AI limits and payment draft | Approve age/refund/tax/dispute terms and effective date; native walk. |
 | 3 Secrets / access | Implemented | Safe env templates, tracked/dist scan, real PG owner/RPC/provenance tests | Configure server-only secrets and verify policies on isolated deployment before release. |
-| 4 HTTPS | Blocked | HTTPS-only external adapters; compatible Vercel security headers | Supply real origin; verify HTTP→HTTPS/TLS/headers/camera, then decide HSTS. |
+| 4 HTTPS | Blocked | HTTPS-only adapters; Vercel configuration; protected PR preview redirects HTTP→HTTPS308, app page is inaccessible | Supply real production origin or accessible isolated preview; verify app TLS/headers/camera, then decide HSTS. |
 | 5 Consent | Implemented | Optional web consent, DNT/GPC, accept/decline/revoke tests; tracking off by default | Enable optional tracking only after provider/privacy approval; native analytics remain off. |
 | 6 Metadata | Implemented | Exported public titles/descriptions/content and protected noindex checks | Verify deployed HTML after final operator configuration. |
 | 7 Social preview | Partial | Branded1200×630 PNG and conditional OG/Twitter metadata | Set real HTTPS origin and inspect deployed social previews. |
 | 8 Favicon | Existing and verified | Export favicon and existing icon preserved; browser screenshots | Review1024×1024 native store art and deployed tab icon. |
 | 9 Sitemap / robots | Partial | Public-only generation; drafts/unknown origin deny indexing; route tests | Set real origin and approved legal configuration; verify deployed crawler files. |
-| 10 Accessibility | Partial | Image/control labels, decorative hiding, modal names/public keyboard focus; Chrome checks | Complete VoiceOver/TalkBack/full keyboard and scanner/recipe workflows on devices. |
+| 10 Accessibility | Partial | Image/control labels, food-review portion/close/save semantics, keyboard cancellation, public focus and three-width Chrome checks | Complete VoiceOver/TalkBack/full keyboard and scanner/recipe workflows on devices. |
 | 11 Images | Implemented | Ten lossless assets,176,524 bytes saved, unchanged pixels | Review native store artwork separately; optimization did not replace it. |
 | 12 Speed | Partial | Entry~66% smaller; zero-JS legal/404; measured export assets | Run mobile/desktop Lighthouse on real origin and native startup; meet remaining JS/performance budget. |
 | 13 Contrast | Implemented | 37 WCAG color-pair tests; text/errors/borders/citations adjusted | Verify device rendering/focus states during final accessibility walk. |

@@ -631,6 +631,8 @@ export default function AddFoodPage() {
             <TouchableOpacity
               onPress={() => router.back()}
               style={localStyles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
               <CaretLeft size={24} color={Colors.accent} weight="bold" />
             </TouchableOpacity>
@@ -641,6 +643,8 @@ export default function AddFoodPage() {
               <TouchableOpacity
                 onPress={() => router.push("/my-foods")}
                 style={localStyles.backButton}
+                accessibilityRole="button"
+                accessibilityLabel="Open my foods"
               >
                 <ForkKnife size={24} color={Colors.accent} />
               </TouchableOpacity>
@@ -648,6 +652,8 @@ export default function AddFoodPage() {
             <TouchableOpacity
               onPress={() => router.push("/create-food")}
               style={localStyles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="Create a food"
             >
               <Plus size={24} color={Colors.accent} weight="bold" />
             </TouchableOpacity>
@@ -655,6 +661,8 @@ export default function AddFoodPage() {
               <TouchableOpacity
                 onPress={() => router.push("/scan")}
                 style={localStyles.backButton}
+                accessibilityRole="button"
+                accessibilityLabel="Scan a barcode"
               >
                 <Barcode size={24} color={Colors.accent} />
               </TouchableOpacity>
@@ -686,6 +694,8 @@ export default function AddFoodPage() {
                     setResults([]);
                   }}
                   style={{ marginRight: 15 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear food search"
                 >
                   <X size={18} color={Colors.textSecondary} weight="bold" />
                 </TouchableOpacity>
@@ -881,6 +891,8 @@ export default function AddFoodPage() {
                     <TouchableOpacity
                       onPress={() => setSelectedFood(null)}
                       style={localStyles.closeBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close food review"
                     >
                       <X size={24} color="white" />
                     </TouchableOpacity>
@@ -890,6 +902,8 @@ export default function AddFoodPage() {
                     <TouchableOpacity
                       onPress={() => adjustWeight(-10)}
                       style={localStyles.adjustBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease portion"
                     >
                       <Minus size={20} color="white" weight="bold" />
                     </TouchableOpacity>
@@ -917,6 +931,9 @@ export default function AddFoodPage() {
                           <TouchableOpacity
                             key={u}
                             onPress={() => setSelectedUnit(u)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Portion unit ${u}${selectedUnit === u ? ", selected" : ""}`}
+                            accessibilityState={{ selected: selectedUnit === u }}
                             style={{
                               paddingHorizontal: 16,
                               paddingVertical: 10,
@@ -945,6 +962,8 @@ export default function AddFoodPage() {
                     <TouchableOpacity
                       onPress={() => adjustWeight(10)}
                       style={localStyles.adjustBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase portion"
                     >
                       <Plus size={20} color="white" weight="bold" />
                     </TouchableOpacity>
@@ -977,6 +996,9 @@ export default function AddFoodPage() {
                     style={localStyles.confirmBtn}
                     onPress={confirmAdd}
                     disabled={submitting}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: submitting, busy: submitting }}
+                    aria-busy={submitting}
                   >
                     <Text style={localStyles.confirmText}>
                       {submitting ? "Adding..." : "Log this meal"}
@@ -994,7 +1016,7 @@ export default function AddFoodPage() {
           )}
         </View>
 
-        <Modal visible={!isDesktop && !!selectedFood} transparent animationType="fade">
+        <Modal visible={!isDesktop && !!selectedFood} transparent animationType="fade" onRequestClose={() => setSelectedFood(null)}>
           <View style={localStyles.modalOverlay}>
             <View style={localStyles.modalContent}>
               <View style={localStyles.modalDragBar} />
@@ -1008,6 +1030,8 @@ export default function AddFoodPage() {
                 <TouchableOpacity
                   onPress={() => setSelectedFood(null)}
                   style={localStyles.closeBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close food review"
                 >
                   <X size={24} color="white" />
                 </TouchableOpacity>
@@ -1017,6 +1041,8 @@ export default function AddFoodPage() {
                 <TouchableOpacity
                   onPress={() => adjustWeight(-10)}
                   style={localStyles.adjustBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Decrease portion"
                 >
                   <Minus size={20} color="white" weight="bold" />
                 </TouchableOpacity>
@@ -1044,6 +1070,9 @@ export default function AddFoodPage() {
                       <TouchableOpacity
                         key={u}
                         onPress={() => setSelectedUnit(u)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Portion unit ${u}${selectedUnit === u ? ", selected" : ""}`}
+                        accessibilityState={{ selected: selectedUnit === u }}
                         style={{
                           paddingHorizontal: 16,
                           paddingVertical: 10,
@@ -1072,6 +1101,8 @@ export default function AddFoodPage() {
                 <TouchableOpacity
                   onPress={() => adjustWeight(10)}
                   style={localStyles.adjustBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Increase portion"
                 >
                   <Plus size={20} color="white" weight="bold" />
                 </TouchableOpacity>
@@ -1104,6 +1135,9 @@ export default function AddFoodPage() {
                 style={localStyles.confirmBtn}
                 onPress={confirmAdd}
                 disabled={submitting}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: submitting, busy: submitting }}
+                aria-busy={submitting}
               >
                 <Text style={localStyles.confirmText}>
                   {submitting ? "Adding..." : "Log this meal"}

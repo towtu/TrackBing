@@ -10,6 +10,12 @@ const number = (text:string, max:number): number|null => {
 const nameError=(name:string)=>!name.trim()||name.trim().length>160
   ? "Enter a food or recipe name using 1 to 160 characters." : null;
 
+/** A fraction/count of the whole recipe, never a partially parsed number. */
+export function parseRecipePortion(text: string): number | null {
+  const value = number(text, 100);
+  return value !== null && value > 0 ? value : null;
+}
+
 export function parseManualFood(name:string, protein:string, carbs:string, fat:string) {
   const error=nameError(name);
   if(error) return {ok:false as const,message:error};

@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { parseManualFood, validateLoggedPortion, validateRecipe } from "./foodValidation";
+import { parseManualFood, parseRecipePortion, validateLoggedPortion, validateRecipe } from "./foodValidation";
 import type { RecipeIngredient } from "./macros";
 
 // Illustrative test data, not nutrition facts.
 const ingredient: RecipeIngredient = {name:"Test food",brands:"Fixture",weight:10,unit:"g",default_unit:"g",nutriments:{"energy-kcal_100g":100,proteins_100g:1,carbohydrates_100g:2,fat_100g:3}};
 describe("manual food and recipe boundaries",()=>{
+  it("keeps a recipe fraction precise and accepts a complete decimal only", () => {
+    expect(parseRecipePortion("0.5")).toBe(0.5);
+    expect(parseRecipePortion(String(1 / 3))).toBe(1 / 3);
+    expect(parseRecipePortion(" 2.25 ")).toBe(2.25);
+    expect(parseRecipePortion("100")).toBe(100);
+  });
+  it.each(["", "0", "-1", "NaN", "Infinity", "1.2.3", "2 recipes", "101"])("rejects recipe fraction %s rather than logging the last valid value", text => {
+    expect(parseRecipePortion(text)).toBeNull();
+  });
   it("requires explicit values including explicit zero rather than manufacturing missing macros",()=>{
     expect(parseManualFood("Water","0","0","0")).toMatchObject({ok:true,value:{protein:0,carbs:0,fat:0,calories:0}});
     expect(parseManualFood("Water","0","","0").ok).toBe(false);

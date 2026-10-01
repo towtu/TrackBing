@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
 import {
   Barcode,
   Basket,
@@ -28,6 +29,7 @@ import CircularProgress from "react-native-circular-progress-indicator";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
+import { useBeeCompanion } from "@/src/components/ai/BeeCompanionProvider";
 import { useBeeInsight } from "@/src/lib/useBeeInsight";
 import { subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { supabase } from "@/src/lib/supabase";
@@ -55,6 +57,8 @@ const getDateDistanceInDays = (fromDate: string, toDate: string) => {
 };
 
 export function DashboardScreen() {
+  const companion = useBeeCompanion();
+  const isFocused = useIsFocused();
   const { isDesktop } = useResponsive();
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [totals, setTotals] = useState<DailyTotals>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
@@ -412,14 +416,18 @@ export function DashboardScreen() {
   );
 
   const renderBeeCompanion = () => (
-    <BeeGuide
-      compact={!isDesktop}
-      interactive
-      mascotSize={isDesktop ? "large" : "medium"}
-      title={beeMessage.title}
-      message={beeMessage.message}
-      style={styles.beeCompanionCard}
-    />
+    <View testID="bee-dashboard-companion">
+      <BeeGuide
+        compact={!isDesktop}
+        interactive
+        showMascot={isFocused && !companion.chatOpen}
+        mascotSize="large"
+        nutritionDetail={companion.nutritionCue?.detail}
+        title={beeMessage.title}
+        message={beeMessage.message}
+        style={styles.beeCompanionCard}
+      />
+    </View>
   );
 
   return (

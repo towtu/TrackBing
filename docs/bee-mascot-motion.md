@@ -6,17 +6,27 @@ permission. Production publication and a native device walkthrough remain separa
 
 ## Behavior
 
-- One full-body companion beside the chat launcher. Page guidance uses text and
-  an accessible “Ask Bee” link, replacing repeated pictures. The plans page no
-  longer repeats an unrelated greeting image.
-- Opening chat moves Bee into its fixed header. The transcript and welcome state
+- The dashboard has a larger 116 px full-body Bee beside its daily guidance,
+  with an accessible “Ask Bee” button and a tappable mascot. It has no duplicate
+  floating Bee. Other routes retain the compact shared chat launcher; page
+  guidance uses text rather than repeating artwork. The plans page no longer
+  repeats an unrelated greeting image.
+- Opening chat hides the dashboard artwork and moves Bee into its fixed header. The transcript and welcome state
   do not duplicate it. Long food reviews can scroll without losing the companion.
-- The launcher uses the current account's saved target, today's actual diary and
+- The companion uses the current account's saved targets, today's actual diary and
   the presence of a real weigh-in today. Missing data stays neutral; a profile
   baseline is not a dated measurement. Empty diaries do not imply someone has
   not eaten. Going over a target uses a calm resting pose, without a warning or
   instruction to restrict food. A ratio within 90–110% uses acknowledgement;
   these thresholds are visual choices, not health assessments.
+- Protein ideas use the existing encouraging pose; a fat-target review uses
+  thinking. Both show readable recorded grams and the actual saved target. No
+  macro target is filled from a default. Protein ideas require at least two
+  entries, recorded calories at least half of the saved target, and protein
+  target progress below 60% of calorie target progress. A fat review appears
+  above 110% of the saved fat target and takes priority. These are optional UI
+  cues, not claims about health, whole-day intake or meal categories; they never
+  prescribe restriction or assume that missing logs mean missing meals.
 - Pending food, weight and goal reviews use thinking. The header follows the
   current validated assistant pose after a reply. Generic semantic poses do not
   claim a streak, dietary deficit, inactivity or provider failure.
@@ -29,7 +39,8 @@ permission. Production publication and a native device walkthrough remain separa
   wing animations.
 - “Pause Bee motion” / “Animate Bee” in chat controls the device preference.
   System reduced-motion settings always override animation. Movement also stops
-  when the app/tab is in the background, artwork leaves the web viewport, or the
+  when the app/tab is in the background, the dashboard loses navigation focus,
+  artwork leaves the web viewport, or the
   chat composer is focused. The launcher hides while forms have focus/on-screen
   native keyboards, including fields that autofocus before listeners attach.
 
@@ -42,11 +53,13 @@ context clears on sign-out/account change. In-flight results from a disposed
 account are ignored. Neither context nor conversations are stored in the device
 motion preference (`trackbing:bee-motion`), which contains only enabled/paused.
 
-Only the saved timezone/target, up to 250 current-day calorie fields and one
+Only the saved timezone/calorie/protein/fat targets, up to 250 current-day
+calorie/protein/fat fields and one
 current-day non-baseline weigh-in flag are read. Day boundaries use the saved
 IANA timezone through `accountDay`. Weight amounts, names, chat text and memories
-are unnecessary for the launcher and are not read for it. A capped or invalid
-calorie total cannot signal a completed target.
+are unnecessary for the companion and are not read for it. Capped, non-finite,
+negative or missing totals remain unknown per nutrient. They cannot trigger a
+cue for that nutrient or signal a completed target.
 
 Reads refresh on food/weight/profile change events, foreground resume and the
 local-day boundary (checked once a minute while active). Overlapping refreshes
@@ -99,10 +112,11 @@ in [the deployment guide](bee-gemini-deployment.md).
 
 ### Recorded local results
 
-- 47 suites / 632 tests passed; typecheck and lint passed.
+- 47 suites / 635 tests passed; typecheck and lint passed.
 - Web export and iOS/Android Hermes exports passed.
 - New motion and existing Bee browser walkthroughs passed at all three widths,
-  including actual image-source changes, account switch and sign-out. No
+  including dashboard placement, actual image-source changes, protein/fat/unknown
+  macro fixtures, account switch and sign-out. No
   unexpected console errors or failed requests; the scanner's mocked camera
   denial is expected in the broader walkthrough.
 - Tracked/export secret-pattern scan passed (not an exhaustive credential audit).
@@ -113,3 +127,33 @@ in [the deployment guide](bee-gemini-deployment.md).
   unchanged RLS/RPC/write boundary, account cleanup, unknown-value handling,
   no sensitive context persistence/logs, no injected HTML and no paid calls from
   animation. User-owned `codex.diff` was preserved.
+
+## Requested food-themed artwork: remaining limitation
+
+The new meat/protein, nutrition-review and meal-planning illustrations are not
+implemented. The built-in image-generation service rejected both the detailed
+reference-based request and a simplified protein-plate request with
+`moderation_blocked` (output stage, category `other`), without a specific
+explanation. No image was returned or added, and no CLI/provider substitution
+was made. The working dashboard and nutrient cues use the original eight
+illustrations. Supplying approved matching transparent artwork or restoring the
+image-generation capability is the next step for new illustrated poses.
+
+Reference: `assets/images/bee/bee-greeting.png`. Built-in tool was used; no
+workspace asset was generated. The simplified final attempted prompt was:
+
+> Create a sibling pose of this friendly illustrated bee for a nutrition app.
+> Keep the reference bee's face, golden fur, black stripes, wings, antennae and
+> crossbody bag. Full body, centered square image, transparent background. The
+> smiling bee holds a small dinner plate with cooked chicken, beans and tofu.
+> Soft 3D illustration matching the reference. No text or backdrop. Keep every
+> wing and antenna inside the image.
+
+Manual walkthrough for this follow-up: sign in on web and a native device,
+check that Bee sits in the dashboard guide rather than floating over the diary,
+tap Bee/Ask Bee, close chat, verify a current proposal's thinking pose and a
+confirmed save's acknowledgement, pause/reload motion, and navigate to another
+tab. With controlled owned logs and saved macro targets, inspect the factual
+protein/fat cue; unknown macros must not produce a cue. Physical-device
+verification remains outstanding; web/browser and native-export results above
+do not establish it.

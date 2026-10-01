@@ -7,7 +7,7 @@ const output = 'output/playwright/bee-motion';
 const now = new Date();
 const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(now);
 
-async function install(page, { calories = [], checkedIn = false, fail = false, badOwner = false } = {}) {
+async function install(page, { calories = [], checkedIn = false, fail = false, badOwner = false, macros = [] } = {}) {
   const fixture = await require('./fixtures/bee-browser.cjs')(page);
   const scopedReads = [];
   // These specific read-only paths supersede the general controlled fixture.
@@ -16,7 +16,7 @@ async function install(page, { calories = [], checkedIn = false, fail = false, b
       const url = new URL(route.request().url());
       assert.equal(route.request().method(), 'GET', 'art cannot write to private records');
       const select = url.searchParams.get('select');
-      const isCompanion = select === 'time_zone,calorie_target' || select === 'calories' || select === 'is_baseline';
+      const isCompanion = select === 'time_zone,calorie_target,protein_grams,fat_grams' || select === 'calories,protein,fat' || select === 'is_baseline';
       // A mismatched getUser fixture also affects the pre-existing Dashboard reader.
       if (!badOwner || isCompanion) assert.equal(url.searchParams.get('user_id'), `eq.${owner}`, 'every companion read is owner scoped');
       scopedReads.push({ table, select: url.searchParams.get('select') });
@@ -26,7 +26,7 @@ async function install(page, { calories = [], checkedIn = false, fail = false, b
         assert.equal(url.searchParams.getAll('measured_at').length, 2, 'check-in read has both local-day boundaries');
       }
       const goal = { user_id: owner, calorie_target: 2000, protein_grams: 130, carbs_grams: 250, fat_grams: 60, time_zone: 'Asia/Manila' };
-      const foods = calories.map((calories, i) => ({ id: `fixture-${i}`, name: 'TEST DATA meal', user_id: owner, calories, protein: 0, carbs: 0, fat: 0, created_at: now.toISOString() }));
+      const foods = calories.map((calories, i) => ({ id: `fixture-${i}`, name: 'TEST DATA meal', user_id: owner, calories, protein: 0, carbs: 0, fat: 0, ...macros[i], created_at: now.toISOString() }));
       const body = table === 'user_goals' ? goal : table === 'weight_logs' ? checkedIn ? [{ is_baseline: false, local_date: day }] : [] : foods;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
@@ -69,8 +69,11 @@ async function exercise(browser, base, width) {
   await page.waitForTimeout(200);
   assert.equal((await sample(mascot(page))).size, 1, 'changed OS setting stops movement immediately');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  const launcher = page.getByRole('button', { name: 'Open Bee quick log', exact: true });
-  await launcher.click();
+  assert.equal(await page.getByRole('button', { name: 'Open Bee quick log', exact: true }).count(), 0, 'dashboard has no duplicate floating mascot');
+  assert.equal(await page.getByTestId('bee-dashboard-companion').locator('[data-testid^="bee-mascot-"]').count(), 1, 'Bee belongs to the dashboard');
+  assert.equal(await mascot(page).evaluate(el => parseFloat(getComputedStyle(el).width)), 116, 'dashboard Bee has a larger full-body slot');
+  const launcher = page.getByRole('button', { name: 'Open Bee chat', exact: true });
+  await page.getByRole('button', { name: 'Bee encourages your first food log', exact: true }).press('Enter');
   await page.getByRole('button', { name: 'Pause Bee motion', exact: true }).click();
   await page.getByRole('button', { name: 'Close Bee quick log', exact: true }).click();
   await launcher.waitFor();
@@ -102,8 +105,9 @@ async function exercise(browser, base, width) {
   await mascot(page).waitFor();
   assert.equal(await mascot(page).count(), 1);
   await page.getByRole('textbox', { name: 'Food name', exact: true }).focus();
-  await launcher.waitFor({ state: 'hidden' });
-  assert.equal(await launcher.count(), 0, 'companion does not cover focused forms');
+  const floating = page.getByRole('button', { name: 'Open Bee quick log', exact: true });
+  await floating.waitFor({ state: 'hidden' });
+  assert.equal(await floating.count(), 0, 'companion does not cover focused forms');
   await page.getByRole('textbox', { name: 'Food name', exact: true }).blur();
   await launcher.waitFor();
   await page.screenshot({ path: `${output}/form-${width}.png`, fullPage: true });
@@ -168,7 +172,7 @@ async function accountSwitch(browser, base) {
     channel.postMessage({ event: 'SIGNED_OUT', session: null });
     setTimeout(() => channel.close(), 100);
   });
-  await page.getByRole('button', { name: 'Open Bee quick log', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByTestId('bee-dashboard-companion').waitFor({ state: 'hidden' });
   assert.equal(await mascot(page).count(), 0, 'sign-out removes the private companion');
   await page.close();
 }
@@ -185,6 +189,9 @@ async function accountSwitch(browser, base) {
       ['near-target', { calories: [1900] }, 'success'],
       ['over-target', { calories: [2500] }, 'resting'],
       ['actual-check-in', { checkedIn: true }, 'success'],
+      ['protein-ideas', { calories: [600, 600], macros: [{ protein: 15, fat: 10 }, { protein: 15, fat: 10 }] }, 'encouraging'],
+      ['fat-review', { calories: [1200, 100], macros: [{ protein: 10, fat: 74 }, { protein: 5, fat: 0 }] }, 'thinking'],
+      ['unknown-macros', { calories: [600, 600], macros: [{ protein: null, fat: null }, { protein: 5, fat: 0 }] }, 'encouraging'],
       ['unavailable', { fail: true }, 'greeting'],
       ['wrong-verified-owner', { badOwner: true }, 'greeting'],
     ]) {
@@ -195,8 +202,11 @@ async function accountSwitch(browser, base) {
       await bee.waitFor();
       await page.waitForTimeout(500);
       await bee.locator(`img[src*="bee-${expected}."]`).waitFor();
-      if (setup.badOwner) assert.equal(scopedReads.filter(read => read.select === 'time_zone,calorie_target').length, 0, 'wrong verified owner cannot read companion context');
+      if (setup.badOwner) assert.equal(scopedReads.filter(read => read.select === 'time_zone,calorie_target,protein_grams,fat_grams').length, 0, 'wrong verified owner cannot read companion context');
       assert.equal(await mascot(page).count(), 1);
+      if (name === 'protein-ideas') await page.getByText('30 of 130 g protein recorded. Ask Bee for ideas that fit you.', { exact: true }).waitFor();
+      if (name === 'fat-review') await page.getByText('74 g fat recorded; your saved target is 60 g. Ask Bee to review.', { exact: true }).waitFor();
+      if (name === 'unknown-macros') assert.equal(await page.getByText(/Ask Bee for ideas that fit you|Ask Bee to review/).count(), 0);
       assert.equal((await sample(bee)).size, 1, 'OS reduced-motion preference overrides animation');
       await page.screenshot({ path: `${output}/${name}.png`, fullPage: true });
       await page.close();

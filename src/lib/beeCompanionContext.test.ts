@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBeeUserContext, chooseBeeUserSituation, beeMotionProfile } from "./beeCompanionContext";
+import { buildBeeUserContext, chooseBeeUserSituation, beeMotionProfile, chooseBeeNutritionCue } from "./beeCompanionContext";
 import { beePoseToSituation, getBeeAccessibilityLabel } from "./beeCompanion";
 
 // Illustrative TEST DATA only; these values are not nutrition recommendations.
@@ -45,5 +45,30 @@ describe("user-driven Bee", () => {
       expect(Math.abs(profile.y)).toBeLessThanOrEqual(5);
       expect(Math.abs(profile.tilt)).toBeLessThanOrEqual(3);
     }
+  });
+  it("offers protein ideas only after enough recorded context, using saved macro targets", () => {
+    const targets = { ...goal, protein_grams: 130, fat_grams: 60 };
+    const meal = { calories: 600, protein: 15, fat: 10 };
+    const context = buildBeeUserContext(day, targets, [meal, meal], null);
+    expect(chooseBeeNutritionCue(context)).toEqual({ situation: "lowProtein", title: "Protein ideas", detail: "30 of 130 g protein recorded. Ask Bee for ideas that fit you." });
+    expect(chooseBeeUserSituation(context)).toBe("lowProtein");
+    expect(chooseBeeNutritionCue(buildBeeUserContext(day, targets, [meal], null))).toBeNull();
+    expect(chooseBeeNutritionCue(buildBeeUserContext(day, targets, [{ ...meal, calories: 100 }, { ...meal, calories: 100 }], null))).toBeNull();
+  });
+  it("shows a calm factual fat review, prioritizing it over protein ideas", () => {
+    const context = buildBeeUserContext(day, { ...goal, protein_grams: 130, fat_grams: 60 }, [{ calories: 1200, protein: 10, fat: 74 }, { calories: 100, protein: 5, fat: 0 }], null);
+    expect(chooseBeeNutritionCue(context)).toEqual({ situation: "fatReview", title: "Fat target review", detail: "74 g fat recorded; your saved target is 60 g. Ask Bee to review." });
+    expect(chooseBeeUserSituation(context)).toBe("fatReview");
+    expect(getBeeAccessibilityLabel("fatReview")).not.toMatch(/bad|too much|restrict/);
+  });
+  it("keeps missing, invalid or capped macros unknown instead of manufacturing dietary cues", () => {
+    const targets = { ...goal, protein_grams: 130, fat_grams: 60 };
+    for (const invalid of [null, undefined, NaN, Infinity, -1, "10"]) {
+      const context = buildBeeUserContext(day, targets, [{ calories: 1000, protein: invalid, fat: invalid }, { calories: 100, protein: 10, fat: 10 }], null);
+      expect(chooseBeeNutritionCue(context)).toBeNull();
+    }
+    expect(chooseBeeNutritionCue(buildBeeUserContext(day, goal, [{ calories: 1200, protein: 10, fat: 80 }, { calories: 100, protein: 10, fat: 10 }], null))).toBeNull();
+    expect(chooseBeeNutritionCue(buildBeeUserContext(day, targets, Array.from({ length: 250 }, () => ({ calories: 10, protein: 0, fat: 1 })), null))).toBeNull();
+    expect(chooseBeeNutritionCue(buildBeeUserContext(day, targets, [], null))).toBeNull();
   });
 });

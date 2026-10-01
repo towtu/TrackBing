@@ -25,6 +25,7 @@ describe("beeCompanion", () => {
       logSuccess: "success",
       streak: "celebrating",
       lowProtein: "encouraging",
+      fatReview: "thinking",
       underTarget: "encouraging",
       nearTarget: "success",
       overTarget: "caution",

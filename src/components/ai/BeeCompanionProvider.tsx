@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AppState, Platform } from "react-native";
 import { accountDay } from "@/src/lib/accountDay";
-import { buildBeeUserContext, chooseBeeUserSituation, type BeeUserContext } from "@/src/lib/beeCompanionContext";
+import { buildBeeUserContext, chooseBeeUserSituation, chooseBeeNutritionCue, type BeeNutritionCue, type BeeUserContext } from "@/src/lib/beeCompanionContext";
 import type { BeeSituation } from "@/src/lib/beeCompanion";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
@@ -12,6 +12,10 @@ import { supabase } from "@/src/lib/supabase";
 const MOTION_KEY = "trackbing:bee-motion";
 const Companion = createContext({
   situation: "greeting" as BeeSituation,
+  nutritionCue: null as BeeNutritionCue | null,
+  chatOpen: false,
+  setChatOpen: (_open: boolean) => {},
+  setReviewSituation: (_situation: BeeSituation | null) => {},
   motionEnabled: false,
   toggleMotion: () => {},
   celebrateSaved: () => {},
@@ -23,6 +27,8 @@ export function BeeCompanionProvider({ userId, children }: { userId: string; chi
   const [context, setContext] = useState<BeeUserContext | null>(null);
   const [motionEnabled, setMotionEnabled] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [reviewSituation, setReviewSituation] = useState<BeeSituation | null>(null);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const motionRef = useRef(false);
   const motionRevision = useRef(0);
@@ -63,11 +69,11 @@ export function BeeCompanionProvider({ userId, children }: { userId: string; chi
             const account = await guard.authorize();
             if (!mounted || !account || account.userId !== userId) { if (mounted) setContext(null); return; }
             const { data: goal, error: goalError } = await account.client.from("user_goals")
-              .select("time_zone,calorie_target").eq("user_id", userId).maybeSingle();
+              .select("time_zone,calorie_target,protein_grams,fat_grams").eq("user_id", userId).maybeSingle();
             if (goalError) throw new Error("Companion context unavailable");
             const day = accountDay(goal?.time_zone);
             const [foods, weights] = await Promise.all([
-              account.client.from("food_logs").select("calories").eq("user_id", userId)
+              account.client.from("food_logs").select("calories,protein,fat").eq("user_id", userId)
                 .gte("created_at", day.start).lt("created_at", day.end).limit(250),
               account.client.from("weight_logs").select("is_baseline")
                 .eq("user_id", userId).eq("is_baseline", false)
@@ -88,7 +94,7 @@ export function BeeCompanionProvider({ userId, children }: { userId: string; chi
     void refresh();
     const off = subscribeFoodLogChanged(() => { setContext(null); void refresh(); });
     const auth = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user.id !== userId) { setContext(null); setCelebrating(false); }
+      if (session?.user.id !== userId) { setContext(null); setCelebrating(false); setReviewSituation(null); setChatOpen(false); }
     }).data.subscription;
     const onResume = () => { if (mounted) { setContext(null); void refresh(); } };
     const app = AppState.addEventListener("change", (state) => { if (state === "active") onResume(); });
@@ -104,5 +110,9 @@ export function BeeCompanionProvider({ userId, children }: { userId: string; chi
     };
   }, [userId]);
 
-  return <Companion.Provider value={{ situation: celebrating ? "celebrating" : chooseBeeUserSituation(context), motionEnabled, toggleMotion, celebrateSaved }}>{children}</Companion.Provider>;
+  return <Companion.Provider value={{
+    situation: reviewSituation ?? (celebrating ? "celebrating" : chooseBeeUserSituation(context)),
+    nutritionCue: reviewSituation || celebrating ? null : chooseBeeNutritionCue(context),
+    chatOpen, setChatOpen, setReviewSituation, motionEnabled, toggleMotion, celebrateSaved,
+  }}>{children}</Companion.Provider>;
 }

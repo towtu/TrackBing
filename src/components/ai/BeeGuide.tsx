@@ -37,6 +37,7 @@ type BeeGuideProps = {
   compact?: boolean;
   mascotSize?: BeeMascotSize;
   showMascot?: boolean;
+  nutritionDetail?: string;
   situation?: BeeSituation;
   interactive?: boolean;
   variant?: BeeGuideVariant;
@@ -82,12 +83,12 @@ export function BeeGuide({
   compact = false,
   mascotSize = compact ? "small" : "medium",
   showMascot = false,
+  nutritionDetail,
   situation,
   interactive = true,
   variant = compact ? "compact" : "dashboard",
   style,
 }: BeeGuideProps) {
-  const activeSituation = situation ?? "greeting";
   const handleMascotPress = openBee;
 
   return (
@@ -102,7 +103,7 @@ export function BeeGuide({
       {showMascot ? <BeeMascot
         interactive={interactive}
         onPress={interactive ? handleMascotPress : undefined}
-        situation={activeSituation}
+        situation={situation}
         size={mascotSize}
       /> : null}
       <View style={styles.content}>
@@ -114,7 +115,7 @@ export function BeeGuide({
           ]}
         >
           {showMascot && variant !== "chat" ? <View style={styles.bubbleTail} /> : null}
-          {!showMascot && interactive ? <Pressable accessibilityRole="button" accessibilityLabel="Open Bee chat" onPress={openBee} style={styles.openChat}><Text style={styles.speaker}>Ask Bee</Text></Pressable> : <Text style={styles.speaker}>Bee</Text>}
+          {interactive ? <Pressable accessibilityRole="button" accessibilityLabel="Open Bee chat" onPress={openBee} style={styles.openChat}><Text style={styles.speaker}>Ask Bee</Text></Pressable> : <Text style={styles.speaker}>Bee</Text>}
           <Text
             style={[
               styles.title,
@@ -132,6 +133,7 @@ export function BeeGuide({
           >
             {message}
           </Text>
+          {nutritionDetail ? <Text style={styles.nutritionDetail}>{nutritionDetail}</Text> : null}
           {footer ? <View style={styles.footer}>{footer}</View> : null}
         </View>
         {action ? <View style={styles.action}>{action}</View> : null}
@@ -254,6 +256,7 @@ export function BeeMascot({
 }
 
 const styles = StyleSheet.create({
+  nutritionDetail: { color: Colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
   openChat: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center", paddingHorizontal: 4, marginTop: -8 },
   card: {
     width: "100%",

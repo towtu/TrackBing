@@ -1,5 +1,5 @@
 import { ChatCircleText, PaperPlaneTilt, X } from "@/src/components/icons";
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -46,6 +46,7 @@ const LIVE_ANSWER_PLACEHOLDER = "I showed a live search answer. Search again to 
 
 export function BeeQuickLog({ userId }: { userId: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const companion = useBeeCompanion();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -219,6 +220,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const reviewSituation: BeeSituation = pending?.kind === "weight" || pending?.kind === "goal" ? "thinking" : "reviewingMatch";
   const headerSituation: BeeSituation = loading ? "thinking" : failed ? "caution" : currentPending ? reviewSituation : snapshot?.suggested_pose ? beePoseToSituation(snapshot.suggested_pose) : companion.situation;
   const launcherSituation: BeeSituation = currentPending ? reviewSituation : companion.situation;
+  const { setChatOpen, setReviewSituation } = companion;
+  useEffect(() => { setChatOpen(visible); return () => setChatOpen(false); }, [visible, setChatOpen]);
+  useEffect(() => {
+    setReviewSituation(currentPending ? reviewSituation : null);
+    return () => setReviewSituation(null);
+  }, [currentPending, reviewSituation, setReviewSituation]);
   const blocked = loading || failed !== null || snapshot === null;
   useEffect(() => {
     if (Platform.OS === "web" && visible && view === "chat" && !blocked && focusAfterOpenRef.current) {
@@ -242,7 +249,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
   return (
     <>
-      {!visible && !keyboardOpen ? <BeeAction
+      {!visible && !keyboardOpen && pathname !== "/" && pathname !== "/dashboard" ? <BeeAction
         label="Open Bee quick log"
         iconOnly
         onPress={open}

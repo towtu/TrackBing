@@ -3,14 +3,14 @@ export const MIN_SIGNUP_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 1024;
 export const SIGNUP_CODE_LENGTH = 6;
 
-type ValidationFailure = { ok: false; title: string; message: string };
+type ValidationFailure = { ok: false; title: string; message: string; field?: "email" | "password" };
 
 export function validateAuthCredentials(email: string, password: string, isLogin: boolean): ValidationFailure | { ok: true; email: string; password: string } {
   const normalizedEmail = email.trim();
-  if (!normalizedEmail || !password) return { ok: false, title: "Missing details", message: "Enter both your email and password." };
-  if (normalizedEmail.length > MAX_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || /[\u0000-\u001f\u007f]/.test(normalizedEmail)) return { ok: false, title: "Invalid email", message: "Enter a valid email address of up to 254 characters." };
-  if (password.length > MAX_PASSWORD_LENGTH) return { ok: false, title: "Password too long", message: "Use a password of up to 1,024 characters." };
-  if (!isLogin && password.length < MIN_SIGNUP_PASSWORD_LENGTH) return { ok: false, title: "Password too short", message: "Use at least 8 characters for your password." };
+  if (!normalizedEmail || !password) return { ok: false, title: "Missing details", message: "Enter both your email and password.", field: !normalizedEmail ? "email" : "password" };
+  if (normalizedEmail.length > MAX_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || /[\u0000-\u001f\u007f]/.test(normalizedEmail)) return { ok: false, title: "Invalid email", message: "Enter a valid email address of up to 254 characters.", field: "email" };
+  if (password.length > MAX_PASSWORD_LENGTH) return { ok: false, title: "Password too long", message: "Use a password of up to 1,024 characters.", field: "password" };
+  if (!isLogin && password.length < MIN_SIGNUP_PASSWORD_LENGTH) return { ok: false, title: "Password too short", message: "Use at least 8 characters for your password.", field: "password" };
   return { ok: true, email: normalizedEmail, password };
 }
 

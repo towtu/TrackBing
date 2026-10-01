@@ -1,10 +1,10 @@
 import React, { useRef, useState } from "react";
 import {
-    ActivityIndicator,
     Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
+    Pressable,
     ScrollView,
     Text,
     TextInput,
@@ -32,6 +32,7 @@ import {
   type UnitSystem,
 } from "@/src/lib/nutritionTargets";
 import { TargetBreakdown } from "@/src/components/nutrition/TargetBreakdown";
+import { AuthButton } from "@/src/components/auth/AuthButton";
 import { UnitSystemToggle } from "@/src/components/nutrition/UnitSystemToggle";
 import { AuthStyles as styles } from "@/src/styles/auth";
 import { Colors } from "@/src/styles/colors";
@@ -144,6 +145,8 @@ const signupVerificationClient = createClient(
 
 export function AuthScreen() {
   const requestInFlight = useRef(false);
+  const emailInput = useRef<TextInput>(null);
+  const passwordInput = useRef<TextInput>(null);
   const { isDesktop } = useResponsive();
 
   // --- STATE ---
@@ -151,6 +154,8 @@ export function AuthScreen() {
   const [step, setStep] = useState(1); // 1=Stats, 2=Auth, 3=Verify
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [authError, setAuthError] = useState<{ message: string; field?: "email" | "password" } | null>(null);
 
   // --- MODAL STATE ---
   const [modalVisible, setModalVisible] = useState(false);
@@ -318,9 +323,12 @@ export function AuthScreen() {
     if (requestInFlight.current) return;
     const validated = validateAuthCredentials(email, password, isLogin);
     if (!validated.ok) {
-      showAlert(validated.title, validated.message);
+      setAuthError({ message: validated.message, field: validated.field });
+      if (validated.field === "email") emailInput.current?.focus();
+      else passwordInput.current?.focus();
       return;
     }
+    setAuthError(null);
     setEmail(validated.email);
     requestInFlight.current = true;
     setLoading(true);
@@ -328,7 +336,11 @@ export function AuthScreen() {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email: validated.email, password: validated.password });
         if (error) {
-          showAlert("Sign-in failed", "Check your email and password, and make sure your email is verified. Then try again.");
+          setAuthError({ message: error.status === 429
+            ? "Too many sign-in attempts. Wait a moment before trying again."
+            : error.name === "AuthRetryableFetchError"
+              ? "Unable to connect. Check your connection and try again."
+              : "Check your email and password, and make sure your email is verified. Then try again." });
         } else {
           void trackAnalyticsEvent("sign_in_success");
           router.replace("/");
@@ -336,7 +348,7 @@ export function AuthScreen() {
       } else {
         const { data, error } = await signupVerificationClient.auth.signUp({ email: validated.email, password: validated.password });
         if (error) {
-          showAlert("Account setup failed", "We couldn't start account setup. Check your details and try again in a moment.");
+          setAuthError({ message: "We couldn't start account setup. Check your details and try again in a moment." });
         } else {
           setVerifiedSignupSession(data.session);
           setCode("");
@@ -344,7 +356,7 @@ export function AuthScreen() {
         }
       }
     } catch {
-      showAlert("Unable to connect", "Check your connection and try again.");
+      setAuthError({ message: "Unable to connect. Check your connection and try again." });
     } finally {
       requestInFlight.current = false;
       setLoading(false);
@@ -484,11 +496,12 @@ export function AuthScreen() {
     <View style={[styles.formContainer, isDesktop && styles.webStatsContainer]}>
       {/* Title */}
       <View style={{ alignItems: "center", marginBottom: 24 }}>
-        <Text accessibilityRole="header" style={{ color: Colors.text, fontSize: 26, fontWeight: "900", letterSpacing: -0.5, marginBottom: 4 }}>
-          Set Targets
+        <Text style={[styles.helperText, { marginTop: 0, marginBottom: 8 }]}>Step 1 of 3 · Your daily targets</Text>
+        <Text accessibilityRole="header" style={{ color: Colors.text, fontSize: 26, fontWeight: "700", marginBottom: 4 }}>
+          Set your targets
         </Text>
         <Text style={{ color: Colors.textMuted, fontSize: 13 }}>
-          We&apos;ll dial in your daily numbers
+          An estimate you can review and change later.
         </Text>
       </View>
 
@@ -783,9 +796,7 @@ export function AuthScreen() {
         clinician-managed nutrition therapy.
       </Text>
 
-      <TouchableOpacity accessibilityRole="button" style={styles.primaryBtn} onPress={handleCalculate}>
-        <Text style={styles.primaryBtnText}>Calculate & Continue</Text>
-      </TouchableOpacity>
+      <AuthButton label="Calculate & Continue" busyLabel="Calculating…" onPress={handleCalculate} />
 
       <TouchableOpacity accessibilityRole="button" style={[styles.toggleContainer, { minHeight: 44, justifyContent: "center" }]} onPress={() => setIsLogin(true)}>
         <Text style={styles.toggleText}>
@@ -805,8 +816,8 @@ export function AuthScreen() {
           accessibilityLabel="Back to your targets"
           accessibilityState={{ disabled: loading }}
           disabled={loading}
-          style={{ position: "absolute", top: 8, left: 24, zIndex: 20, minHeight: 44, flexDirection: "row", alignItems: "center" }}
-          onPress={() => setStep(1)}
+          style={{ minHeight: 44, flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+          onPress={() => { setAuthError(null); setPasswordVisible(false); setStep(1); }}
         >
           <Text style={{ color: Colors.accent, fontWeight: "bold", fontSize: 24, marginRight: 4 }}>
             ‹
@@ -817,29 +828,22 @@ export function AuthScreen() {
         </TouchableOpacity>
       )}
 
-      <View style={{ alignItems: "center", marginBottom: 32, marginTop: isLogin ? (isDesktop ? 0 : 20) : 20 }}>
+      <View style={{ marginBottom: 24 }}>
         {!isDesktop && (
-          <View style={{
-            width: 120, height: 120, borderRadius: 60,
-            backgroundColor: "rgba(255,255,255,0.03)",
-            alignItems: "center", justifyContent: "center",
-            marginBottom: 24,
-            borderWidth: 1, borderColor: "rgba(255,255,255,0.1)"
-          }}>
             <Image
               accessibilityLabel="TrackBing logo"
               accessible
               source={require("../../assets/images/TrackBingLogo.png")}
-              style={{ width: 80, height: 80 }}
+              style={{ width: 72, height: 72, marginBottom: 16, alignSelf: "center" }}
               resizeMode="contain"
             />
-          </View>
         )}
-        <Text accessibilityRole="header" style={{ color: Colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.5 }}>
-          {isLogin ? "Welcome Back" : "Create Account"}
+        {!isLogin && <Text style={[styles.helperText, { marginTop: 0, marginBottom: 8 }]}>Step 2 of 3 · Your account</Text>}
+        <Text accessibilityRole="header" style={{ color: Colors.text, fontSize: 28, fontWeight: "700" }}>
+          {isLogin ? "Welcome back" : "Create your account"}
         </Text>
         <Text style={{ color: Colors.textMuted, fontSize: 14, marginTop: 8 }}>
-          {isLogin ? "Sign in to continue to your dashboard" : "Sign up to track your progress"}
+          {isLogin ? "Sign in to your food diary." : "Save your targets and start tracking."}
         </Text>
       </View>
 
@@ -853,17 +857,18 @@ export function AuthScreen() {
         </View>
       )}
 
-      <View style={{ gap: 16, marginBottom: 32 }}>
+      <View style={{ gap: 16, marginBottom: 20 }}>
         <View>
         <Text style={styles.label}>Email address</Text>
-        <View style={{
-          flexDirection: "row", alignItems: "center", backgroundColor: Colors.inputBg,
-          borderWidth: 1, borderColor: focusedField === "email" ? Colors.accent : Colors.controlBorder, borderRadius: 20, overflow: "hidden"
-        }}>
+        <View style={[styles.field, { borderColor: authError?.field === "email" ? Colors.error : focusedField === "email" ? Colors.accent : Colors.controlBorder }]}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.authInputIcon}>
-            <EnvelopeSimple size={21} color={Colors.accent} weight="bold" />
+            <EnvelopeSimple size={20} color={Colors.textSecondary} />
           </View>
           <TextInput
+            ref={emailInput}
+            testID="auth-email-input"
+            aria-invalid={authError?.field === "email"}
+            aria-describedby={authError ? "auth-error" : undefined}
             accessibilityLabel="Email address"
             autoComplete="email"
             textContentType="emailAddress"
@@ -872,30 +877,34 @@ export function AuthScreen() {
             editable={!loading}
             onFocus={() => setFocusedField("email")}
             onBlur={() => setFocusedField(null)}
-            onChangeText={setEmail}
+            onChangeText={value => { setEmail(value); setAuthError(null); }}
+            onSubmitEditing={() => passwordInput.current?.focus()}
+            returnKeyType="next"
+            submitBehavior="submit"
             value={email}
-            placeholder="Email Address"
+            placeholder="you@example.com"
             placeholderTextColor={Colors.textMuted}
             autoCapitalize="none"
             keyboardType="email-address"
-            style={{
-              flex: 1, color: Colors.text, paddingVertical: 18,
-              paddingRight: 16, fontSize: 16, fontWeight: "500",
-            }}
+            style={styles.fieldInput}
           />
         </View>
         </View>
 
         <View>
-        <Text style={styles.label}>Password{!isLogin ? " · at least 8 characters" : ""}</Text>
-        <View style={{
-          flexDirection: "row", alignItems: "center", backgroundColor: Colors.inputBg,
-          borderWidth: 1, borderColor: focusedField === "password" ? Colors.accent : Colors.controlBorder, borderRadius: 20, overflow: "hidden"
-        }}>
+        <View style={styles.passwordLabelRow}>
+          <Text style={[styles.label, { marginBottom: 0 }]}>Password</Text>
+          {isLogin && <Pressable accessibilityRole="button" accessibilityLabel="Forgot password?" disabled={loading} onPress={() => router.push('/recover')} style={styles.forgotLink}><Text style={{ color: Colors.accent, fontSize: 13 }}>Forgot password?</Text></Pressable>}
+        </View>
+        <View style={[styles.field, { borderColor: authError?.field === "password" ? Colors.error : focusedField === "password" ? Colors.accent : Colors.controlBorder }]}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.authInputIcon}>
-            <LockKey size={21} color={Colors.accent} weight="bold" />
+            <LockKey size={20} color={Colors.textSecondary} />
           </View>
           <TextInput
+            ref={passwordInput}
+            testID="auth-password-input"
+            aria-invalid={authError?.field === "password"}
+            aria-describedby={authError ? "auth-error" : undefined}
             accessibilityLabel={isLogin ? "Password" : "Password, at least 8 characters"}
             autoComplete={isLogin ? "current-password" : "new-password"}
             textContentType={isLogin ? "password" : "newPassword"}
@@ -906,38 +915,32 @@ export function AuthScreen() {
             onBlur={() => setFocusedField(null)}
             onSubmitEditing={() => { void handleAuth(); }}
             returnKeyType="go"
-            onChangeText={setPassword}
+            onChangeText={value => { setPassword(value); setAuthError(null); }}
             value={password}
-            secureTextEntry
-            placeholder="Password"
+            secureTextEntry={!passwordVisible}
+            placeholder={isLogin ? "Enter your password" : "Choose a password"}
             placeholderTextColor={Colors.textMuted}
             autoCapitalize="none"
-            style={{
-              flex: 1, color: Colors.text, paddingVertical: 18,
-              paddingRight: 16, fontSize: 16, fontWeight: "500",
-            }}
+            style={styles.fieldInput}
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={passwordVisible ? "Hide password" : "Show password"}
+            accessibilityState={{ disabled: loading }}
+            disabled={loading}
+            onPress={() => setPasswordVisible(value => !value)}
+            style={({ pressed }) => [styles.passwordToggle, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.passwordToggleText}>{passwordVisible ? "Hide" : "Show"}</Text>
+          </Pressable>
         </View>
+        {!isLogin && <Text style={styles.helperText}>Use at least 8 characters. Choose a unique password.</Text>}
         </View>
       </View>
 
-      {isLogin && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Forgot password?" disabled={loading} onPress={() => router.push('/recover')} style={{minHeight:44,paddingVertical:12,alignItems:'flex-end'}}><Text style={{color:Colors.accent}}>Forgot password?</Text></TouchableOpacity>}
-      <View style={{ marginBottom: 24 }}>
-        {loading ? (
-          <View style={{ paddingVertical: 16 }}>
-            <ActivityIndicator accessibilityLabel={isLogin ? "Signing in" : "Creating account"} size="large" color={Colors.accent} />
-          </View>
-        ) : (
-          <TouchableOpacity
-            accessibilityRole="button"
-            style={[styles.primaryBtn, { borderRadius: 20, paddingVertical: 18, shadowColor: Colors.accent, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 }]}
-            onPress={handleAuth}
-          >
-            <Text style={[styles.primaryBtnText, { fontSize: 16, fontWeight: "800", letterSpacing: 0.5 }]}>
-              {isLogin ? "Sign In" : "Create Account"}
-            </Text>
-          </TouchableOpacity>
-        )}
+      {authError && <Text nativeID="auth-error" accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorText}>{authError.message}</Text>}
+      <View style={{ marginBottom: 12 }}>
+        <AuthButton label={isLogin ? "Sign In" : "Create Account"} busyLabel={isLogin ? "Signing in…" : "Creating account…"} loading={loading} onPress={() => { void handleAuth(); }} />
       </View>
 
       <TouchableOpacity
@@ -947,6 +950,9 @@ export function AuthScreen() {
         disabled={loading}
         style={{ minHeight: 44, paddingVertical: 12, alignItems: "center" }}
         onPress={() => {
+          setAuthError(null);
+          setPasswordVisible(false);
+          setPassword("");
           if (isLogin) {
             setIsLogin(false);
             setStep(1);
@@ -1025,13 +1031,7 @@ export function AuthScreen() {
       </>}
 
       <View style={styles.buttonContainer}>
-        {loading ? (
-          <ActivityIndicator accessibilityLabel="Finishing account setup" size="large" color={Colors.accent} />
-        ) : (
-          <TouchableOpacity accessibilityRole="button" style={styles.primaryBtn} onPress={handleVerify}>
-            <Text style={styles.primaryBtnText}>{verifiedSignupSession ? "Finish account setup" : "Verify & Start"}</Text>
-          </TouchableOpacity>
-        )}
+        <AuthButton label={verifiedSignupSession ? "Finish account setup" : "Verify & Start"} busyLabel="Finishing account setup…" loading={loading} onPress={() => { void handleVerify(); }} />
       </View>
 
       <TouchableOpacity
@@ -1062,6 +1062,10 @@ export function AuthScreen() {
       style={styles.container}
     >
       <ScrollView
+        keyboardShouldPersistTaps="handled"
+        // React Native Web dismisses focus on every scroll, including scrolling
+        // an invalid field into view. Keep drag-to-dismiss on native only.
+        keyboardDismissMode={Platform.OS === "web" ? "none" : "on-drag"}
         contentContainerStyle={[styles.scrollContent, isDesktop && styles.webScrollContent]}
         style={{ width: "100%" }}
       >
@@ -1079,18 +1083,9 @@ export function AuthScreen() {
               </View>
               <Text accessibilityRole="header" style={styles.webBrandTitle}>TrackBing</Text>
               <Text style={styles.webBrandCopy}>
-                Keep calories and macros easy to scan before you start logging.
+                Your daily food diary, made simpler.
               </Text>
-              <View style={styles.webBrandStats}>
-                <View style={styles.webBrandStat}>
-                  <Text style={styles.webBrandStatValue}>Daily</Text>
-                  <Text style={styles.webBrandStatLabel}>Targets</Text>
-                </View>
-                <View style={styles.webBrandStat}>
-                  <Text style={styles.webBrandStatValue}>Macro</Text>
-                  <Text style={styles.webBrandStatLabel}>Tracking</Text>
-                </View>
-              </View>
+              <Text style={styles.webBrandDetail}>Log food, review your daily totals, and follow your progress at your own pace.</Text>
             </View>
             <View style={styles.webFormSlot}>{activeForm}</View>
           </View>

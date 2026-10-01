@@ -28,7 +28,6 @@ import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import {
   calcMacros,
@@ -57,6 +56,9 @@ export default function MyFoodsPage() {
 
   const [personalFoods, setPersonalFoods] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const deleteInFlight = useRef(false);
+  const [deleting, setDeleting] = useState(false);
   const [filterQuery, setFilterQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -76,14 +78,16 @@ export default function MyFoodsPage() {
 
   const fetchMyFoods = async () => {
     setLoading(true);
+    setLoadError(false);
     const writer=await accountRef.current?.authorize();
-    if (!writer?.isActive()) {setLoading(false);return;}
-    const { data } = await writer.client
+    if (!writer?.isActive()) {setLoadError(!!accountRef.current?.isActive());setLoading(false);return;}
+    const { data, error } = await writer.client
       .from("personal_foods")
       .select("*")
       .eq("user_id", writer.userId)
       .order("created_at", { ascending: false });
     if (!writer.isActive()) return;
+    if (error) { setLoadError(true); setLoading(false); return; }
     const formatted: FoodItem[] =
       data?.map((f) => ({
         code: "personal-" + f.id,
@@ -127,24 +131,35 @@ export default function MyFoodsPage() {
   };
 
   const confirmDelete = async () => {
-    if (!deletingFood) return;
-    const { error } = await supabase
-      .from("personal_foods")
-      .delete()
-      .eq("id", deletingFood.id);
-    if (error) {
-      setFeedback({
-        type: "error",
-        title: "Could not remove food",
-        message: error.message,
-      });
-    } else {
-      setPersonalFoods((prev) =>
-        prev.filter((f) => f.code !== deletingFood.code)
-      );
+    if (!deletingFood || deleteInFlight.current) return;
+    const guard = accountRef.current;
+    deleteInFlight.current = true;
+    setDeleting(true);
+    try {
+      const writer = await guard?.authorize();
+      if (!writer?.isActive()) {
+        if (guard?.isActive()) setFeedback({ type: "error", title: "Could not remove food", message: "Your sign-in couldn't be verified. Try again in a moment." });
+        return;
+      }
+      const { error } = await writer.client
+        .from("personal_foods")
+        .delete()
+        .eq("id", deletingFood.id)
+        .eq("user_id", writer.userId);
+      if (!writer.isActive()) return;
+      if (error) {
+        setFeedback({ type: "error", title: "Could not remove food", message: "Your food wasn't removed. Check your connection and try again." });
+      } else {
+        setPersonalFoods(prev => prev.filter(f => f.code !== deletingFood.code));
+      }
+      setDeleteModal(false);
+      setDeletingFood(null);
+    } catch {
+      if (guard?.isActive()) setFeedback({ type: "error", title: "Could not remove food", message: "Your food wasn't removed. Check your connection and try again." });
+    } finally {
+      deleteInFlight.current = false;
+      if (guard?.isActive()) setDeleting(false);
     }
-    setDeleteModal(false);
-    setDeletingFood(null);
   };
 
   const macros = selectedFood
@@ -221,6 +236,8 @@ export default function MyFoodsPage() {
         {/* ── HEADER ── */}
         <View style={localStyles.header}>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
             onPress={() => router.back()}
             style={localStyles.backButton}
           >
@@ -228,6 +245,8 @@ export default function MyFoodsPage() {
           </TouchableOpacity>
           <Text style={localStyles.headerTitle}>My Foods</Text>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Create a food"
             onPress={() => router.push("/create-food")}
             style={localStyles.backButton}
           >
@@ -243,6 +262,7 @@ export default function MyFoodsPage() {
             style={{ marginLeft: 15 }}
           />
           <TextInput
+            accessibilityLabel="Filter saved foods"
             style={localStyles.input}
             placeholder="Filter your foods..."
             placeholderTextColor={Colors.textSecondary}
@@ -251,8 +271,10 @@ export default function MyFoodsPage() {
           />
           {filterQuery.length > 0 && (
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Clear food filter"
               onPress={() => setFilterQuery("")}
-              style={{ marginRight: 15 }}
+              style={{ marginRight: 4, minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}
             >
               <X size={18} color={Colors.textSecondary} weight="bold" />
             </TouchableOpacity>
@@ -260,7 +282,7 @@ export default function MyFoodsPage() {
         </View>
 
         {/* ── FOOD COUNT BADGE ── */}
-        <View style={localStyles.countRow}>
+        {!loading && !loadError && <View style={localStyles.countRow}>
           <View style={localStyles.countBadge}>
             <Cookie size={14} color={Colors.accent} weight="fill" />
             <Text style={localStyles.countText}>
@@ -268,11 +290,17 @@ export default function MyFoodsPage() {
               {filteredFoods.length === 1 ? "food" : "foods"}
             </Text>
           </View>
-        </View>
+        </View>}
 
         {/* ── FOOD LIST ── */}
         {loading ? (
-          <ActivityIndicator color={Colors.accent} style={{ marginTop: 40 }} />
+          <ActivityIndicator accessibilityLabel="Loading saved foods" color={Colors.accent} style={{ marginTop: 40 }} />
+        ) : loadError ? (
+          <View style={localStyles.emptyState}>
+            <Text accessibilityRole="alert" style={localStyles.emptyTitle}>Your saved foods couldn’t load.</Text>
+            <Text style={localStyles.emptySubtext}>Check your connection and try again.</Text>
+            <TouchableOpacity accessibilityRole="button" onPress={() => { void fetchMyFoods(); }} style={localStyles.emptyCreateBtn}><Text style={{ color: Colors.accent, fontSize: 16 }}>Try again</Text></TouchableOpacity>
+          </View>
         ) : (
           <FlatList
             key={isDesktop ? "desktop" : "mobile"}
@@ -289,6 +317,8 @@ export default function MyFoodsPage() {
                 ]}
               >
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Review ${item.product_name}`}
                   style={localStyles.itemCard}
                   onPress={() => {
                     Keyboard.dismiss();
@@ -307,10 +337,9 @@ export default function MyFoodsPage() {
                     </Text>
                     <Text style={localStyles.itemSub}>
                       {Math.round(item.nutriments?.["energy-kcal_100g"] || 0)}{" "}
-                      kcal · P:{Math.round(item.nutriments?.proteins_100g || 0)}g
-                      · C:
-                      {Math.round(item.nutriments?.carbohydrates_100g || 0)}g ·
-                      F:{Math.round(item.nutriments?.fat_100g || 0)}g
+                      kcal · Protein {Math.round(item.nutriments?.proteins_100g || 0)} g
+                      {" · Carbs "}{Math.round(item.nutriments?.carbohydrates_100g || 0)} g
+                      {" · Fat "}{Math.round(item.nutriments?.fat_100g || 0)} g
                     </Text>
                     {item.ai_estimated && (
                       <View style={localStyles.aiBadgeRow}>
@@ -325,10 +354,12 @@ export default function MyFoodsPage() {
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${item.product_name}`}
                   style={localStyles.deleteBtn}
                   onPress={() => handleDeletePress(item)}
                 >
-                  <Trash size={20} color="#FF4444" weight="bold" />
+                  <Trash size={20} color={Colors.error} weight="bold" />
                 </TouchableOpacity>
               </View>
             )}
@@ -374,7 +405,7 @@ export default function MyFoodsPage() {
         )}
 
         {/* ── LOG FOOD MODAL ── */}
-        <Modal visible={!!selectedFood} transparent animationType="fade">
+        <Modal visible={!!selectedFood} transparent animationType="fade" onRequestClose={() => { if (!submitting) setSelectedFood(null); }}>
           <View style={localStyles.modalOverlay}>
             <View style={localStyles.modalContent}>
               <View style={localStyles.modalDragBar} />
@@ -386,6 +417,10 @@ export default function MyFoodsPage() {
                   <Text style={{ color: Colors.textSecondary }}>My Food</Text>
                 </View>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Close food review"
+                  disabled={submitting}
+                  accessibilityState={{ disabled: submitting }}
                   onPress={() => setSelectedFood(null)}
                   style={localStyles.closeBtn}
                 >
@@ -395,6 +430,9 @@ export default function MyFoodsPage() {
 
               <View style={localStyles.weightSection}>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Decrease portion"
+                  disabled={submitting}
                   onPress={() => adjustWeight(-10)}
                   style={localStyles.adjustBtn}
                 >
@@ -407,6 +445,7 @@ export default function MyFoodsPage() {
                     keyboardType="numeric"
                     accessibilityLabel="Food portion"
                     maxLength={16}
+                    editable={!submitting}
                     value={inputWeight}
                     onChangeText={(t) =>
                       setInputWeight(t)
@@ -422,6 +461,10 @@ export default function MyFoodsPage() {
                   >
                     {unitsToDisplay.map((u) => (
                       <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={`Portion unit ${u}`}
+                        accessibilityState={{ selected: selectedUnit === u, disabled: submitting }}
+                        disabled={submitting}
                         key={u}
                         onPress={() => setSelectedUnit(u)}
                         style={{
@@ -452,6 +495,9 @@ export default function MyFoodsPage() {
                 </View>
 
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Increase portion"
+                  disabled={submitting}
                   onPress={() => adjustWeight(10)}
                   style={localStyles.adjustBtn}
                 >
@@ -467,20 +513,23 @@ export default function MyFoodsPage() {
                 <View style={localStyles.bentoGrid}>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>{macros.p}g</Text>
-                    <Text style={localStyles.bentoLabelSmall}>PROT</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Protein</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>{macros.cb}g</Text>
-                    <Text style={localStyles.bentoLabelSmall}>CARBS</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Carbs</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>{macros.f}g</Text>
-                    <Text style={localStyles.bentoLabelSmall}>FAT</Text>
+                    <Text style={localStyles.bentoLabelSmall}>Fat</Text>
                   </View>
                 </View>
               </View>
 
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Log this food"
+                accessibilityState={{ disabled: submitting, busy: submitting }}
                 style={localStyles.confirmBtn}
                 onPress={confirmAdd}
                 disabled={submitting}
@@ -494,11 +543,12 @@ export default function MyFoodsPage() {
         </Modal>
 
         {/* ── DELETE CONFIRMATION MODAL ── */}
-        <Modal visible={deleteModal} transparent animationType="fade">
+        <Modal visible={deleteModal} transparent animationType="fade" onRequestClose={() => { if (!deleting) { setDeleteModal(false); setDeletingFood(null); } }}>
           <View style={localStyles.deleteOverlay}>
             <TouchableOpacity
               style={RNStyleSheet.absoluteFill}
               activeOpacity={1}
+              disabled={deleting}
               onPress={() => {
                 setDeleteModal(false);
                 setDeletingFood(null);
@@ -516,6 +566,9 @@ export default function MyFoodsPage() {
               </Text>
               <View style={localStyles.deleteModalBtnRow}>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: deleting }}
+                  disabled={deleting}
                   style={localStyles.btnKeep}
                   onPress={() => {
                     setDeleteModal(false);
@@ -525,11 +578,15 @@ export default function MyFoodsPage() {
                   <Text style={localStyles.btnKeepText}>Keep it</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove saved food"
+                  accessibilityState={{ disabled: deleting, busy: deleting }}
+                  disabled={deleting}
                   style={localStyles.btnConfirmDelete}
                   onPress={confirmDelete}
                 >
                   <Trash size={18} color={Colors.white} weight="bold" />
-                  <Text style={localStyles.btnConfirmDeleteText}>Remove</Text>
+                  <Text style={localStyles.btnConfirmDeleteText}>{deleting ? "Removing…" : "Remove"}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -649,7 +706,8 @@ const localStyles = RNStyleSheet.create({
   },
   itemSub: {
     color: Colors.textSecondary,
-    fontSize: 10,
+    fontSize: 12,
+    lineHeight: 18,
     marginTop: 2,
   },
   aiBadgeRow: {
@@ -859,11 +917,6 @@ const localStyles = RNStyleSheet.create({
     paddingVertical: 18,
     borderRadius: 18,
     alignItems: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
   },
   confirmText: {
     color: Colors.textOnAccent,

@@ -16,6 +16,13 @@ describe("authentication input bounds", () => {
     expect(validateAuthCredentials("person@trackbing.app", "", true).ok).toBe(false);
     expect(validateAuthCredentials("person@trackbing.app", "a".repeat(1025), true).ok).toBe(false);
   });
+  it("identifies the field to correct without changing the submitted password", () => {
+    expect(validateAuthCredentials("", "", true)).toMatchObject({ ok: false, field: "email" });
+    expect(validateAuthCredentials("person@trackbing.app", "", true)).toMatchObject({ ok: false, field: "password" });
+    expect(validateAuthCredentials("not-an-email", "valid password", true)).toMatchObject({ ok: false, field: "email" });
+    expect(validateAuthCredentials("person@trackbing.app", "short", false)).toMatchObject({ ok: false, field: "password" });
+    expect(validateAuthCredentials("person@trackbing.app", "a".repeat(1025), true)).toMatchObject({ ok: false, field: "password" });
+  });
   it("validates the configured six-digit signup code and normalizes outside whitespace", () => {
     expect(validateSignupCode(" 123456 ")).toEqual({ ok: true, code: "123456" });
     for (const code of ["", "12345", "1234567", "12 456", "12345a", "１２３４５６"]) expect(validateSignupCode(code).ok).toBe(false);

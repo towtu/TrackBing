@@ -9,6 +9,9 @@ export default function RootHtml({ children }: PropsWithChildren) {
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <ScrollViewStyleReset />
-    <style>{`html,body,#root{background:#0e0d0b;} :focus-visible{outline:2px solid #e8b93c!important;outline-offset:3px;} a{color:inherit;} `}</style>
+    <style>{`html,body,#root{background:#0e0d0b;} :focus-visible{outline:2px solid #e8b93c!important;outline-offset:3px;}
+      /* Auth inputs show focus on their complete bordered field, including its icon. */
+      [data-testid="auth-email-input"]:focus-visible,[data-testid="auth-password-input"]:focus-visible{outline:none!important;}
+      a{color:inherit;} `}</style>
   </head><body>{children}</body></html>;
 }

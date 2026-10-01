@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   Animated,
+  Easing,
+  Platform,
   Image,
   Pressable,
   StyleSheet,
@@ -19,6 +20,9 @@ import {
   type BeePose,
   type BeeSituation,
 } from "@/src/lib/beeCompanion";
+import { useBeeCompanion } from "./BeeCompanionProvider";
+import { useBeeMotion } from "./useBeeMotion";
+import { beeMotionProfile } from "@/src/lib/beeCompanionContext";
 import { openBee } from "@/src/lib/beeEvents";
 import { Colors, Radii } from "@/src/styles/colors";
 
@@ -32,6 +36,7 @@ type BeeGuideProps = {
   footer?: ReactNode;
   compact?: boolean;
   mascotSize?: BeeMascotSize;
+  showMascot?: boolean;
   situation?: BeeSituation;
   interactive?: boolean;
   variant?: BeeGuideVariant;
@@ -40,6 +45,7 @@ type BeeGuideProps = {
 
 type BeeMascotProps = {
   size?: BeeMascotSize;
+  active?: boolean;
   situation?: BeeSituation;
   interactive?: boolean;
   onPress?: () => void;
@@ -75,6 +81,7 @@ export function BeeGuide({
   footer,
   compact = false,
   mascotSize = compact ? "small" : "medium",
+  showMascot = false,
   situation,
   interactive = true,
   variant = compact ? "compact" : "dashboard",
@@ -92,12 +99,12 @@ export function BeeGuide({
         style,
       ]}
     >
-      <BeeMascot
+      {showMascot ? <BeeMascot
         interactive={interactive}
         onPress={interactive ? handleMascotPress : undefined}
         situation={activeSituation}
         size={mascotSize}
-      />
+      /> : null}
       <View style={styles.content}>
         <View
           style={[
@@ -106,8 +113,8 @@ export function BeeGuide({
             variant === "chat" && styles.bubbleChat,
           ]}
         >
-          {variant !== "chat" ? <View style={styles.bubbleTail} /> : null}
-          <Text style={styles.speaker}>Bee</Text>
+          {showMascot && variant !== "chat" ? <View style={styles.bubbleTail} /> : null}
+          {!showMascot && interactive ? <Pressable accessibilityRole="button" accessibilityLabel="Open Bee chat" onPress={openBee} style={styles.openChat}><Text style={styles.speaker}>Ask Bee</Text></Pressable> : <Text style={styles.speaker}>Bee</Text>}
           <Text
             style={[
               styles.title,
@@ -135,115 +142,83 @@ export function BeeGuide({
 
 export function BeeMascot({
   size = "medium",
+  active = true,
   situation,
   interactive = false,
   onPress,
   style,
 }: BeeMascotProps) {
-  const activeSituation = situation ?? "greeting";
+  const companion = useBeeCompanion();
+  const activeSituation = situation ?? companion.situation;
   const nextPose = getBeePose(activeSituation);
   const [displayedPose, setDisplayedPose] = useState(nextPose);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const displayedRef = useRef(nextPose);
+  const viewport = useRef<View | null>(null);
+  const { reduced, active: onScreen } = useBeeMotion(viewport);
+  const moving = active && onScreen && !reduced && companion.motionEnabled;
   const opacity = useRef(new Animated.Value(1)).current;
-  const bob = useRef(new Animated.Value(0)).current;
+  const movement = useRef(new Animated.Value(0)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
   const frame = MASCOT_FRAME[size];
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      if (mounted) setReduceMotion(enabled);
-    });
-    const subscription = AccessibilityInfo.addEventListener(
-      "reduceMotionChanged",
-      setReduceMotion,
-    );
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
+  const profile = beeMotionProfile(nextPose);
+  const useNativeDriver = Platform.OS !== "web";
 
   useEffect(() => {
     opacity.stopAnimation();
-    if (reduceMotion || nextPose === displayedPose) {
+    if (!moving || nextPose === displayedRef.current) {
+      displayedRef.current = nextPose;
       setDisplayedPose(nextPose);
       opacity.setValue(1);
       return;
     }
-
-    const fadeOut = Animated.timing(opacity, {
-      toValue: 0,
-      duration: 90,
-      useNativeDriver: true,
+    const transition = Animated.sequence([
+      Animated.timing(opacity, { toValue: 0, duration: 90, isInteraction: false, useNativeDriver }),
+      Animated.timing(opacity, { toValue: 1, duration: 120, isInteraction: false, useNativeDriver }),
+    ]);
+    // Switch the asset while invisible; a state update must not cancel the fade-in.
+    const subscription = opacity.addListener(({ value }) => {
+      if (value === 0 && displayedRef.current !== nextPose) {
+        displayedRef.current = nextPose;
+        setDisplayedPose(nextPose);
+      }
     });
-    fadeOut.start(({ finished }) => {
-      if (!finished) return;
-      setDisplayedPose(nextPose);
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 90,
-        useNativeDriver: true,
-      }).start();
-    });
-
-    return () => opacity.stopAnimation();
-  }, [displayedPose, nextPose, opacity, reduceMotion]);
+    transition.start();
+    return () => { transition.stop(); opacity.removeListener(subscription); };
+  }, [moving, nextPose, opacity, useNativeDriver]);
 
   useEffect(() => {
-    bob.stopAnimation();
-    bob.setValue(0);
-    if (reduceMotion || activeSituation !== "searching") return;
-
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bob, {
-          toValue: -3,
-          duration: 420,
-          useNativeDriver: true,
-        }),
-        Animated.timing(bob, {
-          toValue: 0,
-          duration: 420,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
+    movement.stopAnimation(); movement.setValue(0); pressScale.setValue(1);
+    if (!moving) return;
+    const config = { duration: profile.duration, easing: Easing.inOut(Easing.sin), isInteraction: false, useNativeDriver };
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(movement, { ...config, toValue: 1 }),
+      Animated.timing(movement, { ...config, toValue: 0 }),
+    ]));
     loop.start();
-    return () => {
-      loop.stop();
-      bob.setValue(0);
-    };
-  }, [activeSituation, bob, reduceMotion]);
+    return () => { loop.stop(); movement.setValue(0); };
+  }, [moving, movement, pressScale, profile.duration, nextPose, useNativeDriver]);
 
   const animatePress = (pressed: boolean) => {
-    if (reduceMotion) return;
-    pressScale.stopAnimation();
-    if (pressed) {
-      Animated.timing(pressScale, {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }).start();
-      return;
-    }
-    Animated.spring(pressScale, {
-      toValue: 1,
-      tension: 220,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
+    if (!moving) return;
+    Animated.timing(pressScale, { toValue: pressed ? 0.97 : 1, duration: pressed ? 100 : 150, easing: Easing.out(Easing.cubic), useNativeDriver }).start();
   };
 
   const mascot = (
     <Animated.View
+      ref={viewport}
+      testID={`bee-mascot-${nextPose}`}
       style={[
         styles.mascotWrap,
         {
           width: frame.width,
           height: frame.height,
           opacity,
-          transform: [{ translateY: bob }, { scale: pressScale }],
+          transform: [
+            { translateX: movement.interpolate({ inputRange: [0, 1], outputRange: [0, profile.x] }) },
+            { translateY: movement.interpolate({ inputRange: [0, 1], outputRange: [0, profile.y] }) },
+            { rotate: movement.interpolate({ inputRange: [0, 1], outputRange: ["0deg", `${profile.tilt}deg`] }) },
+            { scale: pressScale },
+          ],
         },
         style,
       ]}
@@ -265,7 +240,7 @@ export function BeeMascot({
 
   return (
     <Pressable
-      accessibilityHint="Tap to hear another short response"
+      accessibilityHint="Open your Bee conversation"
       accessibilityLabel={getBeeAccessibilityLabel(activeSituation)}
       accessibilityRole="button"
       hitSlop={10}
@@ -279,6 +254,7 @@ export function BeeMascot({
 }
 
 const styles = StyleSheet.create({
+  openChat: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center", paddingHorizontal: 4, marginTop: -8 },
   card: {
     width: "100%",
     flexDirection: "row",

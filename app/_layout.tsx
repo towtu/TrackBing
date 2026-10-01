@@ -6,6 +6,7 @@ import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-nativ
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/src/lib/supabase";
 import { Colors } from "@/src/styles/colors";
+import { BeeCompanionProvider } from "@/src/components/ai/BeeCompanionProvider";
 import { BeeQuickLog } from "@/src/components/ai/BeeQuickLog";
 import ErrorBoundary from "@/src/components/ErrorBoundary";
 import AuthRoute from "./auth";
@@ -66,7 +67,7 @@ export default function RootLayout() {
   }, []);
 
 
-  return (
+  const content = (
     <ErrorBoundary>
       <SafeAreaProvider>
         <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
@@ -106,6 +107,7 @@ export default function RootLayout() {
       </SafeAreaProvider>
     </ErrorBoundary>
   );
+  return session ? <BeeCompanionProvider key={session.user.id} userId={session.user.id}>{content}</BeeCompanionProvider> : content;
 }
 
 const styles = StyleSheet.create({

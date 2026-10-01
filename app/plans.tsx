@@ -13,7 +13,6 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors, Radii } from "@/src/styles/colors";
 import { BeeAction } from "@/src/components/ai/BeeMemories";
-import { BeeMascot } from "@/src/components/ai/BeeGuide";
 import {
   type BillingCatalog,
   billingRequest,
@@ -211,7 +210,6 @@ export default function Plans() {
         keyboardShouldPersistTaps="handled"
       >
         <BeeAction label="Back" onPress={() => router.back()} />
-        <BeeMascot situation="greeting" />
         <Text accessibilityRole="header" style={styles.title}>
           Choose your plan
         </Text>

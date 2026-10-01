@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Linking,
   Modal,
   Platform,
@@ -15,6 +16,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useBeeCompanion } from "./BeeCompanionProvider";
 import { BeeMascot } from "@/src/components/ai/BeeGuide";
 import { BeeAction, BeeMemories } from "@/src/components/ai/BeeMemories";
 import { BeeGroundedAnswer } from "@/src/components/ai/BeeGroundedAnswer";
@@ -35,7 +37,7 @@ import {
 } from "@/src/lib/beeChat";
 import {beePoseToSituation, type BeeSituation} from "@/src/lib/beeCompanion";
 import { onOpenBee } from "@/src/lib/beeEvents";
-import { expandBeeMacroLabels, latestBeeMessageId } from "@/src/lib/beeConversationUi";
+import { expandBeeMacroLabels } from "@/src/lib/beeConversationUi";
 import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { Colors, Radii } from "@/src/styles/colors";
 
@@ -44,6 +46,8 @@ const LIVE_ANSWER_PLACEHOLDER = "I showed a live search answer. Search again to 
 
 export function BeeQuickLog({ userId }: { userId: string }) {
   const router = useRouter();
+  const companion = useBeeCompanion();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const { isDesktop, height } = useResponsive();
   const scrollRef = useRef<ScrollView | null>(null);
@@ -51,6 +55,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const clientRef = useRef<ReturnType<typeof createBeeClient> | null>(null);
   const snapshotRef = useRef<BeeSnapshot | null>(null);
   const busyRef = useRef(false);
+  const executeRef = useRef<(request: BeeRequest) => Promise<boolean>>(async () => false);
   const focusAfterOpenRef = useRef(false);
   const lastSavedLog = useRef<string | null>(null);
   const [visible, setVisible] = useState(false);
@@ -85,10 +90,23 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   }, [userId]);
 
   useEffect(() => {
-    if (!visible || !snapshot?.pending) return;
+    if (!snapshot?.pending) return;
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, [visible, snapshot?.pending]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const update = () => setKeyboardOpen(document.activeElement?.matches("input,textarea,[contenteditable=true]") ?? false);
+      update();
+      document.addEventListener("focusin", update);
+      document.addEventListener("focusout", update);
+      return () => { document.removeEventListener("focusin", update); document.removeEventListener("focusout", update); };
+    }
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardOpen(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardOpen(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
 
   const execute = async (request: BeeRequest): Promise<boolean> => {
     const client = clientRef.current;
@@ -113,10 +131,11 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setEditingPortion(false);
     if (result.snapshot.saved_action && result.snapshot.saved_action.kind !== "food") {
       const action = result.snapshot.saved_action;
-      if(lastSavedLog.current !== (action.pending_id ?? action.id)) {lastSavedLog.current=action.pending_id ?? action.id;emitFoodLogChanged();setNotice(action.kind === "weight" ? "Weight check-in saved." : "Reviewed goals saved.");}
+      if(lastSavedLog.current !== (action.pending_id ?? action.id)) {lastSavedLog.current=action.pending_id ?? action.id;companion.celebrateSaved();emitFoodLogChanged();setNotice(action.kind === "weight" ? "Weight check-in saved." : "Reviewed goals saved.");}
     }
     if (result.snapshot.saved_log_id && result.snapshot.saved_log_id !== lastSavedLog.current) {
       lastSavedLog.current = result.snapshot.saved_log_id;
+      companion.celebrateSaved();
       // The server owns both the food write and summary recomputation.
       emitFoodLogChanged();
       setNotice(result.snapshot.summary_warning
@@ -142,6 +161,8 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     return true;
   };
 
+  executeRef.current = execute;
+
   const sendCommand = (command: BeeCommand) => execute(createBeeRequest(command, snapshotRef.current));
   const retryFailed = async (failure: FailedRequest) => {
     if (failure.error === "provider_unavailable" || failure.error === "save_failed") {
@@ -159,8 +180,8 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setNow(Date.now());
     if (!busyRef.current && !failed) void sendCommand({ kind: "load" });
   };
-  useEffect(()=>onOpenBee(()=>{setVisible(true);focusAfterOpenRef.current=true; if(!busyRef.current)void execute(createBeeRequest({kind:"load"},snapshotRef.current));}),[userId]);
-  const close = () => setVisible(false);
+  useEffect(()=>onOpenBee(()=>{setVisible(true);focusAfterOpenRef.current=true; if(!busyRef.current)void executeRef.current(createBeeRequest({kind:"load"},snapshotRef.current));}),[userId]);
+  const close = () => { inputRef.current?.blur(); Keyboard.dismiss(); setVisible(false); };
   const enterManually = () => {
     close();
     router.push("/create-food");
@@ -191,11 +212,13 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const displayedMessages = snapshot?.liveAnswer && lastMessage?.role === "assistant" && lastMessage.text === LIVE_ANSWER_PLACEHOLDER
     ? messages.slice(0, -1)
     : messages;
-  const latestReplyId = latestBeeMessageId(displayedMessages, Boolean(snapshot?.liveAnswer));
   const pending = snapshot?.pending;
   const pendingInMessages = pending && messages.some((message) =>
     message.draft?.id === pending.id && message.draft.review_version === pending.review_version);
-  const headerSituation: BeeSituation = loading ? "searching" : failed ? "lookupError" : pending ? "reviewingMatch" : beePoseToSituation(snapshot?.suggested_pose ?? "greeting");
+  const currentPending = pending && isCurrentBeeReview(pending, snapshot, now);
+  const reviewSituation: BeeSituation = pending?.kind === "weight" || pending?.kind === "goal" ? "thinking" : "reviewingMatch";
+  const headerSituation: BeeSituation = loading ? "thinking" : failed ? "caution" : currentPending ? reviewSituation : snapshot?.suggested_pose ? beePoseToSituation(snapshot.suggested_pose) : companion.situation;
+  const launcherSituation: BeeSituation = currentPending ? reviewSituation : companion.situation;
   const blocked = loading || failed !== null || snapshot === null;
   useEffect(() => {
     if (Platform.OS === "web" && visible && view === "chat" && !blocked && focusAfterOpenRef.current) {
@@ -219,18 +242,18 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
   return (
     <>
-      <BeeAction
+      {!visible && !keyboardOpen ? <BeeAction
         label="Open Bee quick log"
         iconOnly
         onPress={open}
         style={[styles.floatingButton, isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile]}
         icon={(
           <>
-            <View style={styles.launcherMascotViewport}><BeeMascot size="small" situation="greeting" /></View>
+            <View style={styles.launcherMascotViewport}><BeeMascot size="small" situation={launcherSituation} /></View>
             <View style={styles.floatingBadge}><ChatCircleText size={13} color={Colors.textOnAccent} weight="fill" /></View>
           </>
         )}
-      />
+      /> : null}
 
       <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
         <Pressable style={styles.backdrop} onPress={close} accessible={false} tabIndex={-1}>
@@ -250,7 +273,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
               onPress={(event) => event.stopPropagation()}
             >
               <View style={styles.header}>
-                <View style={styles.headerAvatar}><BeeMascot size="small" situation={headerSituation} /></View>
+                <View style={styles.headerAvatar} testID="bee-current-companion"><BeeMascot size="small" situation={headerSituation} active={visible && !inputFocused} /></View>
                 <View style={styles.headerCopy}>
                   <Text accessibilityRole="header" style={styles.title}>Bee</Text>
                   <Text style={styles.subtitle}>Food, weight and progress</Text>
@@ -259,6 +282,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
               </View>
 
               <View style={styles.toolbar}>
+                <BeeAction label={companion.motionEnabled ? "Pause Bee motion" : "Animate Bee"} onPress={companion.toggleMotion} />
                 <BeeAction label={view === "chat" ? "Saved preferences" : "Back to conversation"} disabled={!snapshot} onPress={() => setView(view === "chat" ? "memories" : "chat")} />
                 {view === "chat" ? (
                   <>
@@ -316,7 +340,6 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                     {snapshot?.insight ? <View style={styles.welcome}><Text style={styles.messageText}>{snapshot.insight.text}</Text></View> : null}
                     {snapshot && messages.length === 0 ? (
                       <View style={styles.welcome}>
-                        <BeeMascot size="medium" situation="greeting" />
                         <Text style={styles.welcomeTitle}>What can I help with?</Text>
                         <Text style={styles.welcomeText}>
                           {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds one-food AI help; Pro adds adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Describe one food and its portion for AI food help. Pro adds adaptive conversations, preferences and progress guidance." : "Ask about food or your recorded progress. Food, weight and goal changes always need your review."}
@@ -329,11 +352,6 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                     ) : null}
                     {displayedMessages.map((message) => (
                       <View key={message.id} style={[styles.messageRow, message.role === "user" ? styles.userMessageRow : styles.beeMessageRow]}>
-                        {message.role === "assistant" ? (
-                          <View style={styles.messageAvatarSlot}>
-                            {message.id === latestReplyId ? <View testID="bee-latest-message-mascot"><BeeMascot size="small" situation={message.draft ? "reviewingMatch" : "greeting"} style={styles.messageMascot} /></View> : null}
-                          </View>
-                        ) : null}
                         <View style={[styles.messageBubble, message.role === "user" ? styles.userBubble : styles.beeBubble]}>
                           <Text selectable style={[styles.messageText, message.role === "user" && styles.userMessageText]}>{message.role === "assistant" ? expandBeeMacroLabels(message.text) : message.text}</Text>
                           {message.draft ? renderReview(message.draft) : null}
@@ -342,7 +360,6 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                     ))}
                     {snapshot?.liveAnswer ? (
                       <View style={[styles.messageRow, styles.beeMessageRow]}>
-                        <View style={styles.messageAvatarSlot} testID="bee-latest-message-mascot"><BeeMascot size="small" situation="greeting" style={styles.messageMascot} /></View>
                         <View style={[styles.messageBubble, styles.beeBubble]}>
                           <BeeGroundedAnswer key={`${snapshot.thread.id}:${snapshot.thread.version}`} answer={snapshot.liveAnswer} />
                         </View>
@@ -505,12 +522,12 @@ function formatNumber(value: number): string {
 const styles = StyleSheet.create({
   floatingButton: {
     position: "absolute", zIndex: 50, width: 56, height: 56, borderRadius: 28,
-    alignItems: "center", justifyContent: "center", backgroundColor: Colors.surface,
-    borderWidth: 1, borderColor: Colors.border, elevation: 4, overflow: "visible", padding: 0,
+    alignItems: "center", justifyContent: "center", backgroundColor: "transparent",
+    borderWidth: 0, elevation: 0, overflow: "visible", padding: 0,
   },
-  launcherMascotViewport: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  floatingButtonMobile: { right: 16, bottom: 112, width: 52, height: 52, borderRadius: 26 },
-  floatingButtonDesktop: { right: 24, bottom: 24 },
+  launcherMascotViewport: { width: 54, height: 54, alignItems: "center", justifyContent: "center", overflow: "visible" },
+  floatingButtonMobile: { right: 16, bottom: 112, width: 60, height: 60, borderRadius: 30 },
+  floatingButtonDesktop: { right: 24, bottom: 24, width: 60, height: 60 },
   floatingBadge: {
     position: "absolute", right: -1, bottom: -1, width: 22, height: 22, borderRadius: 11,
     alignItems: "center", justifyContent: "center", backgroundColor: Colors.accent, borderWidth: 2, borderColor: Colors.primary,
@@ -535,8 +552,6 @@ const styles = StyleSheet.create({
   messageRow: { flexDirection: "row", alignItems: "flex-start" },
   beeMessageRow: { alignSelf: "stretch", gap: 6 },
   userMessageRow: { alignSelf: "flex-end", justifyContent: "flex-end", maxWidth: "88%" },
-  messageMascot: { width: 34, marginTop: 1 },
-  messageAvatarSlot: { width: 34 },
   messageBubble: { borderRadius: Radii.card, paddingHorizontal: 12, paddingVertical: 11 },
   beeBubble: { flex: 1, minWidth: 0, backgroundColor: Colors.surface },
   userBubble: { backgroundColor: Colors.accent },

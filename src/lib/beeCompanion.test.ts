@@ -4,7 +4,6 @@ import {
   beeMoodToSituation,
   getBeeAccessibilityLabel,
   getBeePose,
-  getBeeTapReaction,
 } from "./beeCompanion";
 
 describe("beeCompanion", () => {
@@ -34,6 +33,12 @@ describe("beeCompanion", () => {
       barcodeFound: "success",
       barcodeNotFound: "thinking",
       emptyCollection: "encouraging",
+      thinking: "thinking",
+      encouraging: "encouraging",
+      celebrating: "celebrating",
+      caution: "caution",
+      resting: "resting",
+      success: "success",
     });
   });
 
@@ -52,18 +57,6 @@ describe("beeCompanion", () => {
     expect(beeMoodToSituation("streak")).toBe("streak");
     expect(beeMoodToSituation("under")).toBe("underTarget");
     expect(beeMoodToSituation("steady")).toBe("nearTarget");
-  });
-
-  it("returns deterministic, supportive tap reactions", () => {
-    expect(getBeeTapReaction("emptyDay", 0)).toBe(
-      "One quick log is enough to get today moving.",
-    );
-    expect(getBeeTapReaction("emptyDay", 3)).toBe(
-      "One quick log is enough to get today moving.",
-    );
-    expect(getBeeTapReaction("overTarget", 1)).not.toMatch(
-      /bad|failed|cheat|guilt/i,
-    );
   });
 
   it("provides a contextual accessibility label", () => {

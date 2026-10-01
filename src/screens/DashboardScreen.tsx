@@ -29,7 +29,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
 import { useBeeInsight } from "@/src/lib/useBeeInsight";
-import { beePoseToSituation } from "@/src/lib/beeCompanion";
 import { subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { supabase } from "@/src/lib/supabase";
 import { accountDay } from "@/src/lib/accountDay";
@@ -417,7 +416,6 @@ export function DashboardScreen() {
       compact={!isDesktop}
       interactive
       mascotSize={isDesktop ? "large" : "medium"}
-      situation={beePoseToSituation(insight?.suggested_pose ?? "greeting")}
       title={beeMessage.title}
       message={beeMessage.message}
       style={styles.beeCompanionCard}
@@ -967,11 +965,6 @@ const styles = StyleSheet.create({
   beeCompanionCard: {
     marginTop: 4,
     marginBottom: 16,
-    padding: 14,
-    borderRadius: Radii.card,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
 
   // ── HERO CARD ──

@@ -24,7 +24,8 @@ the preceding adaptive food/weight/goal brief.
   model calls. Saved context is reassembled each request; no Google-side session.
 - `beeNutrition.ts` searches the fixed operator gist first, then exact private
   foods/Open Food Facts, Google on a true miss, and USDA as the final independent
-  fallback. See [food corrections and source policy](bee-food-corrections.md). Brand,
+  fallback. Exact owned Cookbook recipes retain their own serving definition.
+  See [food corrections and source policy](bee-food-corrections.md). Brand,
   preparation, whole/white, variant, package and serving compatibility are
   checked before a result can produce a draft. Explicit numeric portions are
   retained from the user's text even if the model misinterprets the amount.
@@ -63,6 +64,10 @@ the preceding adaptive food/weight/goal brief.
   or local midnight. Food/profile/weight/memory changes invalidate them. Mascot
   renders/taps do not pay for new insights; taps open Bee. An insight does not
   advance a conversation's reviewed version. Offline fallback stays deterministic.
+- Pro Bee can create reviewed My Foods items and Cookbook recipes. Independent
+  ingredient records supply nutrition; Gemini suggests ingredients/steps. An
+  atomic confirmation saves the library item without logging consumption. See
+  [food/recipe creation and release checks](bee-food-recipes.md).
 
 ## Database additions and rollout order
 
@@ -99,6 +104,10 @@ New feature migrations:
 7. `20260930000200_gist_food_source.sql` — permit fixed-source, per-100-g curated
    gist evidence in the existing atomic review RPC; preserve owner/lease/replay
    guards and service-only grants. Apply before updated food functions/clients.
+8. `20261002000000_bee_food_recipe_creation.sql` — reviewed library creation,
+   recipe servings/steps, protected independent provenance and unique owner
+   action references; permit the existing Cookbook diary unit. Apply before
+   the updated `bee-chat` function, then release the creation UI.
 
 Every user-owned addition has RLS. Clients can read only their own permitted
 records; service-only data/RPCs are revoked from anon/authenticated/public. Manual

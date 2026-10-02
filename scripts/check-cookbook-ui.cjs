@@ -114,7 +114,10 @@ async function verify(page, base, width) {
   differentOwner = false;
   await log.click();
   await page.getByText('Logging...', { exact: true }).waitFor();
-  const logRequest = page.waitForResponse(response => new URL(response.url()).pathname === '/rest/v1/food_logs' && response.request().method() === 'POST');
+  // Keep a closing page from turning a later assertion failure into an
+  // unhandled rejection; still report a failed response wait below.
+  let logResponseError;
+  const logRequest = page.waitForResponse(response => new URL(response.url()).pathname === '/rest/v1/food_logs' && response.request().method() === 'POST').catch(error => { logResponseError=error; });
   await log.press('Enter');
   assert.equal(await log.isDisabled(), true);
   assert.equal(await custom.isEditable(), false);
@@ -123,6 +126,7 @@ async function verify(page, base, width) {
   assert.equal(logs.length, 1);
   releaseLog();
   await logRequest;
+  if(logResponseError)throw logResponseError;
   await page.getByText("The save couldn't be confirmed. Your reviewed recipe is still here. Check your connection and diary before retrying.", { exact: true }).waitFor();
   assert.equal(await custom.inputValue(), '0.5');
   assert.equal(await page.getByText('Private TEST DATA insert detail', { exact: true }).count(), 0);

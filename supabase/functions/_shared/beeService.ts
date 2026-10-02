@@ -307,7 +307,12 @@ export async function handleBeeRequest(
         ? { ...await resolveNutritionIntent({kind:"nutrition",query:correctionQuery},context,async q=>{
             const result=await deps.search(q,signal,user.id);missed=result.kind==="unavailable";return result;
           }), ...(missed ? {needsWeb:correctionQuery} : {}) }
-        : await adaptiveTurn(request,context,progress,entitlement.tier,model,q=>deps.search(q,signal,user.id),(deps.now??(()=>new Date()))());
+        : await adaptiveTurn(request,context,progress,entitlement.tier,model,q=>deps.search(q,signal,user.id),(deps.now??(()=>new Date()))(),async q=>{
+          const result=await deps.search(q,signal,user.id);
+          // Library records require independent values. This branch never
+          // searches Google or reuses its links as nutrition leads.
+          return result.kind === "unavailable" && deps.fallbackSearch ? deps.fallbackSearch(q,signal,user.id) : result;
+        });
       const {needsWeb,...persisted}=outcome;
       if (needsWeb) {
         const resolved = await searchThenFallback(needsWeb,persisted);

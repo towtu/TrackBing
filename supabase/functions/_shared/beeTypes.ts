@@ -89,7 +89,25 @@ export type GoalDraft = { previous: GoalValues; next: GoalValues; profileRevisio
 type PendingBase = Omit<PendingFood, "kind" | "food">;
 export type PendingWeight = PendingBase & { kind: "weight"; weight: WeightDraft };
 export type PendingGoal = PendingBase & { kind: "goal"; goal: GoalDraft };
-export type PendingAction = PendingFood | PendingWeight | PendingGoal;
+export type CompleteNutrients = { calories: number; protein: number; carbs: number; fat: number };
+export type RecipePlan = { name: string; servings: number; ingredients: FoodQuery[]; instructions: string[] };
+/** Compatible with the existing Cookbook ingredient snapshots. */
+export type RecipeLibraryIngredient = {
+  name: string; brands: string; weight: number; unit: "g" | "ml" | "serving";
+  default_unit: "g" | "ml" | "serving";
+  nutriments: { "energy-kcal_100g": number; proteins_100g: number; carbohydrates_100g: number; fat_100g: number };
+};
+export type PersonalFoodDraft = {
+  kind: "personal_food"; name: string; defaultUnit: "g" | "ml" | "serving";
+  nutrients: CompleteNutrients; food: ReviewedFood;
+};
+export type RecipeDraft = {
+  kind: "recipe"; name: string; servings: number; instructions: string[];
+  foods: ReviewedFood[]; ingredients: RecipeLibraryIngredient[]; totals: CompleteNutrients;
+};
+export type CreationDraft = PersonalFoodDraft | RecipeDraft;
+export type PendingCreation = PendingBase & ({ kind: "personal_food"; creation: PersonalFoodDraft } | { kind: "recipe"; creation: RecipeDraft });
+export type PendingAction = PendingFood | PendingWeight | PendingGoal | PendingCreation;
 export type BeeInsight = { text: string; suggested_pose: BeePose; context_revision: string; expires_at: string };
 export type BeeTier = "basic" | "plus" | "pro";
 export type BeeEntitlement = { tier: BeeTier; capabilities: Record<string, boolean>; remaining: Record<string, number>; limits: Record<string, number>; reset_at: string | null };
@@ -125,7 +143,7 @@ export type BeeSnapshot = {
   profile: Record<string, string | number | null>;
   pending: PendingAction | null;
   saved_log_id?: string;
-  saved_action?: { kind: "food" | "weight" | "goal"; id: string; pending_id?: string; local_date: string };
+  saved_action?: { kind: "food" | "weight" | "goal" | "personal_food" | "recipe"; id: string; pending_id?: string; local_date: string };
   suggested_pose?: BeePose;
   insight?: BeeInsight;
   entitlement?: BeeEntitlement;

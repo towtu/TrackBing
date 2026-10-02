@@ -50,6 +50,14 @@ describe("Bee account client", () => {
     vi.resetAllMocks();
     setUser("account-a");
   });
+  it("restores reviewed library creation without treating it as a diary draft", async () => {
+    const { food, ...base } = servingDraft;
+    const pending = { ...base, kind: "personal_food", creation: { kind: "personal_food", name: food.name, defaultUnit: "serving", nutrients: { calories: 120, protein: 3, carbs: 18, fat: 4 }, food } };
+    invoke.mockResolvedValueOnce({ data: { ok: true, snapshot: { ...snapshot, pending } }, error: null });
+    const result = await createBeeClient("account-a").send(createBeeRequest({ kind: "load" }, snapshot));
+    expect(result?.ok).toBe(true);
+    if (result?.ok) expect(result.snapshot.pending).toHaveProperty("creation.kind", "personal_food");
+  });
 
   it.each(["new_thread", "confirm"] as const)(
     "retries %s with the identical request ID and never automatically replays it",

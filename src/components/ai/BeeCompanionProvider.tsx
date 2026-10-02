@@ -14,6 +14,8 @@ const Companion = createContext({
   situation: "greeting" as BeeSituation,
   nutritionCue: null as BeeNutritionCue | null,
   chatOpen: false,
+  librarySheetOpen: false,
+  setLibrarySheetOpen: (_key: string, _open: boolean) => {},
   setChatOpen: (_open: boolean) => {},
   setReviewSituation: (_situation: BeeSituation | null) => {},
   motionEnabled: false,
@@ -28,6 +30,11 @@ export function BeeCompanionProvider({ userId, children }: { userId: string; chi
   const [motionEnabled, setMotionEnabled] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [librarySheets, setLibrarySheets] = useState<Set<string>>(()=>new Set());
+  const setLibrarySheetOpen = useCallback((key:string,open:boolean)=>setLibrarySheets(previous=>{
+    if(previous.has(key)===open)return previous;
+    const next=new Set(previous);if(open)next.add(key);else next.delete(key);return next;
+  }),[]);
   const [reviewSituation, setReviewSituation] = useState<BeeSituation | null>(null);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const motionRef = useRef(false);
@@ -113,6 +120,6 @@ export function BeeCompanionProvider({ userId, children }: { userId: string; chi
   return <Companion.Provider value={{
     situation: reviewSituation ?? (celebrating ? "celebrating" : chooseBeeUserSituation(context)),
     nutritionCue: reviewSituation || celebrating ? null : chooseBeeNutritionCue(context),
-    chatOpen, setChatOpen, setReviewSituation, motionEnabled, toggleMotion, celebrateSaved,
+    chatOpen, setChatOpen, librarySheetOpen:librarySheets.size>0,setLibrarySheetOpen,setReviewSituation, motionEnabled, toggleMotion, celebrateSaved,
   }}>{children}</Companion.Provider>;
 }

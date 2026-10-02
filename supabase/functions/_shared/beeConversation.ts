@@ -9,7 +9,10 @@ import type {
   GoalDraft,
   BeePose,
   ReviewedFood,
+  CreationDraft,
+  RecipePlan,
 } from "./beeTypes.ts";
+import { makeRecipeDraft } from "./beeCreation.ts";
 import {
   type BeeIntent,
   decisionText,
@@ -24,6 +27,7 @@ export type ConversationState = {
   query?: FoodQuery;
   question?: string;
   preparationSuggestion?: FoodQuery;
+  creation?: { kind: "personal_food"; query?: FoodQuery } | { kind: "recipe"; plan: RecipePlan };
 };
 export type BeeContext = {
   state: ConversationState;
@@ -39,6 +43,7 @@ export type TurnOutcome = {
   draft?: ReviewedFood;
   weight_draft?: WeightDraft;
   goal_draft?: GoalDraft;
+  creation_draft?: CreationDraft;
   suggested_pose?: BeePose;
   invalidate_pending?: boolean;
   memory?: MemoryChange;
@@ -149,6 +154,16 @@ export function deterministicTurn(
       state: context.state,
     };
   }
+  if (context.pending && context.pending.kind === "recipe" && context.pending.creation.kind === "recipe") {
+    const match = /^(?:actually[, ]*|please |could you |can you )?(?:make it|change (?:it|the recipe) to|use)\s+(\d+(?:\.\d+)?)\s+servings?[.!?]*$/i.exec(text.trim());
+    if (match) {
+      const servings = Number(match[1]);
+      if (!Number.isInteger(servings) || servings < 1 || servings > 20) return { text: "Choose a whole number from 1 to 20 servings.", invalidate_pending: true, state: { awaiting: "clarification", creation: { kind: "recipe", plan: { name: context.pending.creation.name, servings: context.pending.creation.servings, ingredients: context.pending.creation.foods.map(f => f.query), instructions: context.pending.creation.instructions } } } };
+      const c = context.pending.creation;
+      const creation = makeRecipeDraft({ name: c.name, servings, instructions: c.instructions, ingredients: c.foods.map(f => f.query) }, c.foods);
+      return { text: `The same recipe now makes ${servings} servings. Review it again before saving to Cookbook; nothing has been logged.`, creation_draft: creation, invalidate_pending: true, state: { awaiting: "review" } };
+    }
+  }
   const memory = explicitMemory(text);
   if (memory) {
     return {
@@ -246,6 +261,7 @@ export function knownHistory(
 /** Nutrition interpretation gets no profile biometrics and no bulk food history. */
 export function modelContext(text: string, context: BeeContext) {
   return {
+    currentCreation: context.state.creation ?? (context.pending && (context.pending.kind === "recipe" || context.pending.kind === "personal_food") ? context.pending.creation.kind === "recipe" ? {kind:"recipe",plan:{name:context.pending.creation.name,servings:context.pending.creation.servings,ingredients:context.pending.creation.foods.map(f=>f.query),instructions:context.pending.creation.instructions}} : {kind:"personal_food",query:context.pending.creation.food.query} : null),
     currentFood: context.state.query ?? (context.pending && (!context.pending.kind || context.pending.kind === "food") ? context.pending.food.query : null) ?? null,
     awaiting: context.state.awaiting,
     clarification: context.state.question,

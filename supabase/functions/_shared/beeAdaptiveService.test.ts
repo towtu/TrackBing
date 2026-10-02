@@ -2,6 +2,7 @@ import {describe,it,expect,vi} from 'vitest';
 import {handleBeeRequest,type BeeDependencies,type BeeStore} from './beeService.ts';
 import type {BeeSnapshot,BeeEntitlement,BeeRequest} from './beeTypes.ts';
 import type {FoodQuery,ReviewedFood} from './beeTypes.ts';
+import {foodFromUserLabel} from './beeCreation.ts';
 const id='11111111-1111-4111-8111-111111111111';
 const snapshot:BeeSnapshot={thread:{id,version:0},messages:[],memories:[],profile:{age:30,current_weight:72,calorie_target:2000},pending:null};
 function setup(tier:BeeEntitlement['tier']='pro'){
@@ -12,6 +13,25 @@ function setup(tier:BeeEntitlement['tier']='pro'){
 }
 const request=(text='How am I doing today?',kind='message')=>new Request('https://example.test/bee',{method:'POST',headers:{Authorization:'Bearer test-data','Content-Type':'application/json'},body:JSON.stringify({requestId:id,threadId:id,expectedVersion:0,timeZone:'Asia/Manila',command:{kind,text}})});
 describe('adaptive server decisions and paid boundaries',()=>{
+ it('custom food creation reviews actual user label values and makes no Search or diary request',async()=>{
+  const {deps,store}=setup();deps.generate=vi.fn().mockResolvedValueOnce({reply:'Review your label.',nextStep:'create_food',suggestedPose:'thinking'}).mockResolvedValueOnce({reply:'Check the label before saving to My Foods.',suggestedPose:'thinking'});
+  await handleBeeRequest(request('Create food "Fixture shake" per serving: calories 200, protein 20, carbs 10, fat 8'),deps);
+  const outcome=vi.mocked(store.finish).mock.calls.at(-1)[2];expect(outcome).toHaveProperty('creation_draft.kind','personal_food');expect(outcome.draft).toBeUndefined();expect(outcome.confirm).toBeUndefined();expect(deps.search).not.toHaveBeenCalled();expect(deps.ground).not.toHaveBeenCalled();expect(store.recordCall).toHaveBeenCalledTimes(2);
+ });
+ it.each(['basic','plus'] as const)('recipe creation for %s cannot start a paid adaptive request',async tier=>{
+  const {deps,store}=setup(tier);expect((await handleBeeRequest(request('Make a recipe with egg'),deps)).status).toBe(402);expect(deps.generate).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();
+ });
+ it('a recipe uses independent fallback values without Google, retaining every ingredient',async()=>{
+  const {deps,store}=setup();
+  // These are explicit illustrative TEST DATA label values, not actual food facts.
+  const food=foodFromUserLabel('Create food "Fixture shake" per serving: calories 200, protein 20, carbs 10, fat 8',new Date())!;
+  const recipe={name:'Fixture drink recipe',servings:2,ingredients:[food.query],instructions:['Divide the supplied drink between two cups.']};
+  deps.generate=vi.fn().mockResolvedValueOnce({reply:'Let me check the ingredient.',nextStep:'create_recipe',suggestedPose:'thinking',recipe}).mockResolvedValueOnce({reply:'Review the recipe before saving.',suggestedPose:'thinking'});
+  deps.search=vi.fn().mockResolvedValue({kind:'unavailable',message:'No matching first source.'});deps.fallbackSearch=vi.fn().mockResolvedValue({kind:'found',food});
+  expect((await handleBeeRequest(request('Make a drink recipe'),deps)).status).toBe(200);
+  expect(deps.fallbackSearch).toHaveBeenCalledOnce();expect(deps.ground).not.toHaveBeenCalled();expect(store.reserveSearch).not.toHaveBeenCalled();
+  expect(vi.mocked(store.finish).mock.calls.at(-1)[2]).toHaveProperty('creation_draft.totals.calories',200);
+ });
  it.each(['basic','plus'] as const)('never spends on adaptive chat for %s',async tier=>{const {deps,store}=setup(tier);const response=await handleBeeRequest(request(),deps);expect(response.status).toBe(402);expect(deps.generate).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();});
  it('lets Basic read actual owned yesterday without a paid call',async()=>{const {deps,store}=setup('basic');expect((await handleBeeRequest(request('What did I eat yesterday?'),deps)).status).toBe(200);expect(store.history).toHaveBeenCalledWith('2026-09-25T16:00:00.000Z','2026-09-26T16:00:00.000Z');expect(deps.generate).not.toHaveBeenCalled();});
  it.each(['missing','minor','unpaid'] as const)('fails before exposing context or spending when %s',async mode=>{const {deps,store}=setup();store.snapshot=vi.fn().mockResolvedValue({...snapshot,profile:{age:mode==='minor'?17:mode==='missing'?null:30}});if(mode==='unpaid')deps.paidDataApproved=()=>false;expect((await handleBeeRequest(request(),deps)).status).toBe(mode==='unpaid'?503:403);expect(deps.generate).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();});

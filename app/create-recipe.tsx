@@ -44,6 +44,8 @@ import {
   type Unit,
 } from "@/src/lib/macros";
 import { validateRecipe, validateLoggedPortion } from "@/src/lib/foodValidation";
+import { parseRecipeDetails } from "@/src/lib/recipeDetails";
+import { emitFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -74,6 +76,8 @@ export default function CreateRecipePage() {
   const saveInFlight = useRef(false);
 
   const [name, setName] = useState("");
+  const [servings, setServings] = useState("1");
+  const [steps, setSteps] = useState("");
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -155,7 +159,7 @@ export default function CreateRecipePage() {
       }
       const { data, error } = await writer.client
         .from("recipes")
-        .select("name, ingredients")
+        .select("name, ingredients, servings, instructions")
         .eq("id", editId)
         .eq("user_id", writer.userId)
         .single();
@@ -163,6 +167,8 @@ export default function CreateRecipePage() {
       if (error || !data) { setLoadState("error"); return; }
       if (data) {
         setName(data.name ?? "");
+        setServings(String(data.servings ?? 1));
+        setSteps(Array.isArray(data.instructions) ? data.instructions.join("\n") : "");
         setIngredients(
           Array.isArray(data.ingredients) ? data.ingredients : []
         );
@@ -299,6 +305,8 @@ export default function CreateRecipePage() {
     if (saveInFlight.current || loadState !== "ready") return;
     const validationError = validateRecipe(name, ingredients);
     if (validationError) return notify("Check the recipe", validationError);
+    const details=parseRecipeDetails(servings,steps);
+    if(!details.ok)return notify("Check the recipe",details.message);
     saveInFlight.current = true;
     setSubmitting(true);
     const guard = accountRef.current;
@@ -309,12 +317,13 @@ export default function CreateRecipePage() {
         return;
       }
       const result = editId
-        ? await writer.client.from("recipes").update({ name: name.trim(), ingredients }).eq("id", editId).eq("user_id", writer.userId).select("id").maybeSingle()
-        : await writer.client.from("recipes").insert([{ user_id: writer.userId, name: name.trim(), ingredients }]);
+        ? await writer.client.from("recipes").update({ name: name.trim(), ingredients, servings:details.servings, instructions:details.instructions }).eq("id", editId).eq("user_id", writer.userId).select("id").maybeSingle()
+        : await writer.client.from("recipes").insert([{ user_id: writer.userId, name: name.trim(), ingredients, servings:details.servings, instructions:details.instructions }]);
       if (!writer.isActive()) return;
       if (result.error || (editId && !result.data)) {
         notify("Could not save recipe", "The save couldn't be confirmed. Your recipe is still here. Check your connection and try again.", "error");
       } else {
+        emitFoodLibraryChanged("recipe");
         notify("Saved!", editId ? "Recipe updated." : "Recipe saved.", "success", () => router.back(), 1100);
       }
     } catch {
@@ -385,6 +394,11 @@ export default function CreateRecipePage() {
                 value={name}
                 onChangeText={setName}
               />
+
+              <Text style={s.label}>Servings</Text>
+              <TextInput accessibilityLabel="Recipe servings" value={servings} onChangeText={setServings} keyboardType="number-pad" maxLength={2} editable={!submitting} style={s.input}/>
+              <Text style={s.label}>Cooking steps (optional)</Text>
+              <TextInput accessibilityLabel="Recipe cooking steps" accessibilityHint="One step per line, up to eight steps" value={steps} onChangeText={setSteps} multiline maxLength={2408} editable={!submitting} placeholder="One step per line" placeholderTextColor={Colors.textMuted} style={[s.input,{minHeight:110,textAlignVertical:"top"}]}/>
 
               {/* Running total */}
               <View style={s.totalCard}>

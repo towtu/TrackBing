@@ -17,6 +17,9 @@ export type PersonalRecord = {
   fat: number;
   default_unit: string;
   ai_estimated?: boolean;
+  recipe_calculated?: boolean;
+  recipe_sources?: {source:string;url:string;sourceId?:string;retrievedAt:string;license?:string;attribution?:string;userEdited:boolean}[];
+  bee_provenance?: { user_edited?: boolean; creation?: { food?: ReviewedFood } } | null;
 };
 export type NutritionDependencies = {
   usdaApiKey: string;
@@ -24,6 +27,7 @@ export type NutritionDependencies = {
   fetch?: typeof fetch;
   now?: () => Date;
   personal: (query: FoodQuery) => Promise<PersonalRecord[]>;
+  recipes?: (query: FoodQuery) => Promise<PersonalRecord[]>;
   gist?: () => Promise<unknown>;
 };
 export type NutritionPhase = 'all' | 'preferred' | 'fallback';
@@ -419,37 +423,7 @@ function select(
     : result;
 }
 
-/** No Google data or model-generated nutrition can enter this resolver. */
-export async function searchNutrition(
-  query: FoodQuery,
-  deps: NutritionDependencies,
-  phase: NutritionPhase = 'all',
-): Promise<NutritionResult> {
-  const early = preflight(query);
-  if (early) return early;
-  const now = (deps.now?.() ?? new Date()).toISOString();
-  if (phase === 'fallback') return searchUsda(query,deps,now);
-  if (deps.gist) {
-    let raw:unknown;
-    try {raw=await deps.gist();} catch {raw=null;}
-    const rows = Array.isArray(raw) ? raw.slice(0,500) : [];
-    const entries = rows.flatMap((value,index):NutritionEvidence[]=>{
-      const row=object(value);
-      if (!row || typeof row.name !== 'string' || row.name.length>160 || !identityMatches(query,row.name)) return [];
-      // Existing mass records use c/p/cb/f per100g. Legacy ml/serving rows need
-      // an explicit basis: the preferred display unit alone cannot establish it.
-      if (row.unit != null && row.unit !== 'g' && row.nutrition_basis !== 'per_100g') return [];
-      const calories=nutrient(row.c);if(calories===null)return [];
-      const basis:NutritionBasis={grams:100,unit:'g',count:null,milliliters:null,nutrients:{calories,protein:nutrient(row.p),carbs:nutrient(row.cb),fat:nutrient(row.f)}};
-      return [evidence(row.name,basis,String(index),TRACKBING_GIST_URL,null,{...row},'trackbing_gist',now)];
-    });
-    const result=select(query,entries,'trackbing_gist');
-    if(result)return result;
-  }
-  const personal = await deps.personal(query);
-  const own = personal.filter((p) =>
-    !p.ai_estimated && identityMatches(query, p.name)
-  ).map((p) => {
+function personalEvidence(p: PersonalRecord, now: string): NutritionEvidence | null {
     const unit =
       (["g", "ml", "cup", "piece", "bar", "serving", "pack"].includes(
           p.default_unit,
@@ -469,8 +443,60 @@ export async function searchNutrition(
         fat: p.fat,
       },
     };
-    return evidence(p.name, basis, p.id, "", null, { ...p }, "my_food", now);
-  }).filter((e): e is NutritionEvidence => e !== null);
+    const original=p.bee_provenance?.creation?.food;
+    // Preserve a compact origin reference, not recursive copies of old chat
+    // snapshots. Edited records remain user-owned values, not verified labels.
+    const data={id:p.id,name:p.name,calories:p.calories,protein:p.protein,carbs:p.carbs,fat:p.fat,default_unit:p.default_unit,
+      ...(original ? {originalSource:{source:original.source,url:original.evidence.url,sourceId:original.evidence.sourceId,retrievedAt:original.evidence.retrievedAt,license:original.evidence.license,userEdited:p.bee_provenance?.user_edited===true}} : {})};
+    const result=evidence(p.name, basis, p.id, "", null, {...data,...(p.recipe_calculated?{recipeCalculated:true,ingredientSources:p.recipe_sources??[]}:{})}, "my_food", now);
+    if(p.recipe_calculated){result.title="Your saved recipe (calculated)";result.attribution="Recipe nutrition calculated from your ingredient records; no cooked gram yield assumed.";}
+    return result;
+}
+
+/** No Google data or model-generated nutrition can enter this resolver. */
+export async function searchNutrition(
+  query: FoodQuery,
+  deps: NutritionDependencies,
+  phase: NutritionPhase = 'all',
+): Promise<NutritionResult> {
+  const early = preflight(query);
+  if (early) return early;
+  const now = (deps.now?.() ?? new Date()).toISOString();
+  if (phase === 'fallback') return searchUsda(query,deps,now);
+  // An explicitly named owned recipe defines its own serving. A same-name
+  // public ingredient must never replace that private recipe or its yield.
+  if (deps.recipes) {
+    const recipes = (await deps.recipes(query)).filter((p) =>
+      normalize(p.name) === normalize(query.name) && !p.ai_estimated
+    );
+    if (recipes.length) {
+      const entries = recipes.filter((p) => identityMatches(query, p.name))
+        .map((p) => personalEvidence(p, now)).filter((e): e is NutritionEvidence => e !== null);
+      return select(query, entries, "my_food") ?? clarify(
+        "That saved recipe needs complete ingredient nutrition and supported serving units. Review it in Cookbook before logging.",
+      );
+    }
+  }
+  if (deps.gist) {
+    let raw:unknown;
+    try {raw=await deps.gist();} catch {raw=null;}
+    const rows = Array.isArray(raw) ? raw.slice(0,500) : [];
+    const entries = rows.flatMap((value,index):NutritionEvidence[]=>{
+      const row=object(value);
+      if (!row || typeof row.name !== 'string' || row.name.length>160 || !identityMatches(query,row.name)) return [];
+      // Existing mass records use c/p/cb/f per100g. Legacy ml/serving rows need
+      // an explicit basis: the preferred display unit alone cannot establish it.
+      if (row.unit != null && row.unit !== 'g' && row.nutrition_basis !== 'per_100g') return [];
+      const calories=nutrient(row.c);if(calories===null)return [];
+      const basis:NutritionBasis={grams:100,unit:'g',count:null,milliliters:null,nutrients:{calories,protein:nutrient(row.p),carbs:nutrient(row.cb),fat:nutrient(row.f)}};
+      return [evidence(row.name,basis,String(index),TRACKBING_GIST_URL,null,{...row},'trackbing_gist',now)];
+    });
+    const result=select(query,entries,'trackbing_gist');
+    if(result)return result;
+  }
+  const personal = await deps.personal(query);
+  const own = personal.filter((p) => !p.ai_estimated && identityMatches(query, p.name))
+    .map((p) => personalEvidence(p, now)).filter((e): e is NutritionEvidence => e !== null);
   const ownResult = select(query, own, "my_food");
   if (ownResult) return ownResult;
   const fields =

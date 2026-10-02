@@ -20,6 +20,7 @@ import { useBeeCompanion } from "./BeeCompanionProvider";
 import { BeeMascot } from "@/src/components/ai/BeeGuide";
 import { BeeAction, BeeMemories } from "@/src/components/ai/BeeMemories";
 import { BeeGroundedAnswer } from "@/src/components/ai/BeeGroundedAnswer";
+import { BeeCreationReview } from "./BeeCreationReview";
 import { useResponsive } from "@/src/hooks/useResponsive";
 import {
   createBeeClient,
@@ -39,6 +40,7 @@ import {beePoseToSituation, type BeeSituation} from "@/src/lib/beeCompanion";
 import { onOpenBee } from "@/src/lib/beeEvents";
 import { expandBeeMacroLabels } from "@/src/lib/beeConversationUi";
 import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
+import { emitFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
 import { Colors, Radii } from "@/src/styles/colors";
 
 type FailedRequest = { request: BeeRequest; error: BeeErrorCode };
@@ -132,7 +134,11 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setEditingPortion(false);
     if (result.snapshot.saved_action && result.snapshot.saved_action.kind !== "food") {
       const action = result.snapshot.saved_action;
-      if(lastSavedLog.current !== (action.pending_id ?? action.id)) {lastSavedLog.current=action.pending_id ?? action.id;companion.celebrateSaved();emitFoodLogChanged();setNotice(action.kind === "weight" ? "Weight check-in saved." : "Reviewed goals saved.");}
+      if(lastSavedLog.current !== (action.pending_id ?? action.id)) {
+        lastSavedLog.current=action.pending_id ?? action.id;companion.celebrateSaved();
+        if(action.kind==="personal_food"||action.kind==="recipe") {emitFoodLibraryChanged(action.kind);setNotice(action.kind==="recipe" ? "Recipe saved to Cookbook. Your diary is unchanged." : "Food saved to My Foods. Your diary is unchanged.");}
+        else {emitFoodLogChanged();setNotice(action.kind === "weight" ? "Weight check-in saved." : "Reviewed goals saved.");}
+      }
     }
     if (result.snapshot.saved_log_id && result.snapshot.saved_log_id !== lastSavedLog.current) {
       lastSavedLog.current = result.snapshot.saved_log_id;
@@ -236,6 +242,8 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
   const renderReview = (draft: PendingAction) => draft.kind === "weight" || draft.kind === "goal" ? (
     <ActionReview draft={draft} current={isCurrentBeeReview(draft,snapshot,now)} busy={blocked} onConfirm={()=>confirmDraft(draft)} onEdit={editPortion} onCancel={()=>void sendCommand({kind:"cancel",actionId:draft.id,reviewVersion:draft.review_version})}/>
+  ) : draft.kind === "personal_food" || draft.kind === "recipe" ? (
+    <BeeCreationReview draft={draft} current={isCurrentBeeReview(draft,snapshot,now)} busy={blocked} onConfirm={()=>confirmDraft(draft)} onEdit={editPortion} onCancel={()=>void sendCommand({kind:"cancel",actionId:draft.id,reviewVersion:draft.review_version})}/>
   ) : (
     <FoodReview
       draft={draft}
@@ -249,7 +257,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
   return (
     <>
-      {!visible && !keyboardOpen && pathname !== "/" && pathname !== "/dashboard" ? <BeeAction
+      {!visible && !keyboardOpen && !companion.librarySheetOpen && pathname !== "/" && pathname !== "/dashboard" ? <BeeAction
         label="Open Bee quick log"
         iconOnly
         onPress={open}
@@ -283,7 +291,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.headerAvatar} testID="bee-current-companion"><BeeMascot size="small" situation={headerSituation} active={visible && !inputFocused} /></View>
                 <View style={styles.headerCopy}>
                   <Text accessibilityRole="header" style={styles.title}>Bee</Text>
-                  <Text style={styles.subtitle}>Food, weight and progress</Text>
+                  <Text style={styles.subtitle}>Food, recipes and progress</Text>
                 </View>
                 <BeeAction label="Close Bee quick log" iconOnly onPress={close} icon={<X size={18} color={Colors.textSecondary} weight="bold" />} />
               </View>
@@ -349,11 +357,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                       <View style={styles.welcome}>
                         <Text style={styles.welcomeTitle}>What can I help with?</Text>
                         <Text style={styles.welcomeText}>
-                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds one-food AI help; Pro adds adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Describe one food and its portion for AI food help. Pro adds adaptive conversations, preferences and progress guidance." : "Ask about food or your recorded progress. Food, weight and goal changes always need your review."}
+                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds one-food AI help; Pro adds adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Describe one food and its portion for AI food help. Pro adds adaptive conversations, preferences and progress guidance." : "Ask about food, make a recipe, or review your progress. Saving a food or recipe keeps it in your library; diary additions need a separate review."}
                         </Text>
                         <View style={styles.starters}>
                           <BeeAction label="What do you know about me?" disabled={blocked} onPress={() => void sendCommand({ kind: "message", text: "What do you know about me?" })} />
                           <BeeAction label="Help me log a food" disabled={blocked} onPress={() => { setInput("I ate "); inputRef.current?.focus(); }} />
+                          {snapshot.entitlement?.tier==="pro" ? <BeeAction label="Make a recipe" disabled={blocked} onPress={()=>{setInput("Make me a recipe with ");inputRef.current?.focus();}}/> : null}
                         </View>
                       </View>
                     ) : null}
@@ -385,6 +394,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                   </View>
                 ) : null}
                 {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
+                {snapshot?.saved_action?.kind==="recipe" || snapshot?.saved_action?.kind==="personal_food" ? <BeeAction label={snapshot.saved_action.kind==="recipe" ? "Open Cookbook" : "Open My Foods"} onPress={()=>{const kind=snapshot.saved_action?.kind;close();router.push(kind==="recipe" ? "/(tabs)/cookbook" : "/my-foods");}}/> : null}
                 {view === "chat" ? (
                   <View style={styles.actions}>
                     <BeeAction label="Plans and usage" onPress={()=>{close();router.push("/plans");}} style={styles.manualButton}/>
@@ -410,7 +420,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
               {view === "chat" ? (
                 <View style={styles.composer}>
-                  {editingPortion ? <Text style={styles.subtitle}>Enter the new amount and unit. Bee will show an updated review.</Text> : null}
+                  {editingPortion ? <Text style={styles.subtitle}>{pending?.kind==="recipe" ? "Describe ingredient changes or a new serving count. Bee will show a fresh recipe review." : pending?.kind==="personal_food" ? "Describe the food change or provide a complete label. Bee will show a fresh review." : "Enter the new amount and unit. Bee will show an updated review."}</Text> : null}
                   <View style={styles.inputRow}>
                     <TextInput
                       ref={inputRef}
@@ -424,7 +434,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                       onFocus={() => setInputFocused(true)}
                       onBlur={() => setInputFocused(false)}
                       editable={!loading}
-                      placeholder={editingPortion ? "For example, make that 150 g" : pending ? "Change the portion or say yes" : "Ask Bee or describe a food"}
+                      placeholder={editingPortion ? pending?.kind==="recipe" ? "For example, make it 4 servings" : "Describe your correction" : pending ? "Change the review or say yes" : "Ask Bee or describe a food"}
                       placeholderTextColor={Colors.textSecondary}
                       returnKeyType="send"
                       onSubmitEditing={submitText}

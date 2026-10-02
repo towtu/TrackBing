@@ -8,6 +8,7 @@ import {
 } from "../_shared/beeProviders.ts";
 import { loadGistNutrition, searchNutrition } from "../_shared/beeNutrition.ts";
 import { INTENT_PROMPT } from "../_shared/beeConversation.ts";
+import { savedRecipeRecord } from "../_shared/beeRecipeRecord.ts";
 
 // Fixed destinations; no user-supplied URLs. Bound auth/database requests too.
 const boundedFetch: typeof fetch = (input, init) =>
@@ -46,6 +47,7 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: boundedFetch },
   });
+  let gistForTurn:Promise<unknown>|undefined;
   return handleBeeRequest(req, {
     authenticate: async (authorization) => {
       const client = createClient(url, anon, {
@@ -86,13 +88,21 @@ Deno.serve(async (req: Request) => {
     fallbackSearch: (query, signal) => searchNutrition(query, {usdaApiKey:Deno.env.get("USDA_API_KEY")??"",signal,personal:async()=>[]},"fallback"),
     search: (query, signal, userId) =>
       searchNutrition(query, {
-        gist: () => loadGistNutrition(signal),
+        gist: () => gistForTurn ??= loadGistNutrition(signal),
         usdaApiKey: Deno.env.get("USDA_API_KEY") ?? "",
         signal,
+        recipes: async (food) => {
+          const escaped = food.name.replace(/[\\%_]/g, " ");
+          const { data, error } = await admin.from("recipes").select(
+            "id,name,ingredients,servings,bee_provenance",
+          ).eq("user_id", userId).ilike("name", escaped).limit(5);
+          if (error) throw new Error("personal_food_unavailable");
+          return (data ?? []).map(savedRecipeRecord);
+        },
         personal: async (food) => {
           const escaped = food.name.replace(/[\\%_]/g, " ");
           const { data, error } = await admin.from("personal_foods").select(
-            "id,name,calories,protein,carbs,fat,default_unit,ai_estimated",
+            "id,name,calories,protein,carbs,fat,default_unit,ai_estimated,bee_provenance",
           ).eq("user_id", userId).ilike("name", `%${escaped}%`).limit(5);
           if (error) throw new Error("personal_food_unavailable");
           return data ?? [];

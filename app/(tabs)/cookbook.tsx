@@ -30,6 +30,8 @@ import {
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
+import { subscribeFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
+import { recipePortionTotal } from "@/src/lib/recipeDetails";
 import { parseRecipePortion, validateRecipe } from "@/src/lib/foodValidation";
 import {
   calcMacros,
@@ -38,11 +40,16 @@ import {
 } from "@/src/lib/macros";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
+import { useBeeCompanion } from "@/src/components/ai/BeeCompanionProvider";
 
 type Recipe = {
   id: string;
   name: string;
   ingredients: RecipeIngredient[];
+  servings: number;
+  instructions: string[];
+  beeCreated: boolean;
+  userEdited: boolean;
 };
 
 // Quick portion fractions of the whole recipe.
@@ -95,6 +102,8 @@ export default function CookbookPage() {
 
   // ── DELETE MODAL STATE ──
   const [deleteModal, setDeleteModal] = useState(false);
+  const {setLibrarySheetOpen}=useBeeCompanion();
+  useFocusEffect(useCallback(()=>{setLibrarySheetOpen("cookbook",Boolean(selectedRecipe||deleteModal));return()=>setLibrarySheetOpen("cookbook",false);},[selectedRecipe,deleteModal,setLibrarySheetOpen]));
   const [deletingRecipe, setDeletingRecipe] = useState<{
     id: string;
     name: string;
@@ -125,6 +134,10 @@ export default function CookbookPage() {
         id: r.id,
         name: r.name,
         ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
+        servings: Number.isInteger(r.servings) && r.servings>=1 && r.servings<=20 ? r.servings : 1,
+        instructions: Array.isArray(r.instructions) ? r.instructions.filter((s:unknown)=>typeof s==="string") : [],
+        beeCreated: Boolean(r.bee_action_id),
+        userEdited: r.bee_provenance?.user_edited===true,
       })) || [];
     setRecipes(formatted);
     setLoading(false);
@@ -135,6 +148,7 @@ export default function CookbookPage() {
       fetchRecipes();
     }, [])
   );
+  useEffect(()=>subscribeFoodLibraryChanged(kind=>{if(kind==="recipe")void fetchRecipes();}),[]);
 
   const filteredRecipes =
     filterQuery.length >= 2
@@ -152,7 +166,7 @@ export default function CookbookPage() {
     setWorkingIngredients(recipe.ingredients.map((ing) => ({ ...ing })));
     setAdjustMode(false);
     setIngredientAmounts({});
-    setPortion(1);
+    setPortion(1/recipe.servings);
     setCustomPortion("");
   };
 
@@ -177,14 +191,11 @@ export default function CookbookPage() {
   const baseTotal = recipeTotal(workingIngredients);
   const checkedPortion = parseRecipePortion(customPortion || String(portion));
   const previewPortion = checkedPortion ?? 0;
-  const loggedTotal = {
-    c: Math.round(baseTotal.c * previewPortion),
-    p: Math.round(baseTotal.p * previewPortion),
-    cb: Math.round(baseTotal.cb * previewPortion),
-    f: Math.round(baseTotal.f * previewPortion),
-  };
+  const loggedTotal = recipePortionTotal(workingIngredients,previewPortion);
   const recipeValidationError = selectedRecipe ? validateRecipe(selectedRecipe.name, workingIngredients) : null;
   const previewValid = checkedPortion !== null && !recipeValidationError && Object.values(loggedTotal).every(Number.isFinite);
+  const servingFraction=1/(selectedRecipe?.servings??1);
+  const presets=[...(selectedRecipe && selectedRecipe.servings>1 ? [{label:"1 serving",value:servingFraction}] : []),...PORTION_PRESETS.filter(p=>!selectedRecipe || selectedRecipe.servings===1 || Math.abs(p.value-servingFraction)>0.000001).map(p=>({...p,label:p.value===1 ? "Whole recipe" : p.label}))];
 
   const confirmLog = async () => {
     if (!selectedRecipe || mutationInFlight.current) return;
@@ -396,7 +407,7 @@ export default function CookbookPage() {
                         {item.ingredients.length === 1
                           ? "ingredient"
                           : "ingredients"}{" "}
-                        · {total.c} kcal
+                        · {total.c} kcal total{item.servings>1 ? ` · ${item.servings} servings` : ""}
                       </Text>
                       <Text style={localStyles.itemSub}>
                         Protein {total.p} g · Carbs {total.cb} g · Fat {total.f} g
@@ -483,6 +494,7 @@ export default function CookbookPage() {
                       ? "Tweak the amounts for this log"
                       : `${workingIngredients.length} ingredients`}
                   </Text>
+                  <Text style={{color:Colors.textSecondary,fontSize:12,marginTop:4}}>Makes {selectedRecipe?.servings ?? 1} servings · {selectedRecipe?.beeCreated ? "Bee recipe; nutrition calculated from ingredients" : "Calculated from ingredients"}{selectedRecipe?.userEdited ? " · Edited by you" : ""}</Text>
                 </View>
                 <TouchableOpacity
                   accessibilityRole="button"
@@ -534,7 +546,7 @@ export default function CookbookPage() {
                   )}
                 </View>
                 <View style={localStyles.portionRow}>
-                  {PORTION_PRESETS.map((p) => {
+                  {presets.map((p) => {
                     const active =
                       !customPortion && Math.abs(portion - p.value) < 0.001;
                     return (
@@ -542,6 +554,7 @@ export default function CookbookPage() {
                         accessibilityRole="button"
                         accessibilityLabel={`Recipe portion ${p.label}`}
                         accessibilityState={{ selected: active, disabled: submitting }}
+                        aria-pressed={active}
                         disabled={submitting}
                         key={p.label}
                         style={[
@@ -575,7 +588,7 @@ export default function CookbookPage() {
                       !!customPortion && { borderColor: Colors.accent },
                     ]}
                     keyboardType="numeric"
-                    placeholder="0.0"
+                    placeholder="Custom"
                     placeholderTextColor={Colors.textSecondary}
                     value={customPortion}
                     onChangeText={text => { setCustomPortion(text); setReviewError(null); }}
@@ -584,6 +597,7 @@ export default function CookbookPage() {
                   <Text style={localStyles.portionTimes}>×</Text>
                 </View>
                 {checkedPortion === null && <Text accessibilityRole="alert" style={{ color: Colors.error, marginTop: 8, fontSize: 13 }}>Enter a portion greater than 0 and no more than 100 whole recipes.</Text>}
+                <Text style={{color:Colors.textSecondary,fontSize:12,marginTop:6}}>Portions are fractions of the whole recipe. {checkedPortion===null ? "" : `${Number((checkedPortion*(selectedRecipe?.servings??1)).toFixed(2))} ${(checkedPortion*(selectedRecipe?.servings??1))===1 ? "serving" : "servings"} selected.`}</Text>
               </View>
 
               {/* Ingredient list */}
@@ -632,6 +646,7 @@ export default function CookbookPage() {
                     </View>
                   );
                 })}
+                {selectedRecipe?.instructions.length ? <View style={{gap:8,marginTop:14}}><Text style={localStyles.ingName}>Cooking steps</Text>{selectedRecipe.instructions.map((step,index)=><Text key={index} style={{color:Colors.text,fontSize:14,lineHeight:21}}>{index+1}. {step}</Text>)}<Text style={localStyles.ingSub}>Cooking can change water weight; these values are an ingredient calculation.</Text></View> : null}
               </ScrollView>
 
               {/* Actions */}
@@ -1104,7 +1119,8 @@ const localStyles = RNStyleSheet.create({
     gap: 8,
   },
   portionChip: {
-    width: 48,
+    minWidth: 44,
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 12,
     backgroundColor: Colors.inputBg,
@@ -1119,7 +1135,7 @@ const localStyles = RNStyleSheet.create({
   },
   portionChipText: {
     color: Colors.text,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   portionChipTextActive: {
@@ -1127,6 +1143,7 @@ const localStyles = RNStyleSheet.create({
   },
   portionCustom: {
     flex: 1,
+    minWidth: 64,
     height: 44,
     borderRadius: 12,
     backgroundColor: Colors.inputBg,

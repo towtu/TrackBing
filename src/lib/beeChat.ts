@@ -239,6 +239,7 @@ function isSnapshot(value: unknown): value is BeeSnapshot {
     value.memories.every((memory) => record(memory) && typeof memory.value === "string" &&
       ["preferred_name", "preferred_units", "usual_product", "usual_preparation"].includes(String(memory.key))) &&
     (value.pending === null || isDraft(value.pending)) &&
+    (value.saved_action===undefined || (record(value.saved_action)&&["food","weight","goal","personal_food","recipe"].includes(String(value.saved_action.kind))&&typeof value.saved_action.id==="string"&&value.saved_action.id.length>0&&typeof value.saved_action.local_date==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(value.saved_action.local_date))) &&
     (value.liveAnswer === undefined || isBeeGroundedAnswer(value.liveAnswer));
 }
 
@@ -247,6 +248,16 @@ function isDraft(value: unknown): value is PendingAction {
       typeof value.expires_at !== "string") return false;
   if (value.kind === "weight") return record(value.weight) && typeof value.weight.weightKg === "number" && Number.isFinite(value.weight.weightKg) && value.weight.weightKg >= 30 && value.weight.weightKg <= 300 && ["kg","lb"].includes(String(value.weight.unit)) && typeof value.weight.originalAmount === "number" && Number.isFinite(value.weight.originalAmount) && typeof value.weight.localDate === "string" && typeof value.weight.updatesCurrentWeight === "boolean";
   if (value.kind === "goal") {const goal=value.goal;if(!record(goal)||!record(goal.previous)||!record(goal.next))return false;const next=goal.next;return ["calorie_target","protein_grams","carbs_grams","fat_grams"].every(key=>typeof next[key]==="number" && Number.isFinite(next[key]) && next[key]>=0);}
+  if (value.kind === "personal_food" || value.kind === "recipe") {
+    const c=value.creation;
+    if(!record(c)||c.kind!==value.kind||typeof c.name!=="string"||c.name.length<1||c.name.length>160)return false;
+    if(c.kind==="personal_food")return ["g","ml","serving"].includes(String(c.defaultUnit)) && isNutrients(c.nutrients) && isDraft({...value,kind:"food",food:c.food});
+    return Number.isInteger(c.servings) && Number(c.servings)>=1 && Number(c.servings)<=20 && isNutrients(c.totals) &&
+      Array.isArray(c.instructions) && c.instructions.length>=1 && c.instructions.length<=8 && c.instructions.every(s=>typeof s==="string"&&s.length>=1&&s.length<=300) &&
+      Array.isArray(c.foods) && c.foods.length>=1 && c.foods.length<=8 && c.foods.every(food=>isDraft({...value,kind:"food",food})) &&
+      Array.isArray(c.ingredients) && c.ingredients.length===c.foods.length && c.ingredients.every(i=>record(i)&&typeof i.name==="string"&&typeof i.weight==="number"&&Number.isFinite(i.weight)&&i.weight>0&&["g","ml","serving"].includes(String(i.unit))&&i.unit===i.default_unit&&record(i.nutriments)&&Object.keys(i.nutriments).length===4&&["energy-kcal_100g","proteins_100g","carbohydrates_100g","fat_100g"].every(k=>record(i.nutriments)&&typeof i.nutriments[k]==="number"&&Number.isFinite(i.nutriments[k])&&Number(i.nutriments[k])>=0));
+  }
+  if(value.kind!==undefined && value.kind!=="food")return false;
   if (!record(value.food)) return false;
   const food = value.food;
   return ["usda", "openfoodfacts", "my_food", "user_label", "trackbing_gist"].includes(String(food.source)) &&
@@ -254,6 +265,9 @@ function isDraft(value: unknown): value is PendingAction {
     (food.grams === null || (typeof food.grams === "number" && Number.isFinite(food.grams) && food.grams > 0)) &&
     [food.calories, food.protein, food.carbs, food.fat].every((number) => typeof number === "number" && Number.isFinite(number) && number >= 0) &&
     isBeeNutritionEvidence(food.evidence);
+}
+function isNutrients(value:unknown):boolean {
+  return record(value) && ["calories","protein","carbs","fat"].every(k=>typeof value[k]==="number"&&Number.isFinite(value[k])&&Number(value[k])>=0&&Number(value[k])<=100000);
 }
 
 export function isBeeNutritionEvidence(value: unknown): value is NutritionEvidence {

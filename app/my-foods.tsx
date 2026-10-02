@@ -10,6 +10,8 @@ import {
   X,
 } from "@/src/components/icons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { subscribeFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
+import { useBeeCompanion } from "@/src/components/ai/BeeCompanionProvider";
 import {
   ActivityIndicator,
   FlatList,
@@ -69,6 +71,8 @@ export default function MyFoodsPage() {
 
   // ── DELETE MODAL STATE ──
   const [deleteModal, setDeleteModal] = useState(false);
+  const {setLibrarySheetOpen}=useBeeCompanion();
+  useFocusEffect(useCallback(()=>{setLibrarySheetOpen("my-foods",Boolean(selectedFood||deleteModal));return()=>setLibrarySheetOpen("my-foods",false);},[selectedFood,deleteModal,setLibrarySheetOpen]));
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [deletingFood, setDeletingFood] = useState<{
     id: string;
@@ -112,6 +116,7 @@ export default function MyFoodsPage() {
       fetchMyFoods();
     }, [])
   );
+  useEffect(()=>subscribeFoodLibraryChanged(kind=>{if(kind==="personal_food")void fetchMyFoods();}),[]);
 
   const filteredFoods =
     filterQuery.length >= 2

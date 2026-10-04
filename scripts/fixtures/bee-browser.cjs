@@ -144,3 +144,19 @@ module.exports = async function installBeeUiMock(page) {
   page.__beeUiMock = { requests, getSnapshot: () => structuredClone(snapshot), getSearchCount: () => searchCount };
   return page.__beeUiMock;
 };
+
+// Request events and UI loading states can precede the Node route handler.
+// Wait for the handler to install its held-response callback before asserting.
+module.exports.fixtureEvent = function fixtureEvent(label) {
+  let signal;
+  const event = new Promise(resolve => { signal = resolve; });
+  return {
+    signal,
+    async wait() {
+      let timer;
+      try {
+        await Promise.race([event, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Fixture did not start: ${label}`)), 5000); })]);
+      } finally { clearTimeout(timer); }
+    },
+  };
+};

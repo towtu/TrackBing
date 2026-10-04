@@ -2,19 +2,21 @@
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('assert/strict');
 const fs = require('fs');
+const { fixtureEvent } = require('./fixtures/bee-browser.cjs');
 const output = 'output/playwright/auth-polish';
 const fixturePassword = 'Fixture-only-password1!';
 
 async function verify(page, base, width) {
   const calls = [];
   let releaseSignIn;
+  const signInStarted = fixtureEvent('sign-in request');
   let status = 400;
   await page.route('**/auth/v1/**', async route => {
     const req = route.request();
     const path = new URL(req.url()).pathname;
     calls.push({ path, method: req.method() });
     if (path.endsWith('/token')) {
-      if (!releaseSignIn) await new Promise(resolve => { releaseSignIn = resolve; });
+      if (!releaseSignIn) await new Promise(resolve => { releaseSignIn = resolve; signInStarted.signal(); });
       return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ code: status === 429 ? 'over_request_rate_limit' : 'invalid_credentials', msg: 'Internal fixture detail must never appear in the UI' }) });
     }
     if (path.endsWith('/signup')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: '11111111-1111-4111-8111-111111111111', email: 'test@example.test', identities: [] }, session: null }) });
@@ -56,6 +58,7 @@ async function verify(page, base, width) {
   const before = await submit.boundingBox();
   await submit.press('Enter');
   await page.getByText('Signing in…', { exact: true }).waitFor();
+  await signInStarted.wait();
   assert.equal(await submit.isDisabled(), true);
   const during = await submit.boundingBox();
   assert.equal(during.height, before.height);
@@ -175,13 +178,13 @@ async function verifyMyFoods(page, base, width) {
   await page.getByRole('button', { name: 'Keep it', exact: true }).click();
   assert.equal(deletes.length, 0, 'cancel must not delete');
   let releaseOwnerCheck;
+  const ownerCheckStarted = fixtureEvent('saved food removal account verification');
   await page.route('**/auth/v1/user*', async route => {
-    await new Promise(resolve => { releaseOwnerCheck = resolve; });
+    await new Promise(resolve => { releaseOwnerCheck = resolve; ownerCheckStarted.signal(); });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixtureUser) });
   });
   await page.getByRole('button', { name: `Remove ${food.name}`, exact: true }).click();
   const remove = page.getByRole('button', { name: 'Remove saved food', exact: true });
-  const ownerRequest = page.waitForRequest('**/auth/v1/user*', { timeout: 5000 });
   await remove.click();
   await page.getByText('Removing…', { exact: true }).waitFor();
   assert.equal(await remove.isDisabled(), true, 'disable while the account check is pending');
@@ -189,7 +192,7 @@ async function verifyMyFoods(page, base, width) {
   await remove.press('Enter');
   assert.equal(deletes.length, 0);
   await page.waitForFunction(() => document.querySelector('[aria-label="Remove saved food"]')?.getAttribute('aria-disabled') === 'true');
-  await ownerRequest;
+  await ownerCheckStarted.wait();
   assert.equal(typeof releaseOwnerCheck, 'function');
   releaseOwnerCheck();
   await page.getByText('No custom foods yet', { exact: true }).waitFor();

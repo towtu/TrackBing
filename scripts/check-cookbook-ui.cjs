@@ -2,6 +2,7 @@
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('assert/strict');
 const fs = require('fs');
+const { fixtureEvent } = require('./fixtures/bee-browser.cjs');
 const output = 'output/playwright/cookbook-polish';
 const owner = '11111111-1111-4111-8111-111111111111';
 const ingredient = { name: 'TEST DATA oats', brands: 'Fixture', weight: 100, unit: 'g', default_unit: 'g', nutriments: { 'energy-kcal_100g': 200, proteins_100g: 10, carbohydrates_100g: 30, fat_100g: 5 } };
@@ -17,8 +18,11 @@ async function verify(page, base, width) {
   let failEditorRead = true, missingUpdatedRow = true, releaseUpdate;
   const updates = [];
   const logs = [], deletes = [];
+  const logStarted = fixtureEvent('food log write');
+  const updateStarted = fixtureEvent('recipe update');
+  const ownerCheckStarted = fixtureEvent('removal account verification');
   await page.route('**/auth/v1/user*', async route => {
-    if (holdVerification) await new Promise(resolve => { releaseVerification = resolve; });
+    if (holdVerification) await new Promise(resolve => { releaseVerification = resolve; ownerCheckStarted.signal(); });
     return route.fulfill({ status: failOwnerCheck ? 401 : 200, contentType: 'application/json', body: JSON.stringify(failOwnerCheck ? { code: 'bad_jwt', msg: 'TEST DATA invalid session' } : { ...fixtureUser, id: differentOwner ? '99999999-9999-4999-8999-999999999999' : owner }) });
   });
   await page.route('**/rest/v1/recipes**', async route => {
@@ -28,7 +32,7 @@ async function verify(page, base, width) {
       assert.equal(url.searchParams.get('id'), `eq.${recipe.id}`);
       assert.equal(url.searchParams.get('select'), 'id');
       updates.push(req.postDataJSON());
-      if (!releaseUpdate) await new Promise(resolve => { releaseUpdate = resolve; });
+      if (!releaseUpdate) await new Promise(resolve => { releaseUpdate = resolve; updateStarted.signal(); });
       if (!missingUpdatedRow) recipe.name = updates.at(-1).name;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(missingUpdatedRow ? null : { id: recipe.id }) });
     }
@@ -53,7 +57,7 @@ async function verify(page, base, width) {
     assert.equal(body.length, 1);
     assert.equal(body[0].user_id, owner);
     logs.push(body[0]);
-    if (!releaseLog) await new Promise(resolve => { releaseLog = resolve; });
+    if (!releaseLog) await new Promise(resolve => { releaseLog = resolve; logStarted.signal(); });
     return route.fulfill({ status: logStatus, contentType: 'application/json', body: logStatus === 201 ? '' : '{"message":"Private TEST DATA insert detail"}' });
   });
   await page.route('**/rest/v1/rpc/refresh_daily_summary', route => {
@@ -114,6 +118,7 @@ async function verify(page, base, width) {
   differentOwner = false;
   await log.click();
   await page.getByText('Logging...', { exact: true }).waitFor();
+  await logStarted.wait();
   // Keep a closing page from turning a later assertion failure into an
   // unhandled rejection; still report a failed response wait below.
   let logResponseError;
@@ -165,6 +170,7 @@ async function verify(page, base, width) {
   await page.screenshot({ path: `${output}/builder-${width}.png`, fullPage: true, animations: 'disabled' });
   await saveRecipe.click();
   await page.getByText('Saving...', { exact: true }).waitFor();
+  await updateStarted.wait();
   assert.equal(await saveRecipe.isDisabled(), true);
   assert.equal(await name.isEditable(), false);
   assert.equal(await page.getByRole('button', { name: 'Close recipe builder', exact: true }).isDisabled(), true);
@@ -189,14 +195,13 @@ async function verify(page, base, width) {
   holdVerification = true;
   const remove = page.getByRole('button', { name: 'Remove saved recipe', exact: true });
   assert.equal(await remove.getByText('Remove', { exact: true }).evaluate(el => getComputedStyle(el).color), 'rgb(0, 0, 0)', 'destructive action uses readable dark text on the error fill');
-  const heldOwnerRequest = page.waitForRequest('**/auth/v1/user*');
   await remove.click();
   await page.getByText('Removing…', { exact: true }).waitFor();
   assert.equal(await remove.isDisabled(), true);
   assert.equal(await page.getByRole('button', { name: 'Keep it', exact: true }).isDisabled(), true);
   await remove.press('Enter');
   assert.equal(deletes.length, 0);
-  await heldOwnerRequest;
+  await ownerCheckStarted.wait();
   assert.equal(typeof releaseVerification, 'function');
   holdVerification = false;
   releaseVerification();

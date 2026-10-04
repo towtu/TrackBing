@@ -75,9 +75,15 @@ async function exercise(browser, base, width) {
   const launcher = page.getByRole('button', { name: 'Open Bee chat', exact: true });
   await page.getByRole('button', { name: 'Bee encourages your first food log', exact: true }).press('Enter');
   await page.getByRole('button', { name: 'Pause Bee motion', exact: true }).click();
+  await page.getByRole('button', { name: 'Animate Bee', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close Bee quick log', exact: true }).click();
+  // Closing the sheet remounts the dashboard mascot in a React effect. The
+  // launcher is already visible behind the sheet, so it cannot signal readiness.
+  await page.getByRole('dialog', { name: 'Bee conversation', exact: true }).waitFor({ state: 'hidden' });
+  const dashboardMascot = page.getByTestId('bee-dashboard-companion').locator('[data-testid^="bee-mascot-"]');
+  await dashboardMascot.waitFor();
   await launcher.waitFor();
-  assert.equal((await sample(mascot(page))).size, 1, 'pause stops transforms');
+  assert.equal((await sample(dashboardMascot)).size, 1, 'pause stops transforms');
   await page.reload();
   await page.locator('[data-testid="bee-mascot-encouraging"]').waitFor();
   assert.equal((await sample(mascot(page))).size, 1, 'device preference survives reload');

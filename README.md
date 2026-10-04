@@ -48,3 +48,9 @@ plan.
 The controlling brief is [TrackBing_Gemini_Search_Migration_README.md](TrackBing_Gemini_Search_Migration_README.md). Basic manual tracking stays free; Plus offers limited food assistance; Pro enables adaptive Bee. Server-confirmed food, weight and goal reviews, account-controlled memories, Gemini Search, subscription verification and monthly allowances share one Supabase backend across Expo clients.
 
 See [Bee food and recipe creation](docs/bee-food-recipes.md), [deployment and provider setup](docs/bee-gemini-deployment.md) and the [20-item launch evidence report](docs/launch/2026-09-27-implementation-report.md). These documents distinguish local code/tests from missing live credentials, legal decisions, payment/store setup and production/native-device verification. No production deployment is implied.
+
+## CI and releases
+
+Pull requests run parallel app, database, security, web/browser, and native-export checks. The **Ready to merge** check collects every result. Web/backend releases and signed native builds are separate, manual workflows that verify the exact main commit and use protected environments.
+
+See the [CI and release guide](docs/CI_CD.md) for the pipeline, GitHub/provider setup, dependency findings, verification evidence, and recovery instructions. Automatic Vercel Git deployments are disabled in the release configuration; configure the workflow before adopting that release path.

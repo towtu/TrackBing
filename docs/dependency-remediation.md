@@ -12,9 +12,15 @@ The dependency gate remains blocked by unresolved high-severity advisories.
 | `source-map-js` | 1.2.1 → 1.2.2; reject invalid indexed-map offsets. | [Advisory](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) |
 | `postcss-selector-parser` | 6.1.4 → 7.1.6; removes quadratic flat-selector parsing. The major-version override is covered by actual Tailwind variants, `@apply` and nested-selector processing. | [Advisory](https://github.com/advisories/GHSA-rj75-hqrm-r3gf) |
 | Xcode's `uuid` | Scoped override 7.0.3 → 11.1.1, retaining CommonJS and the `v4()` API used by Xcode. Reject undersized destination buffers. | [Advisory](https://github.com/advisories/GHSA-w5hq-g745-h8pq) |
+| Router's `decode-uri-component` | Local compatibility copy of patched upstream 0.5.0; only its export changes to a callable CommonJS function. Preserves query-string 7 / Expo Router 6. | [Source, integrity and license](../vendor/decode-uri-component/UPSTREAM.md); [advisory](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr) |
+| Coverage loader's YAML parser | Scoped override of `@istanbuljs/load-nyc-config` to the already-installed `js-yaml` 4.3.2. Removes YAML 3, argparse 1 and `sprintf-js` entirely. | Actual inherited YAML configuration and forbidden-JavaScript-tag tests; [formatter advisory](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) |
 
-No new direct dependency or framework upgrade was introduced. Related Metro
-parser/runtime packages change together in the lockfile. A direct `image-size`
+No framework upgrade was introduced. The follow-up adds one small, local,
+MIT-licensed decoder dependency, with no new external package or installation
+script. Its 4.3 KB local archive installs as a normal package so npm's registry
+advisory scan includes it; linked local packages would be skipped. Tests compare
+the installed files with the reviewed source and reject a link or any install
+script. Related Metro parser/runtime packages change together in the lockfile. A direct `image-size`
 2.x override was rejected because it removes the synchronous filename API
 used by the old Metro implementation.
 
@@ -25,19 +31,30 @@ accepted an infinite offset. After patching, all six pass. The child parser
 has a bounded heap and timeout; the malformed bytes are synthetic test data.
 Valid artwork is checked through both Metro asset APIs.
 
+The follow-up's twelve tests in `scripts/ci/router-dependencies.test.ts` cover
+upstream source/license integrity, the installed CommonJS router consumer,
+Unicode food names, barcodes, repeated query values, recovery redirect values,
+malformed UTF-8 and inherited YAML configuration. Before patching, the malformed
+query exhausted the bounded child process and YAML accepted a JavaScript tag.
+After patching, both regressions pass. The decoder source hash test reverses the
+single export substitution and compares the result with the verified upstream
+archive; its package version alone is not treated as evidence of a fix.
+Expo Router currently uses `URL.searchParams` for inbound parsing; the malformed
+query test proves the installed dependency API, not a reproduced app navigation
+hang. Existing browser review links verify normal application navigation.
+
 ## Remaining findings — release blockers
 
 | Dependency | Severity / status | Required remediation |
 | --- | --- | --- |
 | `braces` 3.0.3 | High; [no published patch](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) at inspection. Used in build/watch glob processing. | Adopt a verified upstream fix or an independently reviewed compatible replacement, then rerun the full checks. Do not feed untrusted glob patterns into build tooling. |
 | `node-forge` 1.4.0 | High; [no published patch](https://github.com/advisories/GHSA-86w9-cpqp-85rv) at inspection. Present through Expo CLI/code-signing tools. | Adopt a verified fix and verify signing/certificate behavior. A JavaScript export does not establish native signing security. |
-| `decode-uri-component` 0.2.2 | Moderate; [patched in 0.5.0](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr), but that release is ESM while the current router's `query-string` expects a callable CommonJS export. | Integrate a compatible router/query-string patch or a reviewed decoder backport; test malformed URL inputs on web and native. A blind override breaks navigation. |
-| `sprintf-js` 1.0.3 | Moderate; [no published patch](https://github.com/advisories/GHSA-hp3w-g68c-fv3c). In the inherited Babel/Jest/argparse tooling chain. | Adopt an upstream patch or compatible removal; do not accept externally supplied format strings in tooling. |
 
 Reachability notes narrow the exposure; they do not close an advisory.
 The expired `braces` and `node-forge` exceptions were preserved without renewal,
 so `ci:audit` fails closed. The two resolved image-parser exceptions were removed.
-All four underlying advisories remain visible in the raw audit; affected-parent
+Both remaining underlying advisories are high severity. There are no remaining
+moderate findings in the follow-up audit. Affected-parent
 counts may differ with npm's cached meta-vulnerability calculations. Count the
 underlying advisories when comparing remediation, and retain complete reports.
 
@@ -77,12 +94,13 @@ Local verification after the patches:
 | Check | Result |
 | --- | --- |
 | TypeScript / ESLint | Passed on Node 24.21.0 |
-| Vitest | 910 tests across 61 files passed, including six dependency API/security regression tests |
+| Vitest | 922 tests across 62 files passed, including eighteen dependency API/security regression tests |
 | Web export | Passed; 23 static routes and export finalizer checks |
 | Native JavaScript exports | Android 7.08 MB and iOS 7.09 MB Hermes bundles passed; not signed/device builds |
 | Workflow policy / actionlint | Passed; actionlint includes ShellCheck 0.11.0 |
-| Secret-pattern scan | 441 tracked/export files checked; no findings; excludes Git history and unknown credential formats |
-| Dependency audit | Still blocked: two high and two moderate underlying advisories remain; no exception renewal |
+| Secret-pattern scan | 447 tracked/export files checked; no findings; excludes Git history and unknown credential formats |
+| Clean installation | `npm ci --no-audit` passed on Node 24.21.0; the router resolves the local patched decoder and no `sprintf-js` remains installed |
+| Dependency audit | Still blocked: two high underlying advisories remain; zero critical/moderate findings and no exception renewal |
 
 Backend/real PostgreSQL tests and all seven browser suites are also required
 by CI. Provider calls and browser account data are mocked; no live account

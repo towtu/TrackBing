@@ -268,6 +268,12 @@ fail even if the dependency disappeared; keep the policy current.
 
 The October 18 change removes `image-size` through Metro's upstream 0.83.8
 patch and patches source-map, CSS-selector and Xcode UUID dependencies.
+Its follow-up uses the upstream patched URI decoder with a CommonJS export
+and moves coverage configuration to YAML 4, eliminating both moderate findings.
+The decoder's MIT license and exact source-integrity checks are committed under
+`vendor/decode-uri-component`; include this directory and its generated archive
+when copying/building the project. `npm ci` installs the local archive as a
+normal auditable package without an installation script or network transformation.
 The resolved image-parser exceptions were removed. See the
 [dependency remediation record](dependency-remediation.md) for exact versions,
 compatibility tests and remaining moderate findings. Historical results below

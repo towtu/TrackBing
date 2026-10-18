@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "package": "braces",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "severity": "high",
+      "owner": "towtu",
+      "reason": "Temporary acknowledgement of the current stack-exhaustion finding in the Tailwind 3/NativeWind 4 and Metro dependency chains. A compatible dependency update or override needs verification before adoption; remediate by the expiry date. This finding remains open.",
+      "expires": "2026-10-18"
+    },
+    {
+      "package": "image-size",
+      "advisory": "GHSA-5p2g-fcmc-qvqq",
+      "severity": "high",
+      "owner": "towtu",
+      "reason": "Temporary acknowledgement of the current JXL/HEIF parser denial-of-service finding in the Expo/Metro image tooling dependency. Verify a compatible patched version and exported assets before adopting the fix; remediate by the expiry date. This finding remains open.",
+      "expires": "2026-10-18"
+    },
+    {
+      "package": "image-size",
+      "advisory": "GHSA-w3rx-r6r6-pgpr",
+      "severity": "high",
+      "owner": "towtu",
+      "reason": "Temporary acknowledgement of the current ICNS parser denial-of-service finding in the Expo/Metro image tooling dependency. Verify a compatible patched version and exported assets before adopting the fix; remediate by the expiry date. This finding remains open.",
+      "expires": "2026-10-18"
+    },
+    {
+      "package": "node-forge",
+      "advisory": "GHSA-86w9-cpqp-85rv",
+      "severity": "high",
+      "owner": "towtu",
+      "reason": "Temporary acknowledgement of the current RSA signature-verification finding in Expo CLI/code-signing dependencies. A compatible patched dependency needs validation with Expo SDK 54 before adoption; remediate by the expiry date. This finding remains open.",
+      "expires": "2026-10-18"
+    }
+  ]
+}

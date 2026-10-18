@@ -1,0 +1,156 @@
+name: Release web and backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Release the selected main commit to this isolated environment
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+  actions: read
+
+# Never interrupt a database migration or allow staging/production to race.
+concurrency:
+  group: trackbing-release
+  cancel-in-progress: false
+
+env:
+  CI: 'true'
+  EXPO_NO_TELEMETRY: '1'
+  VERCEL_TELEMETRY_DISABLED: '1'
+  RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+  STAGING_SUPABASE_PROJECT_REF: ${{ vars.STAGING_SUPABASE_PROJECT_REF }}
+  PRODUCTION_SUPABASE_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+  STAGING_VERCEL_PROJECT_ID: ${{ vars.STAGING_VERCEL_PROJECT_ID }}
+  PRODUCTION_VERCEL_PROJECT_ID: ${{ vars.PRODUCTION_VERCEL_PROJECT_ID }}
+
+jobs:
+  context:
+    name: Validate release identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Require main and same-commit staging evidence for production
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/release.mjs context
+
+  verify:
+    name: Verify release commit
+    needs: context
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy verified release
+    needs: [context, verify]
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.EXPO_PUBLIC_SITE_ORIGIN }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RELEASE_ENABLED: ${{ vars.RELEASE_ENABLED }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SITE_ORIGIN: ${{ vars.EXPO_PUBLIC_SITE_ORIGIN }}
+      EXPO_PUBLIC_LEGAL_OPERATOR: ${{ vars.EXPO_PUBLIC_LEGAL_OPERATOR }}
+      EXPO_PUBLIC_PRIVACY_EMAIL: ${{ vars.EXPO_PUBLIC_PRIVACY_EMAIL }}
+      EXPO_PUBLIC_LEGAL_REVIEWED: ${{ vars.EXPO_PUBLIC_LEGAL_REVIEWED }}
+      # Enable analytics separately after its consent/configuration review.
+      EXPO_PUBLIC_ANALYTICS_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        with:
+          version: '2.108.0'
+      - name: Validate isolated projects and public build configuration
+        id: config
+        run: node scripts/ci/release.mjs config
+      - name: Build production candidate before backend changes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          test -n "$VERCEL_TOKEN"
+          npx --yes vercel@62.2.0 pull --yes --environment=production --token "$VERCEL_TOKEN"
+          npx --yes vercel@62.2.0 build --prod --token "$VERCEL_TOKEN"
+          node scripts/check-secrets.mjs --dist
+          node scripts/ci/release.mjs stamp
+          node scripts/check-secrets.mjs --export-dir .vercel/output/static
+      - name: Apply additive migrations, then deploy authenticated functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          INCLUDE_ALL: ${{ vars.SUPABASE_INCLUDE_ALL_MIGRATIONS }}
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" && test -n "$SUPABASE_DB_PASSWORD"
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          migration_flags=()
+          if [ "$INCLUDE_ALL" = 'true' ]; then migration_flags+=(--include-all); fi
+          supabase db push --linked --dry-run --yes "${migration_flags[@]}"
+          supabase db push --linked --yes "${migration_flags[@]}"
+          supabase functions deploy bee-chat ai-food usda-search billing billing-webhook billing-reconcile --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt --use-api --jobs 2
+      - name: Upload candidate without moving live domains
+        id: candidate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          mkdir -p output/release
+          npx --yes vercel@62.2.0 deploy --prebuilt --prod --skip-domain --archive=tgz --yes --token "$VERCEL_TOKEN" > output/release/deployment-url.txt
+          node scripts/ci/release.mjs url
+      - name: Verify candidate routes and API auth boundaries
+        env:
+          SMOKE_STAGE: candidate
+          SMOKE_ORIGIN: ${{ steps.candidate.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/ci/smoke.mjs
+      - name: Promote passing candidate
+        env:
+          DEPLOYMENT_URL: ${{ steps.candidate.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@62.2.0 promote "$DEPLOYMENT_URL" --yes --token "$VERCEL_TOKEN"
+      - name: Verify live origin serves this commit
+        env:
+          SMOKE_ORIGIN: ${{ vars.EXPO_PUBLIC_SITE_ORIGIN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/ci/smoke.mjs
+      - name: Record successful release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.environment == 'staging' && steps.config.outputs.marker || format('release-production-{0}', github.sha) }}
+          path: |
+            output/release/candidate-smoke.json
+            output/release/live-smoke.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Release summary
+        env:
+          DEPLOYMENT_URL: ${{ steps.candidate.outputs.url }}
+        run: |
+          {
+            printf '### %s release\n\n' "$RELEASE_ENVIRONMENT"
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Candidate: %s\n\nLive: %s\n\n' "$DEPLOYMENT_URL" "$EXPO_PUBLIC_SITE_ORIGIN"
+            printf '%s\n' 'Verification passed; additive migrations and functions deployed before site promotion.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove pulled provider configuration
+        if: always()
+        run: rm -rf .vercel supabase/.temp

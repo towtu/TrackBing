@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
 import {
   Barcode,
   Basket,
@@ -10,7 +11,7 @@ import {
   Plus,
   Trash,
   User,
-} from "phosphor-react-native";
+} from "@/src/components/icons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -28,10 +29,12 @@ import CircularProgress from "react-native-circular-progress-indicator";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
-import { getBeeMessage } from "@/src/lib/beeCoach";
-import { beeMoodToSituation } from "@/src/lib/beeCompanion";
+import { useBeeCompanion } from "@/src/components/ai/BeeCompanionProvider";
+import { useBeeInsight } from "@/src/lib/useBeeInsight";
 import { subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { supabase } from "@/src/lib/supabase";
+import { accountDay } from "@/src/lib/accountDay";
+import { shiftDay } from "../../supabase/functions/_shared/beeDates";
 import { upsertDailySummary, getLocalDateStr } from "@/src/lib/dailySummary";
 import { Colors, Radii } from "@/src/styles/colors";
 import { DailyTotals, FoodLog } from "@/src/types";
@@ -40,14 +43,6 @@ import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-
-const getDashboardBeeSeed = (value: string) => {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash * 31 + value.charCodeAt(i)) | 0;
-  }
-  return hash;
-};
 
 const getDateDistanceInDays = (fromDate: string, toDate: string) => {
   const parseLocalDate = (value: string) => {
@@ -62,6 +57,8 @@ const getDateDistanceInDays = (fromDate: string, toDate: string) => {
 };
 
 export function DashboardScreen() {
+  const companion = useBeeCompanion();
+  const isFocused = useIsFocused();
   const { isDesktop } = useResponsive();
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [totals, setTotals] = useState<DailyTotals>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
@@ -76,7 +73,8 @@ export function DashboardScreen() {
   const [deleteModal, setDeleteModal] = useState(false);
   const [deletingLog, setDeletingLog] = useState<{ id: string; name: string } | null>(null);
   const [streak, setStreak] = useState(0);
-  const [daysSinceLastLog, setDaysSinceLastLog] = useState<number | undefined>(undefined);
+  const [diaryDay, setDiaryDay] = useState(getLocalDateStr);
+  const [, setDaysSinceLastLog] = useState<number | undefined>(undefined);
   const [feedback, setFeedback] = useState<{
     type: SweetFeedbackType;
     title: string;
@@ -134,7 +132,7 @@ export function DashboardScreen() {
     setMenuOpen((prev) => !prev);
   };
 
-  const calculateStreak = useCallback(async (userId: string) => {
+  const calculateStreak = useCallback(async (userId: string, day: ReturnType<typeof accountDay>) => {
     // Use daily_summaries for historical data + check today's food_logs
     const { data: summaries } = await supabase
       .from("daily_summaries")
@@ -144,14 +142,13 @@ export function DashboardScreen() {
       .order("date", { ascending: false });
 
     // Also check if today has food_logs (might not be in daily_summaries yet)
-    const todayStr = getLocalDateStr();
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStr = day.date;
     const { data: todayLogs } = await supabase
       .from("food_logs")
       .select("id")
       .eq("user_id", userId)
-      .gte("created_at", todayStart.toISOString())
+      .gte("created_at", day.start)
+      .lt("created_at", day.end)
       .limit(1);
 
     const dates = new Set<string>();
@@ -170,18 +167,13 @@ export function DashboardScreen() {
 
     const sorted = Array.from(dates).sort().reverse();
     setDaysSinceLastLog(getDateDistanceInDays(sorted[0], todayStr));
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = getLocalDateStr(yesterday);
+    const yesterdayStr = shiftDay(todayStr, -1);
 
     if (sorted[0] !== todayStr && sorted[0] !== yesterdayStr) { setStreak(0); return; }
 
     let count = 0;
-    const checkDate = new Date(sorted[0]);
     for (let i = 0; i < sorted.length; i++) {
-      const expected = new Date(checkDate);
-      expected.setDate(expected.getDate() - i);
-      if (sorted[i] === getLocalDateStr(expected)) { count++; } else { break; }
+      if (sorted[i] === shiftDay(sorted[0], -i)) { count++; } else { break; }
     }
     setStreak(count);
   }, []);
@@ -192,7 +184,7 @@ export function DashboardScreen() {
 
     const { data: userGoal, error: goalError } = await supabase
       .from("user_goals")
-      .select("calorie_target, protein_grams, carbs_grams, fat_grams")
+      .select("calorie_target, protein_grams, carbs_grams, fat_grams, time_zone")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -209,14 +201,15 @@ export function DashboardScreen() {
       });
     }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const day = accountDay(userGoal?.time_zone);
+    setDiaryDay(day.date);
 
     const { data } = await supabase
       .from("food_logs")
       .select("*")
       .eq("user_id", user.id)
-      .gte("created_at", todayStart.toISOString())
+      .gte("created_at", day.start)
+      .lt("created_at", day.end)
       .order("created_at", { ascending: false });
 
     if (data) {
@@ -224,7 +217,7 @@ export function DashboardScreen() {
       calculateTotals(data as FoodLog[]);
     }
 
-    await calculateStreak(user.id);
+    await calculateStreak(user.id, day);
     await upsertDailySummary();
     setLoading(false);
   }, [calculateStreak]);
@@ -347,20 +340,9 @@ export function DashboardScreen() {
   const isOver = rawDiff < 0;
   const displayDiff = Math.abs(Math.round(rawDiff));
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
-  const beeMessage = getBeeMessage(
-    {
-      calories: totals.calories,
-      goal: calorieGoal,
-      protein: totals.protein,
-      proteinGoal: goals.p,
-      streak,
-      mealCount: logs.length,
-      daysSinceLastLog,
-    },
-    getDashboardBeeSeed(getLocalDateStr()),
-  );
+  const dateStr = new Date(`${diaryDay}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
+  const insight = useBeeInsight(`${diaryDay}:${totals.calories}:${totals.protein}:${logs.length}:${calorieGoal}`);
+  const beeMessage = {title:"Your next step",message:insight?.text ?? "Review your diary, log a food, or record a weigh-in. Tap Bee to ask for help."};
   
   // Format time for logs
   const formatTime = (dateString?: string) => {
@@ -434,15 +416,18 @@ export function DashboardScreen() {
   );
 
   const renderBeeCompanion = () => (
-    <BeeGuide
-      compact={!isDesktop}
-      interactive
-      mascotSize={isDesktop ? "large" : "medium"}
-      situation={beeMoodToSituation(beeMessage.mood)}
-      title={beeMessage.title}
-      message={beeMessage.message}
-      style={styles.beeCompanionCard}
-    />
+    <View testID="bee-dashboard-companion">
+      <BeeGuide
+        compact={!isDesktop}
+        interactive
+        showMascot={isFocused && !companion.chatOpen}
+        mascotSize="large"
+        nutritionDetail={companion.nutritionCue?.detail}
+        title={beeMessage.title}
+        message={beeMessage.message}
+        style={styles.beeCompanionCard}
+      />
+    </View>
   );
 
   return (
@@ -572,6 +557,7 @@ export function DashboardScreen() {
                 {/* ── TIMELINE HEADER ── */}
                 <View style={styles.timelineHeader}>
                   <Text style={styles.timelineTitle}>Today&apos;s log</Text>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Browse food diary" onPress={()=>router.push('/diary')} style={{minHeight:44,padding:10,justifyContent:'center'}}><Text style={{color:Colors.accent}}>History</Text></TouchableOpacity>
                   <Text style={styles.itemCountText}>{logs.length} items</Text>
                 </View>
 
@@ -724,6 +710,7 @@ export function DashboardScreen() {
                 {/* ── TIMELINE HEADER ── */}
                 <View style={styles.timelineHeader}>
                   <Text style={styles.timelineTitle}>Today&apos;s log</Text>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Browse food diary" onPress={()=>router.push('/diary')} style={{minHeight:44,padding:10,justifyContent:'center'}}><Text style={{color:Colors.accent}}>History</Text></TouchableOpacity>
                   <Text style={styles.itemCountText}>{logs.length} items</Text>
                 </View>
               </>
@@ -986,11 +973,6 @@ const styles = StyleSheet.create({
   beeCompanionCard: {
     marginTop: 4,
     marginBottom: 16,
-    padding: 14,
-    borderRadius: Radii.card,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
 
   // ── HERO CARD ──

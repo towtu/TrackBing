@@ -55,6 +55,7 @@ export function calculateCaloriesFromMacros(
 }
 
 type MacroSource = {
+  default_unit?: string;
   nutriments?: Nutriments;
   serving_weight?: number;
   serving_quantity?: number;
@@ -64,23 +65,24 @@ type MacroSource = {
 /** Convert an input amount in the given unit into a "per 100g" ratio. */
 function unitRatio(food: MacroSource, amount: number, unit: Unit): number {
   if (unit === "serving") {
+    if(food.default_unit === "serving")return amount;
     const sw = food.serving_weight || food.serving_quantity;
-    return sw ? (amount * sw) / 100 : amount;
+    return sw ? (amount * sw) / 100 : NaN;
   }
   if (unit === "cup") {
     return food.cup_weight
       ? (amount * food.cup_weight) / 100
-      : (amount * 236.588) / 100;
+      : food.default_unit === "ml" ? (amount * 236.588) / 100 : NaN;
   }
   if (unit === "tbsp") {
     return food.cup_weight
       ? (amount * (food.cup_weight / 16)) / 100
-      : (amount * 14.7868) / 100;
+      : food.default_unit === "ml" ? (amount * 14.7868) / 100 : NaN;
   }
   if (unit === "tsp") {
     return food.cup_weight
       ? (amount * (food.cup_weight / 48)) / 100
-      : (amount * 4.92892) / 100;
+      : food.default_unit === "ml" ? (amount * 4.92892) / 100 : NaN;
   }
   let grams = amount;
   if (unit === "oz") grams *= 28.3495;
@@ -145,13 +147,14 @@ export function getUnitsToDisplay(food?: {
   default_unit?: string;
   serving_weight?: number;
   serving_quantity?: number;
+  cup_weight?: number;
 }): Unit[] {
   if (food?.default_unit === "serving") return ["serving"];
   const isLiquid = food?.default_unit === "ml";
   const hasServing = !!(food?.serving_weight || food?.serving_quantity);
   const baseUnits: Unit[] = isLiquid
     ? ["ml", "tsp", "tbsp", "cup"]
-    : ["g", "oz", "tsp", "tbsp", "cup"];
+    : food?.cup_weight ? ["g", "oz", "tsp", "tbsp", "cup"] : ["g", "oz"];
   return hasServing ? [...baseUnits, "serving"] : baseUnits;
 }
 

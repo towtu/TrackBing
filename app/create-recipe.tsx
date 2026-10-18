@@ -10,8 +10,8 @@ import {
   Plus,
   Trash,
   X,
-} from "phosphor-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+} from "@/src/components/icons";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -30,7 +30,6 @@ import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-import { supabase } from "@/src/lib/supabase";
 import { lookupBarcode, searchAllFoods } from "@/src/lib/foodSearch";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
@@ -44,6 +43,10 @@ import {
   type RecipeIngredient,
   type Unit,
 } from "@/src/lib/macros";
+import { validateRecipe, validateLoggedPortion } from "@/src/lib/foodValidation";
+import { parseRecipeDetails } from "@/src/lib/recipeDetails";
+import { emitFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
+import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -57,14 +60,24 @@ type FeedbackState = {
 
 export default function CreateRecipePage() {
   const router = useRouter();
+  const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
+  useEffect(() => {
+    const guard = createFoodAccountGuard(); accountRef.current = guard;
+    return () => { guard.dispose(); accountRef.current = null; };
+  }, []);
   const { isDesktop } = useResponsive();
 
   // When opened with an ?id= param we're editing an existing recipe rather
   // than creating a new one.
   const params = useLocalSearchParams();
   const editId = typeof params.id === "string" ? params.id : null;
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(editId ? "loading" : "ready");
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const saveInFlight = useRef(false);
 
   const [name, setName] = useState("");
+  const [servings, setServings] = useState("1");
+  const [steps, setSteps] = useState("");
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -93,6 +106,7 @@ export default function CreateRecipePage() {
   // editingFood holds the macro source (a search result or an existing row).
   // editIndex === null means we're adding a new ingredient.
   const [editingFood, setEditingFood] = useState<FoodItem | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [editWeight, setEditWeight] = useState("100");
   const [editUnit, setEditUnit] = useState<Unit>("g");
@@ -134,30 +148,43 @@ export default function CreateRecipePage() {
 
   // Editing: pull the existing recipe in once and seed the form.
   useEffect(() => {
-    if (!editId) return;
+    if (!editId) { setLoadState("ready"); return; }
     let active = true;
+    setLoadState("loading");
     (async () => {
-      const { data } = await supabase
+      const writer = await accountRef.current?.authorize();
+      if (!writer?.isActive()) {
+        if (active && accountRef.current?.isActive()) setLoadState("error");
+        return;
+      }
+      const { data, error } = await writer.client
         .from("recipes")
-        .select("name, ingredients")
+        .select("name, ingredients, servings, instructions")
         .eq("id", editId)
+        .eq("user_id", writer.userId)
         .single();
-      if (active && data) {
+      if (!active || !writer.isActive()) return;
+      if (error || !data) { setLoadState("error"); return; }
+      if (data) {
         setName(data.name ?? "");
+        setServings(String(data.servings ?? 1));
+        setSteps(Array.isArray(data.instructions) ? data.instructions.join("\n") : "");
         setIngredients(
           Array.isArray(data.ingredients) ? data.ingredients : []
         );
+        setLoadState("ready");
       }
     })();
     return () => {
       active = false;
     };
-  }, [editId]);
+  }, [editId, reloadVersion]);
 
   // Open the editor for a freshly picked search result.
   const pickResult = (item: FoodItem) => {
     const u = (item.default_unit as Unit) || "g";
     setEditingFood(item);
+    setEditorOpen(true);
     setEditIndex(null);
     setEditUnit(u);
     setEditWeight(
@@ -216,6 +243,7 @@ export default function CreateRecipePage() {
   // Open the editor for an ingredient already in the recipe.
   const editIngredient = (index: number) => {
     const ing = ingredients[index];
+    setEditorOpen(true);
     setEditingFood({
       code: "ing-" + index,
       product_name: ing.name,
@@ -240,11 +268,13 @@ export default function CreateRecipePage() {
   };
 
   const commitEditor = () => {
-    if (!editingFood) return;
+    if (!editorOpen || !editingFood) return;
+    const error = validateLoggedPortion(editWeight, editUnit, editorMacros);
+    if (error) return notify("Check the ingredient", error);
     const ing: RecipeIngredient = {
       name: editingFood.product_name,
       brands: editingFood.brands,
-      weight: parseFloat(editWeight) || 0,
+      weight: Number(editWeight),
       unit: editUnit,
       default_unit: editingFood.default_unit,
       serving_weight: editingFood.serving_weight,
@@ -262,8 +292,9 @@ export default function CreateRecipePage() {
   };
 
   const closeEditor = () => {
-    setEditingFood(null);
-    setEditIndex(null);
+    // Keep the reviewed values during the close animation; clearing them here
+    // briefly showed zero nutrition and the wrong action while fading out.
+    setEditorOpen(false);
   };
 
   const removeIngredient = (index: number) => {
@@ -271,40 +302,35 @@ export default function CreateRecipePage() {
   };
 
   const handleSave = async () => {
-    if (submitting) return;
-    if (!name.trim()) {
-      return notify("Missing name", "Give your recipe a name.");
-    }
-    if (ingredients.length === 0) {
-      return notify("No ingredients", "Add at least one ingredient.");
-    }
+    if (saveInFlight.current || loadState !== "ready") return;
+    const validationError = validateRecipe(name, ingredients);
+    if (validationError) return notify("Check the recipe", validationError);
+    const details=parseRecipeDetails(servings,steps);
+    if(!details.ok)return notify("Check the recipe",details.message);
+    saveInFlight.current = true;
     setSubmitting(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setSubmitting(false);
-      return;
-    }
-    const { error } = editId
-      ? await supabase
-          .from("recipes")
-          .update({ name: name.trim(), ingredients })
-          .eq("id", editId)
-      : await supabase
-          .from("recipes")
-          .insert([{ user_id: user.id, name: name.trim(), ingredients }]);
-    setSubmitting(false);
-    if (error) {
-      notify("Could not save recipe", error.message, "error");
-    } else {
-      notify(
-        "Saved!",
-        editId ? "Recipe updated." : "Recipe saved.",
-        "success",
-        () => router.back(),
-        1100
-      );
+    const guard = accountRef.current;
+    try {
+      const writer = await guard?.authorize();
+      if (!writer?.isActive()) {
+        if (guard?.isActive()) notify("Sign in required", "Sign in again before saving this recipe.");
+        return;
+      }
+      const result = editId
+        ? await writer.client.from("recipes").update({ name: name.trim(), ingredients, servings:details.servings, instructions:details.instructions }).eq("id", editId).eq("user_id", writer.userId).select("id").maybeSingle()
+        : await writer.client.from("recipes").insert([{ user_id: writer.userId, name: name.trim(), ingredients, servings:details.servings, instructions:details.instructions }]);
+      if (!writer.isActive()) return;
+      if (result.error || (editId && !result.data)) {
+        notify("Could not save recipe", "The save couldn't be confirmed. Your recipe is still here. Check your connection and try again.", "error");
+      } else {
+        emitFoodLibraryChanged("recipe");
+        notify("Saved!", editId ? "Recipe updated." : "Recipe saved.", "success", () => router.back(), 1100);
+      }
+    } catch {
+      if (guard?.isActive()) notify("Could not save recipe", "The save couldn't be confirmed. Your recipe is still here.", "error");
+    } finally {
+      saveInFlight.current = false;
+      if (guard?.isActive()) setSubmitting(false);
     }
   };
 
@@ -334,14 +360,23 @@ export default function CreateRecipePage() {
       >
         {/* ── HEADER ── */}
         <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()} style={s.iconBtn}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close recipe builder" disabled={submitting} onPress={() => router.back()} style={s.iconBtn}>
             <CaretLeft size={24} color={Colors.accent} weight="bold" />
           </TouchableOpacity>
           <Text style={s.headerTitle}>{editId ? "Edit Recipe" : "New Recipe"}</Text>
           <View style={{ width: 42 }} />
         </View>
 
-        <FlatList
+        {loadState !== "ready" ? (
+          <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+            {loadState === "loading" ? <ActivityIndicator accessibilityLabel="Loading recipe" color={Colors.accent} /> : <>
+              <Text accessibilityRole="alert" style={s.emptyHint}>This recipe couldn’t load. It may have been removed, or your connection needs a retry.</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry loading recipe" style={s.addIngredientBtn} onPress={() => setReloadVersion(value => value + 1)}>
+                <Text style={s.addIngredientText}>Try again</Text>
+              </TouchableOpacity>
+            </>}
+          </View>
+        ) : <FlatList
           data={ingredients}
           keyboardShouldPersistTaps="handled"
           keyExtractor={(_, i) => "ing-" + i}
@@ -352,10 +387,18 @@ export default function CreateRecipePage() {
               <TextInput
                 style={s.input}
                 placeholder="e.g. Chicken Adobo"
-                placeholderTextColor="#666"
+                placeholderTextColor={Colors.textMuted}
+                accessibilityLabel="Recipe name"
+                maxLength={160}
+                editable={!submitting}
                 value={name}
                 onChangeText={setName}
               />
+
+              <Text style={s.label}>Servings</Text>
+              <TextInput accessibilityLabel="Recipe servings" value={servings} onChangeText={setServings} keyboardType="number-pad" maxLength={2} editable={!submitting} style={s.input}/>
+              <Text style={s.label}>Cooking steps (optional)</Text>
+              <TextInput accessibilityLabel="Recipe cooking steps" accessibilityHint="One step per line, up to eight steps" value={steps} onChangeText={setSteps} multiline maxLength={2408} editable={!submitting} placeholder="One step per line" placeholderTextColor={Colors.textMuted} style={[s.input,{minHeight:110,textAlignVertical:"top"}]}/>
 
               {/* Running total */}
               <View style={s.totalCard}>
@@ -364,9 +407,9 @@ export default function CreateRecipePage() {
                   <Text style={s.totalLabel}>TOTAL CALORIES</Text>
                 </View>
                 <View style={s.totalMacros}>
-                  <Text style={s.totalMacroText}>P {total.p}g</Text>
-                  <Text style={s.totalMacroText}>C {total.cb}g</Text>
-                  <Text style={s.totalMacroText}>F {total.f}g</Text>
+                  <Text style={s.totalMacroText}>Protein {total.p} g</Text>
+                  <Text style={s.totalMacroText}>Carbs {total.cb} g</Text>
+                  <Text style={s.totalMacroText}>Fat {total.f} g</Text>
                 </View>
               </View>
 
@@ -382,6 +425,9 @@ export default function CreateRecipePage() {
             return (
               <View style={s.ingRow}>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ingredient ${item.name}`}
+                  disabled={submitting}
                   style={s.ingCard}
                   onPress={() => editIngredient(index)}
                 >
@@ -391,16 +437,22 @@ export default function CreateRecipePage() {
                     </Text>
                     <Text style={s.ingSub}>
                       {item.weight}
-                      {item.unit} · {m.c} kcal · P{m.p} C{m.cb} F{m.f}
+                      {item.unit} · {m.c} kcal
+                    </Text>
+                    <Text style={s.ingSub}>
+                      Protein {m.p} g · Carbs {m.cb} g · Fat {m.f} g
                     </Text>
                   </View>
                   <Pencil size={18} color={Colors.textSecondary} />
                 </TouchableOpacity>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ingredient ${item.name}`}
+                  disabled={submitting}
                   style={s.ingDeleteBtn}
                   onPress={() => removeIngredient(index)}
                 >
-                  <Trash size={18} color="#FF4444" weight="bold" />
+                  <Trash size={18} color={Colors.error} weight="bold" />
                 </TouchableOpacity>
               </View>
             );
@@ -413,6 +465,8 @@ export default function CreateRecipePage() {
           }
           ListFooterComponent={
             <TouchableOpacity
+              accessibilityRole="button"
+              disabled={submitting}
               style={s.addIngredientBtn}
               onPress={() => {
                 setQuery("");
@@ -424,13 +478,16 @@ export default function CreateRecipePage() {
               <Text style={s.addIngredientText}>Add ingredient</Text>
             </TouchableOpacity>
           }
-        />
+        />}
 
         {/* Save */}
         <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Save recipe"
+          accessibilityState={{ disabled: submitting || loadState !== "ready", busy: submitting }}
           style={[s.saveBtn, submitting && { opacity: 0.5 }]}
           onPress={handleSave}
-          disabled={submitting}
+          disabled={submitting || loadState !== "ready"}
         >
           {submitting ? (
             <ActivityIndicator color="black" />
@@ -444,7 +501,7 @@ export default function CreateRecipePage() {
       </View>
 
       {/* ── SEARCH MODAL ── */}
-      <Modal visible={searchOpen} animationType="slide">
+      <Modal visible={searchOpen} animationType="slide" onRequestClose={() => setSearchOpen(false)}>
         <SafeAreaView
           style={{ flex: 1, backgroundColor: Colors.primary }}
           edges={["top"]}
@@ -460,6 +517,8 @@ export default function CreateRecipePage() {
             <View style={s.header}>
               <Text style={s.headerTitle}>Add Ingredient</Text>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Close ingredient search"
                 onPress={() => setSearchOpen(false)}
                 style={s.iconBtn}
               >
@@ -477,15 +536,19 @@ export default function CreateRecipePage() {
                 style={s.searchInput}
                 placeholder="Search food..."
                 placeholderTextColor={Colors.textSecondary}
-                value={query}
+                accessibilityLabel="Search recipe ingredients"
+                    maxLength={160}
+                    value={query}
                 onChangeText={setQuery}
                 onSubmitEditing={handleSearch}
                 autoFocus
               />
               {query.length > 0 && (
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear ingredient search"
                   onPress={() => setQuery("")}
-                  style={{ marginRight: 15 }}
+                  style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
                 >
                   <X size={18} color={Colors.textSecondary} weight="bold" />
                 </TouchableOpacity>
@@ -493,6 +556,7 @@ export default function CreateRecipePage() {
             </View>
 
             <TouchableOpacity
+              accessibilityRole="button"
               style={s.scanBtn}
               onPress={() => {
                 // Close the search modal first so the scanner is the only
@@ -519,6 +583,8 @@ export default function CreateRecipePage() {
                 keyExtractor={(item) => item.code}
                 renderItem={({ item }) => (
                   <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Review ingredient ${item.product_name}`}
                     style={s.resultCard}
                     onPress={() => pickResult(item)}
                   >
@@ -623,7 +689,7 @@ export default function CreateRecipePage() {
       />
 
       {/* ── INGREDIENT EDITOR MODAL ── */}
-      <Modal visible={!!editingFood} transparent animationType="fade">
+      <Modal visible={editorOpen} transparent animationType="fade" onRequestClose={closeEditor}>
         <View style={s.editorOverlay}>
           <View style={s.editorContent}>
             <View style={s.modalDragBar} />
@@ -634,13 +700,15 @@ export default function CreateRecipePage() {
                   {editingFood?.brands}
                 </Text>
               </View>
-              <TouchableOpacity onPress={closeEditor} style={s.iconBtn}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close ingredient review" onPress={closeEditor} style={s.iconBtn}>
                 <X size={24} color="white" />
               </TouchableOpacity>
             </View>
 
             <View style={s.weightSection}>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Decrease ingredient portion"
                 onPress={() => adjustWeight(-10)}
                 style={s.adjustBtn}
               >
@@ -651,8 +719,10 @@ export default function CreateRecipePage() {
                 <TextInput
                   style={s.weightInput}
                   keyboardType="numeric"
+                  accessibilityLabel="Ingredient portion"
+                  maxLength={16}
                   value={editWeight}
-                  onChangeText={(t) => setEditWeight(t.replace(/[^0-9.]/g, ""))}
+                  onChangeText={(t) => setEditWeight(t)}
                   selectTextOnFocus
                 />
                 <ScrollView
@@ -663,9 +733,14 @@ export default function CreateRecipePage() {
                 >
                   {unitsToDisplay.map((u) => (
                     <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ingredient unit ${u}`}
+                      accessibilityState={{ selected: editUnit === u }}
                       key={u}
                       onPress={() => setEditUnit(u)}
                       style={{
+                        minHeight: 44,
+                        justifyContent: "center",
                         paddingHorizontal: 16,
                         paddingVertical: 10,
                         borderBottomWidth: 2,
@@ -693,6 +768,8 @@ export default function CreateRecipePage() {
               </View>
 
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Increase ingredient portion"
                 onPress={() => adjustWeight(10)}
                 style={s.adjustBtn}
               >
@@ -703,25 +780,25 @@ export default function CreateRecipePage() {
             <View style={s.bentoContainer}>
               <View style={s.bentoMain}>
                 <Text style={s.bentoValue}>{editorMacros.c}</Text>
-                <Text style={s.bentoLabel}>CALORIES</Text>
+                <Text style={s.bentoLabel}>Calories</Text>
               </View>
               <View style={s.bentoGrid}>
                 <View style={s.bentoSmall}>
                   <Text style={s.bentoValueSmall}>{editorMacros.p}g</Text>
-                  <Text style={s.bentoLabelSmall}>PROT</Text>
+                  <Text style={s.bentoLabelSmall}>Protein</Text>
                 </View>
                 <View style={s.bentoSmall}>
                   <Text style={s.bentoValueSmall}>{editorMacros.cb}g</Text>
-                  <Text style={s.bentoLabelSmall}>CARBS</Text>
+                  <Text style={s.bentoLabelSmall}>Carbs</Text>
                 </View>
                 <View style={s.bentoSmall}>
                   <Text style={s.bentoValueSmall}>{editorMacros.f}g</Text>
-                  <Text style={s.bentoLabelSmall}>FAT</Text>
+                  <Text style={s.bentoLabelSmall}>Fat</Text>
                 </View>
               </View>
             </View>
 
-            <TouchableOpacity style={s.confirmBtn} onPress={commitEditor}>
+            <TouchableOpacity accessibilityRole="button" style={s.confirmBtn} onPress={commitEditor}>
               <Text style={s.confirmText}>
                 {editIndex === null ? "Add to recipe" : "Update ingredient"}
               </Text>
@@ -750,6 +827,10 @@ const s = StyleSheet.create({
     marginBottom: 18,
   },
   iconBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
     padding: 9,
     backgroundColor: Colors.secondary,
     borderRadius: 12,
@@ -763,7 +844,7 @@ const s = StyleSheet.create({
     letterSpacing: -0.3,
   },
   label: {
-    color: "#888",
+    color: Colors.textSecondary,
     marginBottom: 8,
     fontSize: 12,
     textTransform: "uppercase",
@@ -835,7 +916,7 @@ const s = StyleSheet.create({
   },
   ingSub: {
     color: Colors.textSecondary,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
   ingDeleteBtn: {
@@ -877,7 +958,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 18,
-    borderRadius: 24,
+    borderRadius: 14,
     marginTop: 4,
     gap: 8,
   },
@@ -1076,19 +1157,15 @@ const s = StyleSheet.create({
   },
   bentoLabel: {
     color: Colors.textMuted,
-    fontSize: 9,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    fontSize: 12,
+    fontWeight: "500",
     marginTop: 4,
   },
   bentoValueSmall: { color: Colors.text, fontSize: 15, fontWeight: "700" },
   bentoLabelSmall: {
     color: Colors.textMuted,
-    fontSize: 9,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: "500",
   },
   confirmBtn: {
     backgroundColor: Colors.accent,

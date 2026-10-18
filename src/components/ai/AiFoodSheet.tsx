@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -10,7 +11,9 @@ import {
   View,
 } from "react-native";
 import { Colors } from "@/src/styles/colors";
-import type { AiFood } from "@/src/lib/aiFood";
+import { buildAiFoodReview, isLoggableAiFood, type AiFood } from "@/src/lib/aiFood";
+import { getBeeSourceUrl } from "@/src/lib/beeChat";
+import { BeeAction } from "./BeeMemories";
 import { AiEstimateBadge } from "./AiEstimateBadge";
 import { BeeGuide } from "./BeeGuide";
 
@@ -33,50 +36,48 @@ const CONFIDENCE_COLOR: Record<AiFood["confidence"], string> = {
 };
 
 /**
- * Review-before-commit sheet for an AI-proposed food. Every field is editable;
- * the "AI estimate" badge is always shown. The user chooses to log it, save it
+ * Review-before-commit sheet for an independently matched food. The user chooses to log it, save it
  * to My Foods, or both — nothing is persisted until they confirm.
  */
 export function AiFoodSheet({
   visible, food, alternatives = [], onSelectAlternative, onFindMore, onClose, onSave,
 }: Props) {
   const [name, setName] = useState("");
-  const [serving, setServing] = useState("");
   const [kcal, setKcal] = useState("");
   const [protein, setProtein] = useState("");
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
   const [saving, setSaving] = useState(false);
   const [findingMore, setFindingMore] = useState(false);
+  const [sourceError, setSourceError] = useState(false);
 
   // Re-seed the editable fields whenever a new proposal arrives.
   useEffect(() => {
     if (!food) return;
     setName(food.name);
-    setServing(food.serving_label);
     setKcal(String(food.kcal));
     setProtein(String(food.protein));
     setCarbs(String(food.carbs));
     setFat(String(food.fat));
+    setSourceError(false);
   }, [food]);
 
-  if (!food) return null;
-
-  const edited = (): AiFood => ({
-    ...food,
+  if (!food || !isLoggableAiFood(food)) return null;
+  const validNumbers = [kcal, protein, carbs, fat].every((value) => value.trim() && Number.isFinite(Number(value)) && Number(value) >= 0);
+  const reviewed = buildAiFoodReview(food, {
     name: name.trim() || food.name,
-    serving_label: serving.trim() || food.serving_label,
     kcal: Number(kcal) || 0,
     protein: Number(protein) || 0,
     carbs: Number(carbs) || 0,
     fat: Number(fat) || 0,
   });
+  const sourceUrl = getBeeSourceUrl(reviewed.evidence?.url ?? "");
 
   const handle = async (opts: AiFoodSaveOpts) => {
-    if (saving) return;
+    if (saving || findingMore || !validNumbers) return;
     setSaving(true);
     try {
-      await onSave(edited(), opts);
+      await onSave(reviewed, opts);
     } finally {
       setSaving(false);
     }
@@ -92,33 +93,40 @@ export function AiFoodSheet({
               interactive={!findingMore && !saving}
               situation={findingMore ? "searching" : "reviewingMatch"}
               title="Review before saving"
-              message="I found a draft for this serving. Check the numbers, then choose where it goes."
+              message={reviewed.user_entered ? "These are values you entered for the reviewed serving. Check them before saving." : "I found a draft for this serving. Check the numbers, then choose where it goes."}
               style={styles.beeHeader}
               footer={
                 <>
                   <View style={styles.provenanceRow}>
-                    <AiEstimateBadge source={food.source} compact />
-                    <Text style={[styles.confidence, { color: CONFIDENCE_COLOR[food.confidence] }]}>
-                      {food.confidence} confidence
+                    {reviewed.user_entered ? <Text style={styles.sourceDetail}>User-entered values</Text> : <AiEstimateBadge source={reviewed.source} compact />}
+                    <Text style={[styles.confidence, { color: CONFIDENCE_COLOR[reviewed.confidence] }]}>
+                      {reviewed.confidence} confidence
                     </Text>
                   </View>
-                  {food.source_detail ? (
+                  {reviewed.source_detail ? (
                     <Text style={styles.sourceDetail}>
-                      {food.source === "web" ? "from " : "matched: "}
-                      {food.source_detail}
+                      matched: {reviewed.source_detail}
                     </Text>
+                  ) : null}
+                  {reviewed.evidence ? (
+                    <>
+                      {sourceUrl ? <BeeAction label={reviewed.evidence.title || "View nutrition source"} role="link" onPress={() => void Linking.openURL(sourceUrl).then(() => setSourceError(false)).catch(() => setSourceError(true))} /> : <Text style={styles.sourceDetail}>{reviewed.evidence.title}</Text>}
+                      {reviewed.evidence.attribution ? <Text style={styles.sourceDetail}>{reviewed.evidence.attribution}{reviewed.evidence.license ? ` · ${reviewed.evidence.license}` : ""}</Text> : null}
+                      {reviewed.evidence.basis.grams !== null ? <Text style={styles.sourceDetail}>{reviewed.serving_grams} g ÷ {reviewed.evidence.basis.grams} g × {reviewed.evidence.basis.nutrients.calories} kcal = {reviewed.kcal} kcal</Text> : null}
+                      {sourceError ? <Text accessibilityLiveRegion="polite" style={styles.sourceDetail}>Couldn’t open the nutrition source. Try again.</Text> : null}
+                    </>
                   ) : null}
                 </>
               }
             />
 
             <Text style={styles.label}>Name</Text>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Food name"
+            <TextInput accessibilityLabel="Reviewed food name" style={styles.input} value={name} onChangeText={setName} placeholder="Food name"
               placeholderTextColor={Colors.textMuted} />
 
             <Text style={styles.label}>Serving</Text>
-            <TextInput style={styles.input} value={serving} onChangeText={setServing}
-              placeholder="1 serving" placeholderTextColor={Colors.textMuted} />
+            <Text selectable accessibilityLabel="Reviewed serving" style={styles.input}>{food.serving_label}</Text>
+            <Text style={styles.sourceDetail}>To change the amount, close this review and ask Bee with the new portion.</Text>
 
             <View style={styles.macroRow}>
               <Field label="Calories" color={Colors.accent} value={kcal} onChange={setKcal} />
@@ -129,7 +137,7 @@ export function AiFoodSheet({
               <Field label="Fat" color={Colors.fat} value={fat} onChange={setFat} />
             </View>
 
-            {food.notes ? <Text style={styles.notes}>{food.notes}</Text> : null}
+            {reviewed.notes ? <Text style={styles.notes}>{reviewed.notes}</Text> : null}
 
             {alternatives.length > 0 && onSelectAlternative ? (
               <View style={styles.altSection}>
@@ -170,23 +178,25 @@ export function AiFoodSheet({
                   <ActivityIndicator color={Colors.accent} />
                 ) : (
                   <Text style={styles.btnFindMoreText}>
-                    🔎 Not right? Find more on the web (1 AI use)
+                    Search the web for more detail
                   </Text>
                 )}
               </Pressable>
             ) : null}
 
+            {!validNumbers ? <Text accessibilityLiveRegion="polite" style={styles.notes}>Enter a finite number of zero or more in every nutrition field.</Text> : null}
+
             <View style={styles.actions}>
               <Pressable
                 style={[styles.btn, styles.btnSecondary]}
-                disabled={saving || findingMore}
+                disabled={saving || findingMore || !validNumbers}
                 onPress={() => handle({ toMyFoods: true, log: false })}
               >
                 <Text style={styles.btnSecondaryText}>Save to My Foods</Text>
               </Pressable>
               <Pressable
                 style={[styles.btn, styles.btnPrimary]}
-                disabled={saving || findingMore}
+                disabled={saving || findingMore || !validNumbers}
                 onPress={() => handle({ toMyFoods: false, log: true })}
               >
                 {saving ? (
@@ -199,7 +209,7 @@ export function AiFoodSheet({
 
             <Pressable
               style={[styles.btn, styles.btnCombined]}
-              disabled={saving}
+              disabled={saving || findingMore || !validNumbers}
               onPress={() => handle({ toMyFoods: true, log: true })}
             >
               <Text style={styles.btnCombinedText}>Save + Log</Text>
@@ -222,6 +232,7 @@ function Field({
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, { color }]}>{label}</Text>
       <TextInput
+        accessibilityLabel={`Reviewed ${label.toLowerCase()}`}
         style={styles.input}
         value={value}
         onChangeText={onChange}

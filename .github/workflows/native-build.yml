@@ -1,0 +1,122 @@
+name: Build native app
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Internal preview or store-ready binary (does not submit)
+        type: choice
+        required: true
+        default: preview
+        options: [preview, production]
+      platform:
+        description: Native platform
+        type: choice
+        required: true
+        default: android
+        options: [android, ios, all]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: trackbing-native-${{ inputs.profile }}
+  cancel-in-progress: false
+
+env:
+  CI: 'true'
+  EXPO_NO_TELEMETRY: '1'
+  RELEASE_ENVIRONMENT: ${{ inputs.profile == 'production' && 'production' || 'staging' }}
+  BUILD_PROFILE: ${{ inputs.profile }}
+  BUILD_PLATFORM: ${{ inputs.platform }}
+  STAGING_SUPABASE_PROJECT_REF: ${{ vars.STAGING_SUPABASE_PROJECT_REF }}
+  PRODUCTION_SUPABASE_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+  STAGING_VERCEL_PROJECT_ID: ${{ vars.STAGING_VERCEL_PROJECT_ID }}
+  PRODUCTION_VERCEL_PROJECT_ID: ${{ vars.PRODUCTION_VERCEL_PROJECT_ID }}
+
+jobs:
+  context:
+    name: Validate build identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Validate main, native identity and staging evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/release.mjs native
+          node scripts/ci/release.mjs context
+
+  verify:
+    name: Verify build commit
+    needs: context
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Wait for signed native build
+    needs: [context, verify]
+    environment:
+      name: ${{ inputs.profile == 'production' && 'production' || 'staging' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RELEASE_ENABLED: ${{ vars.RELEASE_ENABLED }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SITE_ORIGIN: ${{ vars.EXPO_PUBLIC_SITE_ORIGIN }}
+      EXPO_PUBLIC_LEGAL_OPERATOR: ${{ vars.EXPO_PUBLIC_LEGAL_OPERATOR }}
+      EXPO_PUBLIC_PRIVACY_EMAIL: ${{ vars.EXPO_PUBLIC_PRIVACY_EMAIL }}
+      EXPO_PUBLIC_LEGAL_REVIEWED: ${{ vars.EXPO_PUBLIC_LEGAL_REVIEWED }}
+      EAS_ENVIRONMENT: ${{ inputs.profile == 'production' && 'production' || 'preview' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Verify environment mapping
+        run: node scripts/ci/release.mjs config
+      - name: Verify live backend and client key before a paid build
+        env:
+          SMOKE_ORIGIN: ${{ vars.EXPO_PUBLIC_SITE_ORIGIN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/ci/smoke.mjs
+      - name: Set up authenticated EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9.0.0
+        with:
+          eas-version: '24.10.0'
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Verify remote EAS public environment before a paid build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          mkdir -p output/native-build
+          eas env:pull --environment "$EAS_ENVIRONMENT" --path output/native-build/eas.env --non-interactive
+          node scripts/ci/release.mjs native-env
+      - name: Build and wait for completion
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build --platform "$BUILD_PLATFORM" --profile "$BUILD_PROFILE" --non-interactive --wait --json > output/native-build/raw-result.json
+          node scripts/ci/release.mjs native-result
+      - name: Upload build result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-build-${{ inputs.profile }}-${{ inputs.platform }}
+          path: output/native-build/result.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Remove pulled environment
+        if: always()
+        run: rm -f output/native-build/eas.env output/native-build/raw-result.json

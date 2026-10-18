@@ -3,7 +3,7 @@ import {
   Info,
   WarningCircle,
   XCircle,
-} from "phosphor-react-native";
+} from "@/src/components/icons";
 import React, { useEffect, useRef } from "react";
 import {
   Animated,

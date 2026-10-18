@@ -89,7 +89,7 @@ verified reachable on this date. This is the older deployed app, not PR #11.
 
 | Check | Result / boundary |
 | --- | --- |
-| `npm run typecheck`, `npm run lint`, `npm test -- --maxWorkers 2` | Passed 19 October; 936 tests / 62 files, including timezone-retry and retained-blocker diagnostics regressions |
+| `npm run typecheck`, `npm run lint`, `npm test -- --maxWorkers 2` | Passed 19 October on Node 24.21.0; 944 tests / 63 files, including timezone-retry, retained-blocker diagnostics and eight rendered web-ring regressions |
 | `npm run typecheck:functions` | All seven Edge Functions checked with Deno; separate from application TypeScript |
 | `npm run test:db` | Disposable PostgreSQL migration/ownership/locking/replay/quota invariants and 17 Deno handler tests passed |
 | Current-schema rehearsal | All 15 migrations plus label ownership/retry/concurrent confirmation passed; schema-only, PostgreSQL 16 |
@@ -127,6 +127,16 @@ chunks and global feedback CSS remain performance costs. The2s mobile LCP/95+
 budget is not yet met. INP requires real interaction/field measurement; it is
 not inferred from TBT or a navigation score. Reports are retained under
 `output/release/lighthouse-*.json`.
+
+**19 October web optimization:** the platform-specific calorie ring reduces the
+entry from 2,893,558 to 2,054,450 raw bytes (29.0%) and estimated gzip from
+709,696 to 549,735 bytes (22.5%). Native retains the original renderer. All seven
+browser suites pass, including confirmed-food dashboard refresh at three widths.
+Fresh serial Lighthouse medians were 39→41 performance and 20.07→15.63s LCP,
+but every run warned of a slower-than-expected CPU on this memory-constrained
+workstation. These are separate constrained diagnostics, not comparable to the
+earlier 79-point run or proof of production speed. The budget remains unmet;
+[details and recovery](2026-10-19-web-performance.md).
 
 ## Exact remaining setup and rollout
 
@@ -222,7 +232,7 @@ any missing real deployment, legal or native proof; it does not mean launched.
 | 9 Sitemap/robots | Partial | Exact public-only/draft policy checked; live files404 | Finalize legal approval, deploy generated files, verify direct URLs. |
 | 10 Accessibility | Partial | Semantic controls, public keyboard and three-width browser tests | Full native VoiceOver/TalkBack and interactive device walkthrough. |
 | 11 Images | Implemented | Existing lossless optimization retained; real artwork bundled in fresh exports | Inspect final native store artwork separately. |
-| 12 Speed | Partial | Live Lighthouse measured; fresh export/load evidence below | Meet remaining budget; remeasure deployed candidate and native startup; obtain field INP. |
+| 12 Speed | Partial | Entry JS reduced 29.0%; accessible web ring and confirmed-food refresh verified; constrained serial Lighthouse / earlier live measurements documented | Meet remaining budget; remeasure deployed candidate on an isolated runner and native startup; obtain field INP. |
 | 13 Contrast | Implemented | Existing37 contrast assertions pass in full suite | Verify native rendering and focus during device walkthrough. |
 | 14 Mobile friendly | Partial | Seven browser suites at 375/768/1440; both native exports | Test a signed native binary on a physical device, camera/keyboard/account continuity. |
 | 15 Custom404 | Partial | Branch branded404/export and smoke reject status200; live unknown URL200 | Deploy clean URLs/custom404; verify actual known and unknown status. |

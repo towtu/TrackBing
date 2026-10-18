@@ -25,7 +25,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import CircularProgress from "react-native-circular-progress-indicator";
+import { CalorieProgress } from "@/src/components/nutrition/CalorieProgress";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
@@ -507,17 +507,10 @@ export function DashboardScreen() {
 
                     <View style={styles.heroRight}>
                       <View style={styles.progressRingWrapper}>
-                        <CircularProgress
-                          value={totals.calories}
-                          radius={65}
-                          maxValue={calorieGoal}
-                          showProgressValue={false}
-                          activeStrokeColor={isOver ? Colors.error : Colors.accent}
-                          activeStrokeWidth={9}
-                          inActiveStrokeColor={Colors.border}
-                          inActiveStrokeWidth={9}
-                          inActiveStrokeOpacity={1}
-                          title={""}
+                        <CalorieProgress
+                          calories={totals.calories}
+                          goal={calorieGoal}
+                          over={isOver}
                         />
                         <View style={styles.ringInner}>
                           <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>
@@ -663,17 +656,10 @@ export function DashboardScreen() {
 
                     <View style={styles.heroRight}>
                       <View style={styles.progressRingWrapper}>
-                        <CircularProgress
-                          value={totals.calories}
-                          radius={65}
-                          maxValue={calorieGoal}
-                          showProgressValue={false}
-                          activeStrokeColor={isOver ? Colors.error : Colors.accent}
-                          activeStrokeWidth={9}
-                          inActiveStrokeColor={Colors.border}
-                          inActiveStrokeWidth={9}
-                          inActiveStrokeOpacity={1}
-                          title={""}
+                        <CalorieProgress
+                          calories={totals.calories}
+                          goal={calorieGoal}
+                          over={isOver}
                         />
                         <View style={styles.ringInner}>
                           <Text style={[styles.ringValue, { color: isOver ? Colors.error : Colors.text }]}>

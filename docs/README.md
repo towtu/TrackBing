@@ -11,6 +11,7 @@
 | Run CI, prepare releases, or recover a failed release | [CI and releases](CI_CD.md) |
 | Understand remaining dependency findings | [Dependency review](dependency-remediation.md) |
 | Recover the historically exposed USDA key | [Credential review](launch/2026-10-19-secret-history-review.md) |
+| Inspect web bundle savings and measurement limits | [Web performance](launch/2026-10-19-web-performance.md) |
 
 ## Feature guides
 

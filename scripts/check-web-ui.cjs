@@ -72,6 +72,13 @@ async function verifyBeeCorrections(page,width,fixture,output) {
   await page.waitForTimeout(800);
   if(route==='/scan')await verifyScannerPreview(page);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,route+' overflow '+width);
+  if(route==='/'){
+   await page.getByText('Calculated from your profile · View',{exact:true}).first().waitFor();
+   const progress=page.getByRole('progressbar',{name:'Calories logged',exact:true});
+   assert.equal(await progress.count(),1,'calorie ring exposes actual progress to assistive technology');
+   assert.equal(await progress.getAttribute('aria-valuenow'),'0');
+   assert.equal(await progress.getAttribute('aria-valuemax'),'2000');
+  }
   if(route==='/add'){
    assert.equal(await page.getByRole('button',{name:'Create a food',exact:true}).count(),1,'icon-only Create Food control needs an accessible name');
    if(width===375){for(const label of ['Go back','Open my foods','Scan a barcode'])assert.equal(await page.getByRole('button',{name:label,exact:true}).count(),1,`${label} needs an accessible name`);}
@@ -82,7 +89,16 @@ async function verifyBeeCorrections(page,width,fixture,output) {
  await page.goto((process.env.UI_BASE_URL || 'http://127.0.0.1:8091')+'/');await page.waitForTimeout(700);await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();await page.waitForTimeout(200);
  const input=page.getByRole('textbox',{name:/Message to Bee/i});await input.fill('My weight today is 72.4 kg');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Save 72.4 kg for 2026-09-27?',{exact:true}).waitFor();await page.screenshot({path:`${output}/weight-review-${width}.png`});await page.getByRole('button',{name:'Confirm',exact:true}).click();await page.getByText('Weight check-in saved.',{exact:true}).first().waitFor();assert.equal(fixture.getSnapshot().pending,null);
  await verifyBeeCorrections(page,width,fixture,output);
- await input.fill('How many calories in 72 grams of boiled egg?');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByRole('button',{name:'Add to today',exact:true}).waitFor();await page.screenshot({path:`${output}/food-review-${width}.png`});await page.getByRole('button',{name:/^Cancel /}).click();await input.fill('Fudgee Barr Chocolate 38 g nutrition');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Live answer',{exact:true}).waitFor();assert.equal(fixture.getSnapshot().pending,null);assert.equal(await page.getByTestId('bee-current-companion').count(),1);assert.equal(await page.locator('[aria-label="Google Search suggestions"]').count(),1);await page.screenshot({path:`${output}/search-answer-${width}.png`});await page.getByRole('button',{name:'Saved preferences',exact:true}).click();await page.getByRole('heading',{name:'Saved preferences',exact:true}).waitFor();await page.screenshot({path:`${output}/memories-${width}.png`});
+ await input.fill('How many calories in 72 grams of boiled egg?');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByRole('button',{name:'Add to today',exact:true}).waitFor();await page.screenshot({path:`${output}/food-review-${width}.png`});await page.getByRole('button',{name:/^Cancel /}).click();
+ // TEST DATA: only a confirmed fixture entry should change the dashboard's progress.
+ await input.fill('How many calories in 72 grams of boiled egg?');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByRole('button',{name:'Add to today',exact:true}).waitFor();
+ assert.equal(await page.getByRole('progressbar',{name:'Calories logged',exact:true}).getAttribute('aria-valuenow'),'0');
+ await page.getByRole('button',{name:'Add to today',exact:true}).click();await page.getByText("Added that reviewed serving to today's food log.",{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Close Bee quick log',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('[role="progressbar"][aria-label="Calories logged"]')?.getAttribute('aria-valuenow')==='111.6');
+ await page.screenshot({path:`${output}/dashboard-confirmed-food-${width}.png`,fullPage:true});
+ await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();
+ await input.fill('Fudgee Barr Chocolate 38 g nutrition');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Live answer',{exact:true}).waitFor();assert.equal(fixture.getSnapshot().pending,null);assert.equal(await page.getByTestId('bee-current-companion').count(),1);assert.equal(await page.locator('[aria-label="Google Search suggestions"]').count(),1);await page.screenshot({path:`${output}/search-answer-${width}.png`});await page.getByRole('button',{name:'Saved preferences',exact:true}).click();await page.getByRole('heading',{name:'Saved preferences',exact:true}).waitFor();await page.screenshot({path:`${output}/memories-${width}.png`});
  assert.deepEqual(errors.filter(e=>!e.includes('404')),[]);assert.deepEqual(failedRequests,[]);
- evidence.push({failedRequests,width,publicRoutes:4,accountRoutes:6,cameraPreviewStarted:true,singleActiveCompanion:true,readableMacros:true,rawTypoClarification:true,retainedPortion:true,staleAddHidden:true,noCancelsWithoutSearch:true,manualFoodReviewAdjustCancel:true,weightReviewConfirm:true,foodReviewCancel:true,memories:true,errors:errors.filter(e=>!e.includes('404'))});await context.close();}
+ evidence.push({failedRequests,width,publicRoutes:4,accountRoutes:6,cameraPreviewStarted:true,singleActiveCompanion:true,readableMacros:true,rawTypoClarification:true,retainedPortion:true,staleAddHidden:true,noCancelsWithoutSearch:true,manualFoodReviewAdjustCancel:true,weightReviewConfirm:true,foodReviewCancel:true,calorieProgressAfterConfirmation:true,memories:true,errors:errors.filter(e=>!e.includes('404'))});await context.close();}
  await browser.close();fs.writeFileSync(output+'/results.json',JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));})().catch(e=>{console.error(e);process.exit(1)});

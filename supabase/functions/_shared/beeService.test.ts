@@ -49,6 +49,39 @@ describe("Bee endpoint enforcement",()=>{
     expect(await result(await handleBeeRequest(request("yes"),dependencies))).toMatchObject({ok:true,snapshot:{saved_log_id:id}});
     expect(store.finish).not.toHaveBeenCalled(); expect(store.reserve).not.toHaveBeenCalled();
   });
+  it("recovers a completed confirmation after the saved timezone changes",async()=>{
+    const {dependencies,store}=setup();
+    let savedZone="Asia/Manila";
+    let originalFingerprint:string|undefined;
+    const savedResult:BeeResult={ok:true,snapshot:{...snapshot,saved_log_id:id}};
+    dependencies.savedTimeZone=async()=>savedZone;
+    // Match the database's identity check before its completed-result replay.
+    store.begin=vi.fn<BeeStore["begin"]>().mockImplementation(async(_request,fingerprint)=>{
+      if(originalFingerprint!==undefined)return fingerprint===originalFingerprint
+        ? {ok:true,replay:true,result:savedResult}
+        : {ok:false,error:"conflict"};
+      originalFingerprint=fingerprint;
+      return {ok:true,replay:false,thread_id:id,token:id,state:{awaiting:"review"},pending:null};
+    });
+    store.finish=vi.fn<BeeStore["finish"]>().mockResolvedValue(savedResult);
+    const extras={command:{kind:"confirm",actionId:id,reviewVersion:1}};
+    expect(await result(await handleBeeRequest(request("",extras),dependencies))).toEqual(savedResult);
+    savedZone="America/New_York";
+    expect(await result(await handleBeeRequest(request("",extras),dependencies))).toEqual(savedResult);
+    expect(store.finish).toHaveBeenCalledOnce();
+    expect(store.reserve).not.toHaveBeenCalled();
+    expect(dependencies.interpret).not.toHaveBeenCalled();
+    // A genuinely changed command must still conflict with the same request ID.
+    expect((await handleBeeRequest(request("",{command:{kind:"confirm",actionId:id,reviewVersion:2}}),dependencies)).status).toBe(409);
+    expect(store.finish).toHaveBeenCalledOnce();
+  });
+  it("uses the saved timezone for a new turn and its actual diary boundaries",async()=>{
+    const {dependencies,store}=setup();
+    dependencies.savedTimeZone=async()=>"America/New_York";
+    await handleBeeRequest(request("What did I eat today?"),dependencies);
+    expect(store.begin).toHaveBeenCalledWith(expect.objectContaining({timeZone:"America/New_York"}),expect.any(String));
+    expect(store.history).toHaveBeenCalledWith("2026-09-14T04:00:00.000Z","2026-09-15T04:00:00.000Z");
+  });
   it("denied ownership and concurrent turns cannot call paid services",async()=>{
     const {dependencies,store}=setup(); store.begin=vi.fn().mockResolvedValue({ok:false,error:"not_found"});
     expect(await result(await handleBeeRequest(request("72 g boiled egg"),dependencies))).toEqual({ok:false,error:"not_found"});

@@ -183,12 +183,14 @@ export async function handleBeeRequest(
   } catch {
     return json({ ok: false, error: "bad_request" }, 400);
   }
-  try { const savedZone = await deps.savedTimeZone?.(user.id); if(validTimeZone(savedZone))request={...request,timeZone:savedZone}; } catch {return json({ok:false,error:"error"});}
-  const store = deps.store(user.id);
+  // Identity is bound to the validated client command, not mutable profile data.
+  // A later timezone edit must not prevent recovery of an already saved turn.
   const fingerprint = await requestFingerprint({
     endpoint: "bee-chat",
     ...request,
   });
+  try { const savedZone = await deps.savedTimeZone?.(user.id); if(validTimeZone(savedZone))request={...request,timeZone:savedZone}; } catch {return json({ok:false,error:"error"});}
+  const store = deps.store(user.id);
   let lease: TurnLease;
   let entitlement: BeeEntitlement | undefined;
   try {

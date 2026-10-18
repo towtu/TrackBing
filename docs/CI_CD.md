@@ -129,11 +129,13 @@ secret before testing the release.
 
 **Supabase:** Keep the existing server-only configuration in each Supabase
 project. The release workflow deploys code; it does not provision or overwrite
-Gemini, USDA, billing, payment, or store secrets. The safe
+DeepSeek, USDA, billing, payment, or store secrets. The safe
 [server template](../supabase/functions/.env.example) and
-[backend deployment guide](bee-gemini-deployment.md) list the exact names.
-Paid AI needs `GEMINI_API_KEY`, model/settings, and the explicit
-`GEMINI_PAID_DATA_USE_CONFIRMED` gate. USDA needs `USDA_API_KEY`. Enabled billing
+[current backend deployment guide](deepseek-label-photos.md) list the exact names.
+Paid AI needs `DEEPSEEK_API_KEY`, model/settings, and the explicit
+`DEEPSEEK_DATA_USE_CONFIRMED` gate. Search and label-photo reading have separate
+enablement flags; label transcription uses the configured vision model.
+USDA needs `USDA_API_KEY`. Enabled billing
 needs the product mapping, relevant PayMongo/Apple/Google credentials,
 webhook configuration, and `BILLING_RECONCILE_SECRET`. Keep sandbox and live
 settings separate. Configure Auth redirect URLs, recovery email templates,
@@ -248,22 +250,28 @@ writes `output/ci/audit.json`. Every new high finding and every critical
 finding blocks CI. Registry failures, malformed reports, and invalid/expired
 exceptions also fail closed.
 
-The checked-in [exception policy](../.github/security-audit-exceptions.json)
-acknowledges these four underlying high advisories. Their owner is `towtu`;
-all expire at **2026-10-18 00:00 UTC**. Passing this policy is **not a clean
-dependency audit**: the findings remain open until a compatible fix is verified.
+The two remaining entries in the checked-in
+[exception policy](../.github/security-audit-exceptions.json) **expired at
+2026-10-18 00:00 UTC**. They no longer authorize a passing check. Their
+findings remain open; CI and release workflows must stay blocked until
+remediated. No exception was renewed during the October 18 remediation.
 
 | Package | Open advisory |
 | --- | --- |
 | `braces` | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) |
-| `image-size` | [GHSA-5p2g-fcmc-qvqq](https://github.com/advisories/GHSA-5p2g-fcmc-qvqq) |
-| `image-size` | [GHSA-w3rx-r6r6-pgpr](https://github.com/advisories/GHSA-w3rx-r6r6-pgpr) |
 | `node-forge` | [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) |
 
 Exceptions match exact package/advisory pairs. Resolve compatible dependency
 updates, rerun app/backend/browser/native-export checks, and remove resolved
 entries. Inherited vulnerable package counts can exceed four. Expired entries
 fail even if the dependency disappeared; keep the policy current.
+
+The October 18 change removes `image-size` through Metro's upstream 0.83.8
+patch and patches source-map, CSS-selector and Xcode UUID dependencies.
+The resolved image-parser exceptions were removed. See the
+[dependency remediation record](dependency-remediation.md) for exact versions,
+compatibility tests and remaining moderate findings. Historical results below
+describe the October 4 run; they are not the current security status.
 
 ## Reproduce verification locally
 
@@ -294,8 +302,8 @@ npx playwright install --with-deps chromium
 npm run ci:browser -- --all
 ```
 
-`ci:browser` also accepts `web`, `auth`, `account`, `cookbook`, `motion`, or
-`creation`, or multiple suite names. It serves `dist` on an ephemeral localhost
+`ci:browser` also accepts `web`, `auth`, `account`, `cookbook`, `motion`,
+`creation`, `label`, or multiple suite names. It serves `dist` on an ephemeral localhost
 port, uses bundled Chromium by default, and bounds each suite to 180 seconds.
 `CHROME_BIN` can override it with an executable path. Missing exports/browsers,
 invalid suites, test failures, cancellation, and timeouts fail the command.

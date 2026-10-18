@@ -147,7 +147,7 @@ jobs:
         run: |
           {
             printf '### %s release\n\n' "$RELEASE_ENVIRONMENT"
-            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf "Commit: \`%s\`\n\n" "$GITHUB_SHA"
             printf 'Candidate: %s\n\nLive: %s\n\n' "$DEPLOYMENT_URL" "$EXPO_PUBLIC_SITE_ORIGIN"
             printf '%s\n' 'Verification passed; additive migrations and functions deployed before site promotion.'
           } >> "$GITHUB_STEP_SUMMARY"

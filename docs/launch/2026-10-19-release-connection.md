@@ -65,7 +65,8 @@ An exact-value check, performed in memory without printing the value, found no
 match in the three JavaScript files loaded by the existing live homepage
 (8,844,621 bytes; zero download failures). This does **not** audit lazy-loaded
 files, earlier deployments or Git history. Exposure is not established or
-ruled out. Consider rotating the USDA credential as a precaution; any replacement
+ruled out. A later [history audit](2026-10-19-secret-history-review.md) found an
+older hardcoded USDA credential and requires its revocation/replacement. Any replacement
 belongs only in Supabase's server secrets. Removing a build variable does not
 erase already deployed assets or revoke a credential.
 

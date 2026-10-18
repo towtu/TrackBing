@@ -21,6 +21,10 @@ starter assets and four empty directories; consolidated types/documentation and
 archived old generated evidence. [Cleanup details](../project-structure.md)
 record paths and recovery. Both security exceptions remain expired/unchanged.
 
+**Credential recovery:** a redacted Git-history scan found an older hardcoded
+USDA key. [Revoke and replace it](2026-10-19-secret-history-review.md) before
+calling the security launch item complete; current-file scans do not revoke it.
+
 ## Completed in this pass
 
 - Strengthened the existing candidate/live release check: actual legal content,
@@ -95,7 +99,8 @@ verified reachable on this date. This is the older deployed app, not PR #11.
 | Actual export through strengthened smoke adapter | Real exported HTML/crawlers/assets accepted; hosting statuses/headers and API responses simulated, not deployed evidence |
 | iOS / Android Expo exports | Both Hermes exports passed; no signed binary or physical-device test |
 | Workflow policy / actionlint with ShellCheck | Passed |
-| Tracked/web/native secret-pattern checks | No findings; not a Git-history audit or proof against every unknown credential format |
+| Current tracked/web/native secret-pattern checks | No findings in the current files; not proof against every unknown credential format |
+| Git-history secret audit | Gitleaks 8.30.1, 266 locally reachable commits: historical hardcoded USDA credential found; rotation required. Public anon JWT / SQL false positive triaged separately. [Recovery](2026-10-19-secret-history-review.md). |
 | `npm run ci:audit` | **Failed as intended:** zero critical/moderate; both high blocker IDs now retained in the artifact; 21 inherited affected packages. Expired exceptions unchanged. |
 
 Test data is synthetic and paid APIs are mocked. Test nutrition is not a claim
@@ -187,8 +192,10 @@ The 19 October independent reviews found no critical/high issue in the inspected
 Bee write boundaries. The confirmed P2 retry defect is fixed and regression
 tested. Audit reporting remains conservative on invalid policy. The public USDA
 hosting-variable finding and its limited exposure check remain qualified as
-described in the hosting supplement; no clean historical-credential audit is
-claimed. No data schema or write permission changed in this increment.
+described in the hosting supplement. A separate history scan confirmed an old
+hardcoded USDA credential; [rotation is required](2026-10-19-secret-history-review.md).
+Its value is absent from current tracked/web files, but no clean historical
+credential audit is claimed. No data schema or write permission changed.
 
 Revert this focused commit and reinstall the corresponding lockfile if needed;
 this pass changes no database schema. Preserve additive deployed tables and all
@@ -206,7 +213,7 @@ any missing real deployment, legal or native proof; it does not mean launched.
 | --- | --- | --- | --- |
 | 1 Privacy | Partial | Public/native route; current DeepSeek/photo/control draft; local export/browser | Approve operator/contact, rights/retention/deletion; deploy actual page; native walkthrough. |
 | 2 Terms | Partial | Updated DeepSeek/label limitations, public route and local browser checks | Approve age/refund/dispute/effective date; deploy; native walkthrough. |
-| 3 Secrets/access | Partial | Safe templates/scans; RLS/owner tests; 19 October public USDA setting removed; initial live scripts contain no matching key | Historical/lazy asset exposure remains unverified; consider USDA rotation; configure protected deployment secrets and verify new deployed policies. |
+| 3 Secrets/access | Partial | Current files/bundles checked; RLS/owner tests; public USDA setting removed; history scan found an old hardcoded USDA credential | Revoke/replace the exposed USDA key, verify server-only lookup, configure protected deployment secrets and verify new deployed policies. Historical/lazy hosted assets remain unaudited. |
 | 4 HTTPS | Partial | Live HTTP308, working TLS and Vercel HSTS verified; branch headers | Deploy configured app headers; recheck camera and all release URLs. |
 | 5 Consent | Implemented | Consent/DNT/GPC/revocation tests; analytics off by default | Review optional provider before enabling; native tracking remains off. |
 | 6 Metadata | Partial | Actual branch HTML and strengthened smoke pass; current live metadata incomplete | Deploy reviewed-origin HTML; rerun smoke and crawler checks. |

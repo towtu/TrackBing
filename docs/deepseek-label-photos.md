@@ -174,13 +174,18 @@ visible editable review and separate database confirmation are essential.
 
 The baseline contained the critical shell-quote advisory
 GHSA-pqg4-j6r4-53mv at 1.10.0. The focused lockfile update installs 1.12.0.
-Current audit still reports 26 high and 21 moderate affected packages, with no
-critical finding. The strict CI audit remains failing; its inherited-severity
-validation reports an unexplained npm severity, and prior high-advisory
-exceptions have reached their expiry date. No exception was broadened or
-extended. Resolve the underlying advisories/policy evidence before release.
+The subsequent [dependency remediation](dependency-remediation.md) removed the
+critical and moderate findings. Two underlying high advisories remain in
+`braces` and `node-forge`, with no published patched version at the latest check.
+Inherited affected-package counts vary with npm's advisory cache; they are not
+the number of distinct root advisories. The strict gate fails on the expired
+exceptions. No exception was broadened or extended. Resolve these before release.
 
-## Local verification results — 18 October 2026
+## Original feature verification — 18 October 2026
+
+The table records the first feature implementation. The later security and
+release-completion results supersede its test/audit counts; see the
+[current launch report](launch/2026-10-18-release-readiness.md).
 
 | Check | Result |
 |---|---|
@@ -194,9 +199,9 @@ extended. Resolve the underlying advisories/policy evidence before release.
 | Browser | Label preview, explicit upload, kcal/kJ and serving review, missing-macro rejection, cancel and explicit failed-read recovery at 375/768/1440; public web, motion and creation regressions passed with controlled mocks |
 | Workflow policy and actionlint | Passed; ai-label and label browser suite included in releases/CI |
 | Secret patterns | Tracked files and web/native artifacts scanned; no findings (not a full credential-history audit) |
-| Dependency audit | Critical baseline shell-quote fixed; 26 high/21 moderate remain and strict CI audit fails |
+| Dependency audit | Superseded by the dependency remediation: two high root advisories remain; no critical/moderate findings |
 | Independent review | Five initial findings plus SDK transport recovery fixed with regressions; no remaining concrete feature blocker reported |
-| Live provider / production / device camera | Not run: no DeepSeek key, deployment or physical-device environment available |
+| Live provider / production / device camera | Not run: no readable local DeepSeek key or physical-device environment; later read-only inspection confirmed a production secret named DEEPSEEK_API_KEY, not its validity or billing |
 
 Security check: reviewed validated session ownership, service-only RPC access,
 shared atomic budgets, single-search bounds, image signatures/dimensions and

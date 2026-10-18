@@ -32,6 +32,12 @@ async function verify(page, base, width) {
   const email = page.getByRole('textbox', { name: 'Email address', exact: true });
   const password = page.getByLabel('Password', { exact: true });
   await submit.waitFor();
+  const signup = page.getByRole('button', { name: 'New to TrackBing? Sign Up', exact: true });
+  assert.equal(await signup.count(), 1, 'accessible name must include the visible Sign Up label');
+  const image = page.getByRole('img', { name: 'TrackBing logo', exact: true }).first();
+  const logo = await image.boundingBox();
+  const sourceRatio = await image.evaluate(el => el.naturalWidth / el.naturalHeight);
+  assert.ok(Math.abs(logo.width / logo.height - sourceRatio) < 0.03, 'logo box must preserve the source aspect ratio');
   await page.screenshot({ path: `${output}/login-${width}.png`, fullPage: true });
   assert.equal(await submit.evaluate(el => getComputedStyle(el).boxShadow), 'none');
   await submit.click();
@@ -100,7 +106,7 @@ async function verify(page, base, width) {
   await page.getByRole('button', { name: 'Use another email', exact: true }).click();
   await recoveryEmail.waitFor();
   await page.goto(base);
-  await page.getByRole('button', { name: 'Create a new TrackBing account', exact: true }).click();
+  await signup.click();
   await page.getByText('Step 1 of 3 · Your daily targets', { exact: true }).waitFor();
   await page.getByRole('textbox', { name: 'Age in years', exact: true }).fill('30');
   await page.getByRole('textbox', { name: 'Weight in kilograms', exact: true }).fill('72.4');

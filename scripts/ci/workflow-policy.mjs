@@ -103,6 +103,13 @@ function checkRelease(data, file, problems) {
   }
   if (usesSecrets(data.env)) problems.push(`${file}.env: credentials belong to protected jobs, never global workflow environment`);
   for (const [id, job] of Object.entries(jobs)) {
+    if (/(?:^|\/)native-build\.ya?ml$/.test(file) && Array.isArray(job.steps)) {
+      job.steps.forEach((step, index) => {
+        if (typeof step.run === 'string' && /node scripts\/ci\/smoke\.mjs/.test(step.run) && !job.steps.slice(0, index).some(before => before.if === undefined && before.run?.trim() === 'npm run build:web')) {
+          problems.push(`${file}.jobs.${id}: create a trusted web export before native release smoke checks`);
+        }
+      });
+    }
     if (!usesSecrets(job)) continue;
     const environment = typeof job.environment === 'string' ? job.environment : job.environment?.name;
     if (typeof environment !== 'string' || !environment.trim()) problems.push(`${file}.jobs.${id}.environment: credential-bearing jobs require a protected environment`);

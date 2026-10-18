@@ -1,5 +1,9 @@
 # Adaptive Bee and launch implementation report
 
+Historical September implementation record. The user's later DeepSeek choice
+and October verification supersede provider choices and old audit counts below.
+See the [current twenty-item launch evidence](2026-10-18-release-readiness.md).
+
 Implementation verified locally through 30 September 2026 (Asia/Manila).
 Branch: `feat/bee-conversation`; review: [draft PR #10](https://github.com/towtu/TrackBing/pull/10).
 **No production migration, deployment, payment activation, or merge was performed.**

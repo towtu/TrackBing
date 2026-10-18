@@ -87,6 +87,8 @@ jobs:
       - uses: ./.github/actions/setup-node
       - name: Verify environment mapping
         run: node scripts/ci/release.mjs config
+      - name: Build trusted web assets for live release comparison
+        run: npm run build:web
       - name: Verify live backend and client key before a paid build
         env:
           SMOKE_ORIGIN: ${{ vars.EXPO_PUBLIC_SITE_ORIGIN }}

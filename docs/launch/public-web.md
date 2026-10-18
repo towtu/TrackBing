@@ -14,17 +14,19 @@ no account records and have `noindex,nofollow`; the signed-in dashboard changes
 its runtime metadata to noindex too. RLS and server authentication remain the data
 security boundary.
 
-The legal copy inventories actual account/goal/weight-history/diary/personal-food/recipe records and private generated dashboard insights,
-camera/barcode processing, local session/cache storage, Supabase, USDA, Open Food
-Facts, the existing GitHub food list, Vercel, Gemini, Google Search, and optional
-Plausible analytics. It describes the implemented 30-day/50-message chat limit,
-explicit preferences and clear controls, and the transient display-only Google
-answer policy. It does not promise in-app account deletion or uploaded-label OCR.
+The legal copy inventories actual account/goal/weight-history/diary/personal-food/
+recipe records and private generated dashboard insights, camera/barcode
+processing, optional label-photo transcription, local session/cache storage,
+Supabase, USDA, Open Food Facts, the existing GitHub food list, Vercel, DeepSeek,
+DeepSeek Search, and optional Plausible analytics. It describes the implemented
+30-day/50-message chat limit, explicit preferences and clear controls, and the
+transient display-only search-answer policy. It does not promise in-app account
+deletion. Photos require an explicit upload and review; transcription can be wrong.
 
 Both policies visibly remain **operator-review drafts**. Required decisions:
 legal operator, a verified support/privacy contact, age eligibility, legal basis
 and rights process, account deletion and backups/log retention, service/payment
-terms if applicable, governing law/disputes, regional processing, Google paid
+terms if applicable, governing law/disputes, regional processing, DeepSeek
 billing/data-use configuration, and analytics account/retention approval. Publish
 reviewed copy and an effective date before enabling public indexing.
 
@@ -39,9 +41,9 @@ Use the safe root `.env.example`; real local environment files remain ignored.
 | `EXPO_PUBLIC_PRIVACY_EMAIL` | Operator's approved public contact. Invalid contacts are omitted. |
 | `EXPO_PUBLIC_LEGAL_REVIEWED` | Set `true` only after reviewed copy and operator details are complete. Does not itself perform legal review. |
 
-No API secret belongs in any `EXPO_PUBLIC_*` value. Gemini, USDA, and Supabase
+No API secret belongs in any `EXPO_PUBLIC_*` value. DeepSeek, USDA, and Supabase
 service-role credentials stay in Edge Function secrets as described in
-[Bee deployment](../bee-gemini-deployment.md).
+[current Bee deployment](../deepseek-label-photos.md).
 
 Metadata uses Expo Router `Head` in the static render. The same pure configuration
 module controls client metadata and the post-export files. Without a valid real

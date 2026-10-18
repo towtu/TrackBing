@@ -41,7 +41,7 @@ export const AuthStyles = StyleSheet.create({
   },
   webBrandLogo: {
     width: 76,
-    height: 76,
+    height: 76 * (277 / 577),
   },
   webBrandTitle: {
     color: Colors.text,

@@ -2,8 +2,13 @@
 
 Every pull request and push to `main` runs verification. Web/backend releases
 and native builds require an operator to start a workflow from `main`. The
-workflows are implemented in the repository; GitHub protection rules and
-provider configuration still need the setup below. No hosted release, signed
+workflows are implemented in the repository. On 18 October 2026, `main` protection
+was applied and verified: required pull requests, up-to-date GitHub Actions
+**Ready to merge**, administrator enforcement, conversation resolution, and no
+force push/deletion. Staging and Production environments now allow protected
+branches (currently only `main`). No minimum human-approval count was added to
+this owner-operated repository. Provider credentials, isolated project mappings
+and any team reviewer policy still need the setup below. No hosted release, signed
 native build, store submission, or production migration is claimed here.
 
 ## From a pull request to a release
@@ -53,7 +58,7 @@ environment/CI gates, and migrations omitted from database-test coverage.
    review, and the **Ready to merge** status check from CI. Keep force pushes
    and deletion disabled. Run CI once so its check is selectable. If using a
    merge queue, retain the `merge_group` trigger. These repository settings
-   are operator setup, not settings applied by this change. See
+   were applied as described above; recheck them before release. See
    [GitHub protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
 3. Create environments named **staging** and **production** in
    **Settings → Environments**. Allow only the `main` branch, configure
@@ -67,6 +72,15 @@ environment/CI gates, and migrations omitted from database-test coverage.
    Supabase and Vercel projects for staging and production. The release helper
    rejects missing identities, shared projects, and a selected environment
    pointing to the wrong registered project.
+
+The release smoke check reads actual public/legal content, head metadata and
+private noindex tags; it rejects SPA fallbacks and conflicting/commented tags.
+Crawler files must match the approved public-only/draft policy. Social/favicon
+bytes must match the trusted local `dist` build. It verifies the deployed commit,
+real unknown-route 404, same-origin HTTP→HTTPS redirect and unauthenticated API
+denial. Bypass credentials never enter the HTTP probe. Response bodies and the
+whole run are bounded; no signed-in writes or paid provider calls are made.
+See the [current launch evidence and remaining setup](launch/2026-10-18-release-readiness.md).
 
 Set these four **repository variables** under
 **Settings → Secrets and variables → Actions → Variables**:

@@ -6,6 +6,13 @@
 supersedes the Gemini provider in the September brief. Neither PR was merged.
 Two unresolved high dependency advisories still block the release gate.
 
+**19 October setup update:** the existing Vercel project is now linked and its
+future build settings and production mappings are verified. Releases remain
+disabled; deployment credentials and staging identities are still missing.
+The [hosting connection record](2026-10-19-release-connection.md) supersedes
+the initial empty-configuration observations below and records the removed
+public USDA variable and limited exposure check.
+
 ## Completed in this pass
 
 - Strengthened the existing candidate/live release check: actual legal content,
@@ -179,7 +186,7 @@ any missing real deployment, legal or native proof; it does not mean launched.
 | --- | --- | --- | --- |
 | 1 Privacy | Partial | Public/native route; current DeepSeek/photo/control draft; local export/browser | Approve operator/contact, rights/retention/deletion; deploy actual page; native walkthrough. |
 | 2 Terms | Partial | Updated DeepSeek/label limitations, public route and local browser checks | Approve age/refund/dispute/effective date; deploy; native walkthrough. |
-| 3 Secrets/access | Implemented | Safe templates; web/native scans; live schema RLS; isolated owner/RPC tests | Configure protected server secrets and verify new deployed policies; keep old key until old caller retires. |
+| 3 Secrets/access | Partial | Safe templates/scans; RLS/owner tests; 19 October public USDA setting removed; initial live scripts contain no matching key | Historical/lazy asset exposure remains unverified; consider USDA rotation; configure protected deployment secrets and verify new deployed policies. |
 | 4 HTTPS | Partial | Live HTTP308, working TLS and Vercel HSTS verified; branch headers | Deploy configured app headers; recheck camera and all release URLs. |
 | 5 Consent | Implemented | Consent/DNT/GPC/revocation tests; analytics off by default | Review optional provider before enabling; native tracking remains off. |
 | 6 Metadata | Partial | Actual branch HTML and strengthened smoke pass; current live metadata incomplete | Deploy reviewed-origin HTML; rerun smoke and crawler checks. |

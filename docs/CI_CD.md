@@ -7,9 +7,13 @@ was applied and verified: required pull requests, up-to-date GitHub Actions
 **Ready to merge**, administrator enforcement, conversation resolution, and no
 force push/deletion. Staging and Production environments now allow protected
 branches (currently only `main`). No minimum human-approval count was added to
-this owner-operated repository. Provider credentials, isolated project mappings
-and any team reviewer policy still need the setup below. No hosted release, signed
-native build, store submission, or production migration is claimed here.
+this owner-operated repository. On 19 October, the existing Vercel production
+project was linked, future build settings aligned and verified production
+identities/public values registered in GitHub. Both release flags remain false;
+deployment credentials, staging identities and any team reviewer policy still
+need setup. See the [applied hosting setup and next credential step](launch/2026-10-19-release-connection.md).
+No hosted release, signed native build, store submission, or production migration
+is claimed here.
 
 ## From a pull request to a release
 

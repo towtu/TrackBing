@@ -25,27 +25,13 @@ describe('patched build dependencies', () => {
 
   it('reads bundled artwork through both Metro asset APIs', async () => {
     const { getAssetSize, getAssetData } = require('@expo/metro/metro/Assets');
-    const file = resolve('assets/images/icon.png');
+    const file = resolve('assets/images/TrackBingIcon.png');
     const dimensions = getAssetSize('png', readFileSync(file), file);
     expect(dimensions.width).toBeGreaterThan(0);
     expect(dimensions.height).toBeGreaterThan(0);
     const asset = await getAssetData(file, 'assets/images', [], null, '/assets');
     expect(asset.width).toBe(dimensions.width);
     expect(asset.height).toBe(dimensions.height);
-  });
-
-  it('preserves Tailwind variants, apply rules and nested selectors', async () => {
-    const postcss = require('postcss');
-    const tailwind = require('tailwindcss');
-    const nested = require('postcss-nested');
-    const result = await postcss([
-      tailwind({ content: [{ raw: '<div class="hover:bg-red-500 md:p-4"></div>' }], corePlugins: { preflight: false } }),
-      nested(),
-    ]).process('@tailwind utilities; .review { @apply p-4; &:focus { outline: 2px solid black; } }', { from: undefined });
-    expect(result.css).toContain('.hover\\:bg-red-500:hover');
-    expect(result.css).toContain('.md\\:p-4');
-    expect(result.css).toContain('padding: 1rem');
-    expect(result.css).toContain('.review:focus');
   });
 
   it('preserves the CommonJS Xcode project identifier API', () => {

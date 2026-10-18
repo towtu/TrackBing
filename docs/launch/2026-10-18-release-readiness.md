@@ -1,4 +1,4 @@
-# TrackBing release readiness — 18 October 2026
+# TrackBing release readiness — updated 19 October 2026
 
 **Not released.** Code is on `feat/deepseek-label-photos`, in stacked draft
 [PR #11](https://github.com/towtu/TrackBing/pull/11), based on
@@ -12,6 +12,14 @@ disabled; deployment credentials and staging identities are still missing.
 The [hosting connection record](2026-10-19-release-connection.md) supersedes
 the initial empty-configuration observations below and records the removed
 public USDA variable and limited exposure check.
+
+**19 October hardening:** completed confirmation retries now survive a saved
+timezone change; altered commands still conflict and new turns use the saved
+timezone. Audit failures retain the validated underlying blocker IDs. Removed
+unused styling packages (51 lockfile packages, no unrelated upgrades), five
+starter assets and four empty directories; consolidated types/documentation and
+archived old generated evidence. [Cleanup details](../project-structure.md)
+record paths and recovery. Both security exceptions remain expired/unchanged.
 
 ## Completed in this pass
 
@@ -67,25 +75,28 @@ verified reachable on this date. This is the older deployed app, not PR #11.
   new constraint. Review the dry run and legacy data validation before applying.
 - Email Auth is enabled and email auto-confirmation is disabled. The public
   settings endpoint does not establish transactional SMTP, CAPTCHA or delivery.
-  GitHub repository Actions variables/secrets are empty. No Vercel credential,
-  EAS project identity, Android device/emulator or local provider key is available.
+  The initial 18 October Actions configuration was empty; the 19 October setup
+  supplement records the production mappings now applied. Deployment secrets
+  remain absent. An EAS project ID exists in `app.json`, but its cloud ownership/
+  credentials are unverified and the iOS bundle identifier is missing. No Android
+  device/emulator or local provider key is available.
 
 ## Verification
 
 | Check | Result / boundary |
 | --- | --- |
-| `npm run typecheck`, `npm run lint`, `npm test` | Passed; 933 tests / 62 files, including 21 release-smoke tests and the native asset-prerequisite regression |
+| `npm run typecheck`, `npm run lint`, `npm test -- --maxWorkers 2` | Passed 19 October; 936 tests / 62 files, including timezone-retry and retained-blocker diagnostics regressions |
 | `npm run typecheck:functions` | All seven Edge Functions checked with Deno; separate from application TypeScript |
 | `npm run test:db` | Disposable PostgreSQL migration/ownership/locking/replay/quota invariants and 17 Deno handler tests passed |
 | Current-schema rehearsal | All 15 migrations plus label ownership/retry/concurrent confirmation passed; schema-only, PostgreSQL 16 |
 | Linked migration dry run | Passed; lists all15 unapplied migrations and explicitly performs no migration push |
 | `npm run build:web` | Passed; 23 static routes, real configured origin, legal drafts/no indexing, export finalizer |
-| `npm run ci:browser -- --all` | Seven suites at 375/768/1440 px passed; account/provider fixtures and synthetic camera, no unexpected console/network failures |
+| `npm run ci:browser -- --all` | Seven suites at 375/768/1440 passed 19 October; mocked accounts/providers and synthetic camera, no unexpected errors. Initial parallel run timed out under severe local memory pressure; serial rerun passed without increasing timeouts. |
 | Actual export through strengthened smoke adapter | Real exported HTML/crawlers/assets accepted; hosting statuses/headers and API responses simulated, not deployed evidence |
 | iOS / Android Expo exports | Both Hermes exports passed; no signed binary or physical-device test |
 | Workflow policy / actionlint with ShellCheck | Passed |
 | Tracked/web/native secret-pattern checks | No findings; not a Git-history audit or proof against every unknown credential format |
-| `npm run ci:audit` | **Failed as intended:** zero critical/moderate; two underlying high advisories (`braces`, `node-forge`), 26 inherited affected packages in this run. Exceptions expired, not renewed. |
+| `npm run ci:audit` | **Failed as intended:** zero critical/moderate; both high blocker IDs now retained in the artifact; 21 inherited affected packages. Expired exceptions unchanged. |
 
 Test data is synthetic and paid APIs are mocked. Test nutrition is not a claim
 about an actual egg, product or package label. Evidence is under ignored
@@ -120,9 +131,11 @@ not inferred from TBT or a navigation score. Reports are retained under
    [advisories](https://github.com/advisories/GHSA-86w9-cpqp-85rv) list no published
    fix. Do not suppress the gate, relabel versions or force a framework upgrade.
 2. Provide isolated Supabase/Vercel project identities and hosting credentials
-   through protected environments, following [CI setup](../CI_CD.md). The known
-   production origin can be used; do not invent staging identities or create a
-   paid project without an operator decision. Configure EAS/native identities.
+   through protected environments, following [CI setup](../CI_CD.md). Production
+   mappings are now configured; follow the [Vercel token step](2026-10-19-release-connection.md#next-operator-step-vercel-ci-token).
+   Staging identities and Supabase deployment credentials still need setup.
+   Verify existing EAS ownership/configuration and the iOS application identity.
+   Do not invent staging identities or create a paid project without a decision.
 3. Finalize the actual legal operator, verified privacy/support email, age,
    deletion/backups/log retention, regional processing and payment/refund terms.
    Review DeepSeek's data use before setting its privacy flag. Optional analytics
@@ -170,6 +183,13 @@ secret exposure, paid request or real-user mutation was introduced. Two existing
 high advisories remain open, and live provider/device/operational checks remain
 unverified. This is not a production security certification.
 
+The 19 October independent reviews found no critical/high issue in the inspected
+Bee write boundaries. The confirmed P2 retry defect is fixed and regression
+tested. Audit reporting remains conservative on invalid policy. The public USDA
+hosting-variable finding and its limited exposure check remain qualified as
+described in the hosting supplement; no clean historical-credential audit is
+claimed. No data schema or write permission changed in this increment.
+
 Revert this focused commit and reinstall the corresponding lockfile if needed;
 this pass changes no database schema. Preserve additive deployed tables and all
 user records. Disable Bee/label/search flags to recover provider failures rather
@@ -197,7 +217,7 @@ any missing real deployment, legal or native proof; it does not mean launched.
 | 11 Images | Implemented | Existing lossless optimization retained; real artwork bundled in fresh exports | Inspect final native store artwork separately. |
 | 12 Speed | Partial | Live Lighthouse measured; fresh export/load evidence below | Meet remaining budget; remeasure deployed candidate and native startup; obtain field INP. |
 | 13 Contrast | Implemented | Existing37 contrast assertions pass in full suite | Verify native rendering and focus during device walkthrough. |
-| 14 Mobile friendly | Partial | Seven browser suites at375/768/1440; both native exports | Test a signed native binary on a physical device, camera/keyboard/account continuity. |
+| 14 Mobile friendly | Partial | Seven browser suites at 375/768/1440; both native exports | Test a signed native binary on a physical device, camera/keyboard/account continuity. |
 | 15 Custom404 | Partial | Branch branded404/export and smoke reject status200; live unknown URL200 | Deploy clean URLs/custom404; verify actual known and unknown status. |
 | 16 Links | Partial | Export anchor validation and safe citation URLs; live legal URLs currently app shell | Verify deployed legal/support/source/native deep links. |
 | 17 Validation | Implemented | Forms/label/food/weight/date/goal guards and real SQL tests | Review invalid legacy data before validating/applying constraints. |

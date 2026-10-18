@@ -5,7 +5,7 @@ import { crawlerFiles, makeSiteConfig, pageMetadata } from '../../src/lib/siteCo
 const env = { SMOKE_ORIGIN: 'https://trackbing-candidate.vercel.app', EXPO_PUBLIC_SUPABASE_URL: 'https://aaaaaaaaaaaaaaaaaaaa.supabase.co', EXPO_PUBLIC_SUPABASE_ANON_KEY: 'sb_publishable_abcdefghijklmnopqrstuv', GITHUB_SHA: 'a'.repeat(40), VERCEL_AUTOMATION_BYPASS_SECRET: 'fixture-bypass' };
 // Valid branded PNG plus a valid ICO wrapping the repository's PNG icon.
 const preview = readFileSync('public/social-preview.png');
-const iconPng = readFileSync('assets/images/favicon.png');
+const iconPng = readFileSync('assets/images/TrackBingIcon.png');
 const iconHeader = Buffer.alloc(22);
 iconHeader.writeUInt16LE(1, 2); iconHeader.writeUInt16LE(1, 4);
 iconHeader[6] = iconPng.readUInt32BE(16) % 256; iconHeader[7] = iconPng.readUInt32BE(20) % 256;

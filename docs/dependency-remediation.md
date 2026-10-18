@@ -4,6 +4,30 @@ This is a reviewable code change, not a production release. Expo SDK 54,
 React Native 0.81.5, existing food data and database migrations remain unchanged.
 The dependency gate remains blocked by unresolved high-severity advisories.
 
+## 19 October cleanup and diagnostics
+
+Removed unused `nativewind`/`tailwindcss`, their selector-parser override and
+the obsolete Tailwind-only compatibility test. Tracked application source uses
+React Native `StyleSheet`; there are no NativeWind imports, class-name styling
+or Tailwind/Metro/Babel integration. The clean lockfile removes 51 packages,
+adds none and changes no unrelated version. Remaining Metro asset tests now use
+the actual TrackBing icon after unused starter artwork was removed.
+
+This is dependency cleanup, **not remediation of `braces`**. A direct reverse
+lockfile/source check found retained consumers through
+`expo → @expo/metro → metro-file-map → micromatch → braces` and React Native's
+Jest dependencies. The initial Tailwind-only hypothesis was rejected. Both
+expired exceptions remain unchanged; the current audit still blocks both root
+advisories, with 21 affected high packages and zero critical/moderate findings.
+
+The audit report now preserves fully validated blocker identifiers before
+checking exception policy. Invalid/expired policy still produces `status:error`,
+zero acknowledgements and exit 1; high/critical findings default to blocked.
+Registry descriptions remain omitted. Two failing-then-passing regressions and
+an independent mixed-policy review verify this behavior without renewing an
+exception. The compatible-patch record below describes the 18 October work;
+the Tailwind selector override/test is now retired because its consumers are gone.
+
 ## Compatible patches
 
 | Dependency | Change and reason | Evidence |

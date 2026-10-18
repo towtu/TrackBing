@@ -46,7 +46,7 @@ export async function smokeRelease(env, fetcher = fetch) {
   const settings = await get(supabase, '/auth/v1/settings', { apikey: env.EXPO_PUBLIC_SUPABASE_ANON_KEY });
   await settings.body?.cancel();
   if (settings.status !== 200) throw new Error('The public client key does not match the deployed Supabase project.');
-  for (const name of ['bee-chat', 'ai-food', 'usda-search', 'billing']) {
+  for (const name of ['bee-chat', 'ai-food', 'ai-label', 'usda-search', 'billing']) {
     const response = await fetcher(`${supabase}/functions/v1/${name}`, { method: 'POST', headers: { apikey: env.EXPO_PUBLIC_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }, body: '{}', redirect: 'manual', signal: AbortSignal.timeout(15_000) });
     await response.body?.cancel();
     if (response.status !== 401) throw new Error(`Unauthenticated access must be denied: ${name}.`);

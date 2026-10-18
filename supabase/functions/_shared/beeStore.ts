@@ -60,7 +60,7 @@ export function createBeeStore(
     },
     reserveSearch: (request, lease) =>
       rpc("reserve_ai_search_queries", {
-        p_call:request.requestId,p_queries:3,
+        p_call:request.requestId,p_queries:1,
         p_request: request.requestId,
         p_token: lease.token,
       }),

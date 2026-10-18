@@ -78,12 +78,12 @@ function containsWords(text: string, requested: string): boolean {
   );
 }
 
-function preflight(query: FoodQuery): NutritionResult | null {
+function preflight(query: FoodQuery, userLabel = false): NutritionResult | null {
   if (
     typeof query.name !== "string" || !query.name.trim() ||
     query.name.length > 160 || INJECTION.test(query.name)
   ) return unavailable();
-  if (/\bchicken\s+breast\b/i.test(query.name) && !/\b(raw|uncooked|cooked|boiled|fried|grilled|steamed|roasted|baked)\b/i.test(`${query.name} ${query.preparation ?? ''}`)) {
+  if (!userLabel && /\bchicken\s+breast\b/i.test(query.name) && !/\b(raw|uncooked|cooked|boiled|fried|grilled|steamed|roasted|baked)\b/i.test(`${query.name} ${query.preparation ?? ''}`)) {
     return clarify('Was the chicken breast weighed raw or after cooking?');
   }
   if (
@@ -96,7 +96,7 @@ function preflight(query: FoodQuery): NutritionResult | null {
     (!positive(query.packageGrams) || query.packageGrams > 50_000)
   ) return unavailable();
   if (
-    !query.barcode && /fudgee/i.test(`${query.name} ${query.brand ?? ""}`) &&
+    !userLabel && !query.barcode && /fudgee/i.test(`${query.name} ${query.brand ?? ""}`) &&
     (!query.variant?.trim() || !query.packageGrams)
   ) {
     return clarify(
@@ -120,7 +120,7 @@ export function scaleEvidence(
   evidence: NutritionEvidence,
   source: ReviewedFood["source"],
 ): NutritionResult {
-  const early = preflight(query);
+  const early = preflight(query, source === "user_label");
   if (early) return early;
   if (!evidence.record) return unavailable();
   return scaleRecord(query, evidence, source);

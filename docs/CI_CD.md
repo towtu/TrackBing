@@ -28,7 +28,7 @@ never cancelled automatically during a migration.
 | Dependencies and secrets | Dependency audit policy and tracked secret patterns |
 | Web export | Expo static web export with dummy public configuration and exported secret-pattern checks |
 | Native export | Android and iOS JavaScript/assets export and secret patterns, including Hermes bundles; no signing or binary build |
-| Browser, six suites | Public web, auth, account, Cookbook, Bee motion, and creation flows at 375/768/1440 px against the same web export |
+| Browser, seven suites | Public web, auth, account, Cookbook, Bee motion, creation, and label-photo flows at 375/768/1440 px against the same web export |
 | Ready to merge | Passes only when every required job succeeds, including all browser/native matrix entries |
 
 Browser checks intercept Auth, database, and provider requests. They use marked
@@ -139,7 +139,7 @@ webhook configuration, and `BILLING_RECONCILE_SECRET`. Keep sandbox and live
 settings separate. Configure Auth redirect URLs, recovery email templates,
 and SMTP using the [account guide](account-and-diary-ux.md).
 
-Six functions are deployed: `bee-chat`, `ai-food`, `usda-search`, `billing`,
+Seven functions are deployed: `bee-chat`, `ai-food`, `ai-label`, `usda-search`, `billing`,
 `billing-webhook`, and `billing-reconcile`. The CLI uses `--no-verify-jwt`
 because these handlers implement their own authentication: user endpoints
 verify Supabase sessions; webhooks verify provider signatures; reconciliation
@@ -169,7 +169,7 @@ The job performs these steps in order:
    Check web and Vercel static output secret patterns and stamp `/release.json` with the commit.
    A failed frontend build stops before changing the backend.
 3. Link the selected Supabase project, print the migration dry run, apply
-   migrations, then deploy the six functions.
+   migrations, then deploy the seven functions.
 4. Upload the prebuilt candidate with `--prod --skip-domain`, keeping live
    domains on the existing deployment. See
    [Vercel staged domain assignment](https://vercel.com/docs/cli/deploy#skip-domain).

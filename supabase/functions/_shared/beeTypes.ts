@@ -126,6 +126,7 @@ export type BeeMessage = {
 };
 /** Transient display only: never persist, index, or use as a log payload. */
 export type GroundedAnswer = {
+  provider?: 'google' | 'deepseek';
   text: string;
   citations: {
     title: string;

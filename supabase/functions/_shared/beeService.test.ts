@@ -12,6 +12,18 @@ function setup() {
 function request(text:string,extras:Record<string,unknown>={}) {return new Request("https://bee.test",{method:"POST",headers:{Authorization:"Bearer test", "Content-Type":"application/json"},body:JSON.stringify({requestId:id,threadId:id,expectedVersion:0,timeZone:"Asia/Manila",command:{kind:"message",text},...extras})});}
 async function result(response:Response):Promise<BeeResult> {return response.json();}
 describe("Bee endpoint enforcement",()=>{
+  it('accepts a complete explicit branded label without guessing package size or flavor',async()=>{
+    const {dependencies,store}=setup();
+    await handleBeeRequest(request('Review my label food "Fudgee Barr Chocolate TEST" per 38 g: calories 100, protein 2 g, carbs 15 g, fat 3 g; portion 38 g.'),dependencies);
+    expect(store.finish).toHaveBeenLastCalledWith(expect.anything(),expect.anything(),expect.objectContaining({draft:expect.objectContaining({source:'user_label',calories:100,query:expect.objectContaining({packageGrams:null,variant:null})})}));
+  });
+  it('reviews explicit label numbers without a model call or a food write',async()=>{
+    const {dependencies,store}=setup();
+    await handleBeeRequest(request('Review my label food "TEST label" per 30 g: calories 100, protein 2 g, carbs 15 g, fat 3 g; portion 60 g.'),dependencies);
+    expect(dependencies.interpret).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();
+    expect(store.finish).toHaveBeenLastCalledWith(expect.anything(),expect.anything(),expect.objectContaining({draft:expect.objectContaining({source:'user_label',calories:200,portion:{amount:60,unit:'g'}})}));
+    expect(vi.mocked(store.finish).mock.calls.at(-1)?.[2].confirm).toBeUndefined();
+  });
   it("validates the JWT instead of accepting a nonempty Authorization header",async()=>{
     const {dependencies,store}=setup(); dependencies.authenticate=vi.fn().mockResolvedValue(null);
     expect((await handleBeeRequest(request("hello"),dependencies)).status).toBe(401);

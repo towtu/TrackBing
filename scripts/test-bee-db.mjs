@@ -75,6 +75,8 @@ try {
   if (!process.argv.includes("--creation-baseline")) fixture("supabase/migrations/20261002000000_bee_food_recipe_creation.sql");
   const { runCreationDatabaseTests } = await import("../supabase/tests/creation_database.mjs");
   await runCreationDatabaseTests(context);
+  const { runLabelDatabaseTests } = await import('../supabase/tests/label_database.mjs');
+  await runLabelDatabaseTests(context);
   const edge = spawnSync(process.env.DENO_BINARY ?? "deno", ["test", "--cached-only", "--config", "supabase/functions/deno.json", "--allow-env", "supabase/tests/usda_proxy_deno.mts", "supabase/tests/billing_deno.mts"], { cwd: root, stdio: "inherit" });
   if (edge.status !== 0) throw new Error(edge.error?.message ?? "USDA Edge Function tests failed");
   process.stdout.write("Bee and launch PostgreSQL invariants and USDA Edge Function checks passed.\n");

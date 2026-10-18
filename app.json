@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "TrackBing needs camera access to scan food barcodes."
+        "NSCameraUsageDescription": "TrackBing uses the camera to scan barcodes and photograph nutrition labels."
       }
     },
     "android": {
@@ -52,6 +52,7 @@
           }
         }
       ],
+      ["expo-image-picker", {"cameraPermission":"TrackBing uses the camera to photograph nutrition labels and scan barcodes.","photosPermission":"Choose a nutrition-label photo to review in Bee.","microphonePermission":false}],
       "expo-iap"
     ],
     "experiments": {

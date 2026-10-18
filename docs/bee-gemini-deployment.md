@@ -1,3 +1,8 @@
+> **Provider update — 18 October 2026:** The active endpoints now use DeepSeek.
+> Follow [DeepSeek and label-photo setup](deepseek-label-photos.md) for secrets,
+> provider behavior and rollout. Gemini instructions below are historical; the
+> database/ownership and original rollout evidence still apply.
+
 # Adaptive Bee, subscriptions and deployment
 
 Implementation on `feat/bee-conversation`, draft PR #10. This is reviewable code,

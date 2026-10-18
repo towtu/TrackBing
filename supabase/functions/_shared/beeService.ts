@@ -23,7 +23,9 @@ import {
   type TurnOutcome,
 } from "./beeConversation.ts";
 import { adaptiveTurn, type ProgressContext } from "./beeAdaptiveTurn.ts";
-import { explicitMemory } from "./beeIntent.ts";
+import { explicitMemory, portionCorrection } from "./beeIntent.ts";
+import { foodFromUserLabel } from "./beeCreation.ts";
+import { scaleEvidence } from "./beeNutrition.ts";
 import { readBoundedRequestJson } from "./beeRequest.ts";
 import type { GeminiUsage } from "./beeProviders.ts";
 import type { NutritionResult } from "./beeNutrition.ts";
@@ -225,8 +227,8 @@ export async function handleBeeRequest(
       try {outcome.liveAnswer=await deps.ground(query,signal,value=>{usage=value;});}
       catch {failed=true;}
       finally {
-        await store.recordCall?.(request,lease,callId,usage??{inputTokens:2000,outputTokens:4096,searchQueries:3});
-        await store.measureSearch(request,lease,usage?.searchQueries??outcome.liveAnswer?.searchQueryCount??3);
+        await store.recordCall?.(request,lease,callId,usage??{inputTokens:2000,outputTokens:4096,searchQueries:1});
+        await store.measureSearch(request,lease,usage?.searchQueries??outcome.liveAnswer?.searchQueryCount??1);
       }
       if (outcome.liveAnswer) {
         outcome.text="I showed a live search answer. Search again to refresh it, or use a barcode or package label to add food.";
@@ -254,6 +256,16 @@ export async function handleBeeRequest(
     const readOnlyHistory = kind === "message" && knownHistory(request.command.text);
 
     if (entitlement && kind === "food_assist" && entitlement.tier === "basic") return await finish({error:"upgrade_required"});
+    if (isMessage && 'text' in request.command && request.command.text.startsWith('Review my label food ')) {
+      if(entitlement?.tier==='basic')return await finish({error:'upgrade_required'});
+      const label=foodFromUserLabel(request.command.text,(deps.now??(()=>new Date()))());
+      const portionText=/; portion (\d+(?:\.\d+)? (?:g|serving))\.$/.exec(request.command.text)?.[1];
+      const portion=portionText?portionCorrection(portionText):null;
+      if(!label||!portion)return await finish({text:'Please check the label name, basis, calories and all three macros before requesting a review.',invalidate_pending:true,state:{awaiting:'clarification'}});
+      const result=scaleEvidence({...label.query,portion},label.evidence,'user_label');
+      if(result.kind!=='found')return await finish({text:result.message,invalidate_pending:true,state:{awaiting:'clarification'}});
+      return await finish(review(result.food));
+    }
     if (entitlement && (kind === "confirm" || (isMessage && "text" in request.command && /^(yes|yep|confirm|save it|add it)[.! ]*$/i.test(request.command.text))) && lease.pending && (entitlement.tier === "basic" || (lease.pending.kind && lease.pending.kind !== "food" && entitlement.tier !== "pro"))) return await finish({error:lease.pending.kind === "food" || !lease.pending.kind ? "upgrade_required" : "pro_required"});
     const context = {
       state: lease.state,

@@ -85,7 +85,11 @@ async function verify(browser,base,width){
     await page.getByRole('button',{name:'Open Cookbook',exact:true}).click();
     await page.getByRole('button',{name:'Review TEST DATA egg bowl',exact:true}).click();
     await page.getByText('38',{exact:true}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'Open Bee quick log',exact:true}).count(),0,'a mascot cannot cover the recipe confirmation');
+    // Recipe content mounts before the focused-screen effect hides the launcher.
+    // Wait for that state transition; an immediate count can sample the first frame.
+    const floating=page.getByRole('button',{name:'Open Bee quick log',exact:true});
+    await floating.waitFor({state:'hidden'});
+    assert.equal(await floating.count(),0,'a mascot cannot cover the recipe confirmation');
     await page.getByText('1. Cut the boiled egg.',{exact:true}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Recipe portion 1 serving',exact:true}).getAttribute('aria-pressed'),'true');
     await page.waitForTimeout(350);await page.screenshot({path:`${output}/cookbook-serving-${width}.png`,fullPage:true,animations:'disabled'});

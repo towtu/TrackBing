@@ -73,6 +73,12 @@ both native exports, the web export and six browser suites. It failed:
 - Dependency audit: unresolved advisories and expired exceptions still block
   the gate. This change does not suppress errors or relax severity policy.
 
+The follow-up hosted recipe suite sampled the first modal frame before the
+focused-screen effect hid the floating launcher. It now waits for the launcher
+to become hidden and retains the strict absence assertion. The recipe review,
+separate library/diary writes and all three widths remain checked; no extra
+fixed sleep or application behavior change was introduced.
+
 ## Verification and recovery
 
 Run with Node 24.21.0 from `.nvmrc`:

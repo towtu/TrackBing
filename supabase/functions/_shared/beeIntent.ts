@@ -178,22 +178,31 @@ export function parseFoodQuery(value: unknown): FoodQuery {
     "portion",
   ]);
   const nullable = (v: unknown, max = 120) =>
-    v === null || v === undefined ? null : text(v, max);
+    v === null || v === undefined || (typeof v === "string" && !v.trim()) ? null : text(v, max);
+  const barcode = nullable(q.barcode, 14);
   if (
     q.packageGrams != null &&
     (typeof q.packageGrams !== "number" || !Number.isFinite(q.packageGrams) ||
       q.packageGrams <= 0 || q.packageGrams > 10000)
   ) throw new Error("bad_request");
   if (
-    q.barcode != null &&
-    (typeof q.barcode !== "string" || !/^\d{8,14}$/.test(q.barcode))
+    barcode !== null && !/^\d{8,14}$/.test(barcode)
   ) throw new Error("bad_request");
+  let name = text(q.name, 160);
+  const brand = nullable(q.brand);
+  let variant = nullable(q.variant);
+  // Whole is an egg part, not a packaged-product flavor. Keep that distinction
+  // in the required identity so USDA remains eligible without losing context.
+  if (!brand && /\beggs?\b/i.test(name) && variant?.toLowerCase() === "whole") {
+    if (!/\bwhole\b/i.test(name)) name = text(`whole ${name}`, 160);
+    variant = null;
+  }
   return {
-    ...(q.barcode == null ? {} : { barcode: q.barcode as string }),
-    name: text(q.name, 160),
+    ...(barcode === null ? {} : { barcode }),
+    name,
     preparation: nullable(q.preparation),
-    brand: nullable(q.brand),
-    variant: nullable(q.variant),
+    brand,
+    variant,
     packageGrams: q.packageGrams == null ? null : q.packageGrams as number,
     market: nullable(q.market, 60),
     portion: q.portion == null ? null : parsePortion(q.portion),

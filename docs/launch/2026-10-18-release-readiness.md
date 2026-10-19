@@ -6,6 +6,11 @@
 supersedes the Gemini provider in the September brief. Neither PR was merged.
 Two unresolved high dependency advisories still block the release gate.
 
+**Later private backend update:** [19 October Bee evaluation](2026-10-19-private-bee.md)
+supersedes the unapplied-migrations and missing-live-provider observations in
+this earlier checkpoint. It applies only to restricted Bee/label access; the
+public web/native release and payment rollout remain blocked.
+
 **19 October setup update:** the existing Vercel project is now linked and its
 future build settings and production mappings are verified. Releases remain
 disabled; deployment credentials and staging identities are still missing.

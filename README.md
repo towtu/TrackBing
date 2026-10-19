@@ -8,6 +8,8 @@ Expo, React Native, TypeScript and Supabase.
 - [Documentation index](docs/README.md): current guides and repository map.
 - [DeepSeek Bee and label photos](docs/deepseek-label-photos.md): server setup,
   reviewed food/weight/goal actions, limits and deployment order.
+- [Private Bee preview](docs/launch/2026-10-19-private-bee.md): applied backend
+  migrations, restricted test access, localhost checks and recovery.
 - [Release readiness](docs/launch/2026-10-18-release-readiness.md) and
   [hosting connection](docs/launch/2026-10-19-release-connection.md): verified
   code versus outstanding production setup.
@@ -15,9 +17,10 @@ Expo, React Native, TypeScript and Supabase.
 
 The active implementation is in draft PRs
 [#10](https://github.com/towtu/TrackBing/pull/10) and
-[#11](https://github.com/towtu/TrackBing/pull/11). These changes are not deployed.
-The security audit still blocks release; the hosting connection keeps releases
-explicitly disabled.
+[#11](https://github.com/towtu/TrackBing/pull/11). The new Bee/label backend is
+deployed for a restricted private evaluation; public web/native changes are not
+released. The security audit still blocks public release, and automated release
+flags remain disabled.
 
 ## Main features
 

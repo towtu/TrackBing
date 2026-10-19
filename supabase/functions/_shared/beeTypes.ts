@@ -110,7 +110,7 @@ export type PendingCreation = PendingBase & ({ kind: "personal_food"; creation: 
 export type PendingAction = PendingFood | PendingWeight | PendingGoal | PendingCreation;
 export type BeeInsight = { text: string; suggested_pose: BeePose; context_revision: string; expires_at: string };
 export type BeeTier = "basic" | "plus" | "pro";
-export type BeeEntitlement = { tier: BeeTier; capabilities: Record<string, boolean>; remaining: Record<string, number>; limits: Record<string, number>; reset_at: string | null };
+export type BeeEntitlement = { tier: BeeTier; access_mode?: "basic" | "subscription" | "private_preview"; capabilities: Record<string, boolean>; remaining: Record<string, number>; limits: Record<string, number>; reset_at: string | null };
 export type MemoryKey =
   | "preferred_name"
   | "preferred_units"

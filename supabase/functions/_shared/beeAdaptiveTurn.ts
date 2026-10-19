@@ -246,18 +246,9 @@ export async function adaptiveTurn(
       return result;
     });
     if (result.draft) {
-      const generated = parseBeeReply(
-        await model(BEE_REPLY_PROMPT, {
-          userMessage: text,
-          foodReview: result.draft,
-          notSaved: true,
-        }),
-      );
-      return {
-        ...result,
-        text: generated.reply,
-        suggested_pose: generated.suggestedPose,
-      };
+      // Exact nutrition and the Add question already come from trusted code.
+      // A second paid paraphrase adds latency and can rewrite verified values.
+      return { ...result, suggested_pose: "thinking" };
     }
     // Missing variant/portion is a clarification; search is automatic only on a true source miss.
     return {

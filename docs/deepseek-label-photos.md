@@ -4,6 +4,13 @@ Updated 18 October 2026. This is the active provider setup and supersedes the
 Gemini provider choice in the September brief. Local implementation is separate
 from production deployment and live provider verification.
 
+**19 October update:** [Private Bee evaluation](launch/2026-10-19-private-bee.md)
+records the 16 applied migrations and restricted Bee/label deployment. The
+older local-only observations below describe the 18 October checkpoint. The
+legacy deployed `ai-food`/`usda-search` pair remains unchanged: do not use the
+full-cutover commands below on that project until its client/billing migration
+is authorized and verified.
+
 ## What changed
 
 - `bee-chat` and compatible `ai-food` now use DeepSeek V4 Pro for interpretation

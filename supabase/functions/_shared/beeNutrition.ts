@@ -150,7 +150,7 @@ export function identityMatches(query: FoodQuery, identity: string): boolean {
   }
   for (
     const word of actual.match(
-      /\b(raw|uncooked|fried|scrambled|roasted|baked|boiled|steamed|dry|dried)\b/g,
+      /\b(raw|uncooked|fried|scrambled|roasted|baked|boiled|poached|steamed|dry|dried)\b/g,
     ) ?? []
   ) if (!wanted.split(" ").includes(word)) return false;
   for (
@@ -528,7 +528,10 @@ export async function searchNutrition(
       ? raw.products
       : [];
   if (
-    !query.barcode && products.some((value) => {
+    !query.barcode &&
+    (query.brand !== null || query.variant !== null ||
+      ["bar", "piece", "serving", "pack"].includes(query.portion!.unit)) &&
+    products.some((value) => {
       const p = object(value);
       return p && typeof p.product_name === "string" &&
         containsWords(p.product_name, query.name) &&
@@ -646,7 +649,12 @@ export async function searchNutrition(
       ),
     ];
   });
-  return select(query, entries, "openfoodfacts") ?? (phase === "all" ? await searchUsda(query,deps,now) : unavailable());
+  const selected = select(query, entries, "openfoodfacts");
+  const generic = !query.barcode && !query.brand && !query.variant && query.packageGrams === null;
+  // Conflicting packaged brands do not resolve a generic food question. Keep
+  // them rejected and try an independent generic record, never average them.
+  if (selected && (selected.kind === "found" || !generic)) return selected;
+  return phase === "all" ? await searchUsda(query,deps,now) : unavailable();
 }
 
 async function searchUsda(query:FoodQuery,deps:NutritionDependencies,now:string):Promise<NutritionResult> {

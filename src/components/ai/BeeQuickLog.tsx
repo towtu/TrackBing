@@ -295,7 +295,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.headerAvatar} testID="bee-current-companion"><BeeMascot size="small" situation={headerSituation} active={visible && !inputFocused} /></View>
                 <View style={styles.headerCopy}>
                   <Text accessibilityRole="header" style={styles.title}>Bee</Text>
-                  <Text style={styles.subtitle}>Food, recipes and progress</Text>
+                  <Text style={styles.subtitle}>{snapshot?.entitlement?.access_mode === "private_preview" ? "Private Bee test · no subscription" : "Food, recipes and progress"}</Text>
                 </View>
                 <BeeAction label="Close Bee quick log" iconOnly onPress={close} icon={<X size={18} color={Colors.textSecondary} weight="bold" />} />
               </View>
@@ -577,7 +577,7 @@ const styles = StyleSheet.create({
   userMessageRow: { alignSelf: "flex-end", justifyContent: "flex-end", maxWidth: "88%" },
   messageBubble: { borderRadius: Radii.card, paddingHorizontal: 12, paddingVertical: 11 },
   beeBubble: { flex: 1, minWidth: 0, backgroundColor: Colors.surface },
-  userBubble: { backgroundColor: Colors.accent },
+  userBubble: { backgroundColor: Colors.accent, flexShrink: 1, minWidth: 0, maxWidth: "100%" },
   messageText: { color: Colors.text, fontSize: 14, lineHeight: 21 },
   userMessageText: { color: Colors.textOnAccent },
   welcome: { alignItems: "center", gap: 12, paddingVertical: 12 },

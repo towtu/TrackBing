@@ -49,3 +49,17 @@ describe("Bee untrusted input boundaries", () => {
     expect(retainFoodList(intent, "Calories in 72 g mac and cheese")).toEqual(intent);
   });
 });
+
+// Optional model attributes may be blank; required food identity stays strict.
+import {parseFoodQuery} from './beeIntent.ts';
+it('normalizes blank optional product metadata without accepting blank food names',()=>{
+ const base={name:'egg',preparation:'boiled',brand:'',variant:'',market:'',barcode:'',packageGrams:null,portion:{amount:72,unit:'g'}};
+ expect(parseFoodQuery(base)).toMatchObject({brand:null,variant:null,market:null,portion:{amount:72,unit:'g'}});
+ expect(parseFoodQuery(base)).not.toHaveProperty('barcode');
+ expect(()=>parseFoodQuery({...base,name:''})).toThrow();expect(()=>parseFoodQuery({...base,brand:42})).toThrow();expect(()=>parseFoodQuery({...base,barcode:'bad'})).toThrow();
+});
+it('retains whole egg as food identity so generic USDA lookup is eligible',()=>{
+ const q=parseFoodQuery({name:'egg',preparation:'boiled',brand:null,variant:'whole',portion:{amount:72,unit:'g'}});
+ expect(q).toMatchObject({name:'whole egg',preparation:'boiled',variant:null,portion:{amount:72,unit:'g'}});
+ expect(parseFoodQuery({name:'Fudgee Barr',preparation:null,brand:'Rebisco',variant:'Dark Chocolate',portion:{amount:1,unit:'bar'}}).variant).toBe('Dark Chocolate');
+});

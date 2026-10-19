@@ -9,7 +9,7 @@ async function install(page){
   await require('./fixtures/bee-browser.cjs')(page);
   const recipes=[],personal=[],logs=[],calls=[];
   const thread={id:'22222222-2222-4222-8222-222222222222',version:0};
-  const snapshot={thread,messages:[],memories:[],profile:{age:30},pending:null,entitlement:{tier:'pro',capabilities:{},limits:{},remaining:{},reset_at:null}};
+  const snapshot={thread,messages:[],memories:[],profile:{age:30},pending:null,entitlement:{tier:'pro',access_mode:'private_preview',capabilities:{},limits:{},remaining:{},reset_at:null}};
   const completed=new Map();
   const fulfill=(route,value,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(value)});
   const food={name:'TEST DATA boiled egg',query:{name:'egg',preparation:'boiled',brand:null,variant:null,packageGrams:null,market:null,portion:{amount:100,unit:'g'}},portion:{amount:100,unit:'g'},grams:100,servingLabel:'100 g',source:'usda',calories:150,protein:12,carbs:2,fat:10,evidence:{identity:'TEST DATA boiled egg',url:'https://fdc.nal.usda.gov/food-details/123/nutrients',sourceId:'123',title:'USDA-like TEST DATA',retrievedAt:new Date().toISOString(),excerpt:'Controlled TEST DATA only',record:'independent',basis:{grams:100,unit:'g',count:null,milliliters:null,nutrients:{calories:150,protein:12,carbs:2,fat:10}}}};
@@ -69,8 +69,13 @@ async function verify(browser,base,width){
     await page.goto(base);
     await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();
     const input=page.getByRole('textbox',{name:'Message to Bee',exact:true});await input.waitFor();
-    await input.fill('Make me an egg bowl recipe');await page.getByRole('button',{name:'Send to Bee',exact:true}).click();
+    await page.getByText('Private Bee test · no subscription',{exact:true}).waitFor();
+    const longPrompt='Make me an egg bowl recipe with clear cooking instructions and show the nutrition for each serving before I decide whether to save it.';
+    await input.fill(longPrompt);await page.getByRole('button',{name:'Send to Bee',exact:true}).click();
     await page.getByRole('button',{name:'Save to Cookbook',exact:true}).waitFor();
+    const textBox=await page.getByText(longPrompt,{exact:true}).boundingBox();
+    const sheetBox=await page.getByRole('dialog',{name:'Bee conversation',exact:true}).boundingBox();
+    assert.ok(textBox.x>=sheetBox.x && textBox.x+textBox.width<=sheetBox.x+sheetBox.width,'long user messages wrap inside the chat sheet');
     await page.getByText('75 kcal',{exact:true}).waitFor();
     await page.getByText('1. Cut the boiled egg.',{exact:true}).waitFor();
     assert.equal(data.recipes.length,0);assert.equal(data.logs.length,0);

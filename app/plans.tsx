@@ -218,7 +218,7 @@ export default function Plans() {
           one account across web, iOS and Android.
         </Text>
         <Text style={styles.copy}>
-          Current plan: {status?.entitlement.access_mode === "private_preview" ? "Basic · private Bee test (no subscription)" : status?.entitlement.tier ?? "Loading…"}
+          Current plan: {status?.entitlement.access_mode === "private_preview" ? "Basic · private Bee test (no subscription)" : status?.entitlement.access_mode === "complimentary" ? "Pro · complimentary (no billing)" : status?.entitlement.tier ?? "Loading…"}
         </Text>
         {status?.entitlement.duplicate_subscriptions
           ? (

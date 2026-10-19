@@ -296,7 +296,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.headerAvatar} testID="bee-current-companion"><BeeMascot size="small" situation={headerSituation} active={visible && !inputFocused} /></View>
                 <View style={styles.headerCopy}>
                   <Text accessibilityRole="header" style={styles.title}>Bee</Text>
-                  <Text style={styles.subtitle}>{snapshot?.entitlement?.access_mode === "private_preview" ? "Private Bee test · no subscription" : "Food, recipes and progress"}</Text>
+                  <Text style={styles.subtitle}>{snapshot?.entitlement?.access_mode === "private_preview" ? "Private Bee test · no subscription" : snapshot?.entitlement?.access_mode === "complimentary" ? "Pro · complimentary access" : "Food, recipes and progress"}</Text>
                 </View>
                 <BeeAction label="Close Bee quick log" iconOnly onPress={close} icon={<X size={18} color={Colors.textSecondary} weight="bold" />} />
               </View>

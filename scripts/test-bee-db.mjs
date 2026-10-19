@@ -83,6 +83,9 @@ try {
   if (!process.argv.includes('--tier-policy-baseline')) fixture('supabase/migrations/20261019000100_pro_search_policy.sql');
   const { runTierPolicyDatabaseTests } = await import('../supabase/tests/tier_policy_database.mjs');
   await runTierPolicyDatabaseTests(context);
+  if (!process.argv.includes('--pro-grant-baseline')) fixture('supabase/migrations/20261019000200_complimentary_pro.sql');
+  const { runProGrantDatabaseTests } = await import('../supabase/tests/pro_grant_database.mjs');
+  await runProGrantDatabaseTests(context);
   const edge = spawnSync(process.env.DENO_BINARY ?? "deno", ["test", "--cached-only", "--config", "supabase/functions/deno.json", "--allow-env", "supabase/tests/usda_proxy_deno.mts", "supabase/tests/billing_deno.mts"], { cwd: root, stdio: "inherit" });
   if (edge.status !== 0) throw new Error(edge.error?.message ?? "USDA Edge Function tests failed");
   process.stdout.write("Bee and launch PostgreSQL invariants and USDA Edge Function checks passed.\n");

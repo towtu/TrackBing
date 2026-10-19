@@ -68,6 +68,12 @@ async function verify(browser,base,width,jpeg){
   await page.getByRole('button',{name:'Make a recipe',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Read a label photo',exact:true}).isEnabled(),true);
   assert.equal(await page.getByRole('button',{name:'Get food suggestions',exact:true}).isEnabled(),true);
+  snapshot.entitlement.access_mode='complimentary';
+  await page.goto(base);await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();
+  await page.getByText('Pro · complimentary access',{exact:true}).waitFor();
+  await page.screenshot({path:`${output}/complimentary-pro-${width}.png`,fullPage:true,animations:'disabled'});
+  await page.goto(new URL('/plans',base).href);
+  await page.getByText('Current plan: Pro · complimentary (no billing)',{exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);
   console.log(`${width}px: Plus suggestions/label access, plan wording, photo preview, extraction, kJ/serving review, confirmed save, missing macro and cancel passed; no unexpected browser errors.`);
  }finally{await context.close();}

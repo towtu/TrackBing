@@ -129,8 +129,8 @@ not inferred from TBT or a navigation score. Reports are retained under
 `output/release/lighthouse-*.json`.
 
 **19 October web optimization:** the platform-specific calorie ring reduces the
-entry from 2,893,558 to 2,054,450 raw bytes (29.0%) and estimated gzip from
-709,696 to 549,735 bytes (22.5%). Native retains the original renderer. All seven
+entry from 2,893,558 to 2,054,444 raw bytes (29.0%) and estimated gzip from
+709,696 to 552,423 bytes (22.2%). Native retains the original renderer. All seven
 browser suites pass, including confirmed-food dashboard refresh at three widths.
 Fresh serial Lighthouse medians were 39→41 performance and 20.07→15.63s LCP,
 but every run warned of a slower-than-expected CPU on this memory-constrained

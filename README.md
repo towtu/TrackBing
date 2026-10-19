@@ -59,6 +59,11 @@ npm run lint
 npm run build:web
 ```
 
+For a local web preview, run `node scripts/serve-web-export.cjs` after the build,
+then open `http://localhost:8091`. The build clears Metro's cache so a previous
+mocked CI export cannot leave test authentication settings in the preview.
+CI fixture exports are for automated tests and cannot sign in to real accounts.
+
 Backend checks, isolated database tests, browser checks and native build setup
 are documented in [CI and releases](docs/CI_CD.md). Apply the complete reviewed
 migration chain and deploy functions before publishing a client that uses them.

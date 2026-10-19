@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:functions": "deno check --config supabase/functions/deno.json supabase/functions/bee-chat/index.ts supabase/functions/ai-food/index.ts supabase/functions/ai-label/index.ts supabase/functions/usda-search/index.ts supabase/functions/billing/index.ts supabase/functions/billing-webhook/index.ts supabase/functions/billing-reconcile/index.ts",
     "test:db": "node scripts/test-bee-db.mjs",
-    "build:web": "expo export --platform web && node scripts/finalize-web-export.mjs",
+    "build:web": "expo export --platform web --clear && node scripts/finalize-web-export.mjs",
     "ci:policy": "node scripts/ci/workflow-policy.mjs",
     "ci:lint": "node scripts/ci/lint-workflows.mjs",
     "ci:audit": "node scripts/ci/audit.mjs",

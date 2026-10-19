@@ -22,10 +22,16 @@ are actual files; gzip is an offline level-9 estimate, not measured CDN transfer
 
 | Asset measure | Before | After | Reduction |
 | --- | ---: | ---: | ---: |
-| Entry JS, raw | 2,893,558 B | 2,054,450 B | 29.0% |
-| Entry JS, gzip | 709,696 B | 549,735 B | 22.5% |
-| Three initial HTML script assets, raw | 3,404,855 B | 2,565,455 B | 24.7% |
-| Three initial HTML script assets, gzip | 837,481 B | 677,271 B | 19.1% |
+| Entry JS, raw | 2,893,558 B | 2,054,444 B | 29.0% |
+| Entry JS, gzip | 709,696 B | 552,423 B | 22.2% |
+| Three initial HTML script assets, raw | 3,404,855 B | 2,565,411 B | 24.7% |
+| Three initial HTML script assets, gzip | 837,481 B | 679,916 B | 18.8% |
+
+The current figures use the cold Node 24 rebuild after correcting cached CI
+authentication settings. Earlier exports retained some fixture settings despite
+the local env file; mocked browser suites did not detect that destination error.
+The [preview recovery](../CI_CD.md#return-from-a-controlled-export-to-a-real-local-preview)
+now verifies the actual sign-in destination/key and a real public settings GET.
 
 A separate source-map export confirms no Reanimated, Redash or Worklets modules
 in the new web entry graph. The initial route still loads a 507KB common chunk;
@@ -58,8 +64,8 @@ this performance increment.
 Lighthouse 13.5.0, bundled Playwright Chromium, Node 24.21.0; three alternating
 before/after mobile runs on the same loopback server, without overlapping export
 or browser-suite jobs. Default simulated mobile throttling, fresh browser state.
-Lighthouse used the preceding equivalent-source export; the byte table above
-records the final Node 24 rebuild, whose minified output differs slightly.
+Lighthouse used the preceding mocked-config export; the byte table above
+records the corrected cold Node 24 rebuild, whose minified output differs.
 
 | Median of three runs | Before | After |
 | --- | ---: | ---: |

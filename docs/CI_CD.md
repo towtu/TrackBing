@@ -326,6 +326,38 @@ npx playwright install --with-deps chromium
 npm run ci:browser -- --all
 ```
 
+### Return from a controlled export to a real local preview
+
+The fixture URL/key above are intentionally unusable for real accounts. Do not
+serve that export to sign in. Expo inlines public settings into JavaScript;
+on 19 October, a local export without a cache reset retained the fixture auth
+client even though `.env.local` contained the real project. The sign-in form
+then failed to fetch from the test host. `build:web` now always uses Expo's
+[documented `--clear` export option](https://docs.expo.dev/more/expo-cli/#exporting).
+This trades a cold transform for reliable configuration after switching builds.
+
+Build without the inline fixture variables, using your existing public local
+configuration, then serve the regenerated files:
+
+```sh
+npm run build:web
+node scripts/serve-web-export.cjs
+```
+
+Open `http://localhost:8091` and reload an already-open tab. Changing an env file
+after exporting does not rewrite its compiled JavaScript. This procedure changes
+no account, password, database row or server secret. Backend features still need
+their documented migration/function deployment; a local client build does not
+deploy them.
+If the preview server is already running, leave it running and reload after the
+build instead of starting a second server on the same port.
+
+The corrected preview was verified with an intercepted TEST DATA sign-in: its
+actual request origin and public key match local configuration. A separate
+browser GET to the real public Auth settings returned HTTP 200 with CORS;
+no account login or password was needed. The built JavaScript contains neither
+the fixture host nor its placeholder key. All three-width auth suites passed.
+
 `ci:browser` also accepts `web`, `auth`, `account`, `cookbook`, `motion`,
 `creation`, `label`, or multiple suite names. It serves `dist` on an ephemeral localhost
 port, uses bundled Chromium by default, and bounds each suite to 180 seconds.

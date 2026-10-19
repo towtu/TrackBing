@@ -176,6 +176,15 @@ function compatiblePackage(
     positive(basis.grams) && positive(basis.count) &&
     basis.grams / basis.count === query.packageGrams;
 }
+/** JSONB may reorder fields; every serving and nutrient value must still match. */
+function basisMatches(value: unknown, basis: NutritionBasis): boolean {
+  const stored = object(value);
+  const nutrients = object(stored?.nutrients);
+  return stored !== null && nutrients !== null &&
+    Object.keys(stored).length === 5 && Object.keys(nutrients).length === 4 &&
+    (["grams", "unit", "count", "milliliters"] as const).every(key => stored[key] === basis[key]) &&
+    (["calories", "protein", "carbs", "fat"] as const).every(key => nutrients[key] === basis.nutrients[key]);
+}
 function scaleRecord(
   query: FoodQuery,
   evidence: NutritionEvidence,
@@ -207,7 +216,7 @@ function scaleRecord(
   if (
     snapshot.identity !== evidence.identity || snapshot.url !== evidence.url ||
     snapshot.sourceId !== evidence.sourceId ||
-    JSON.stringify(snapshot.basis) !== JSON.stringify(evidence.basis)
+    !basisMatches(snapshot.basis, evidence.basis)
   ) return unavailable();
   if (
     source === "usda" &&

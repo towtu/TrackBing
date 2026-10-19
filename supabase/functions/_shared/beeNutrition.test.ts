@@ -15,6 +15,17 @@ describe('independent source nutrition',()=>{
   const d=deps(),r=await searchNutrition(q(),d);expect(r).toMatchObject({kind:'found',food:{calories:115,protein:9.4,grams:72,query:{preparation:'boiled'},source:'usda',evidence:{sourceId:'123',license:'CC0-1.0',retrievedAt:'2026-09-26T00:00:00.000Z'}}});expect(d.fetch.mock.calls.filter(([url])=>url.includes("usda.gov"))).toHaveLength(1);
   if(r.kind==='found')expect(scaleEvidence(q({portion:{amount:100,unit:'g'}}),r.food.evidence,'usda')).toMatchObject({kind:'found',food:{calories:160,protein:13,grams:100}});
  });
+ it('reuses stored evidence after JSONB changes object key order without accepting changed nutrition',async()=>{
+  const result=await searchNutrition(q(),deps());expect(result.kind).toBe('found');
+  if(result.kind!=='found')throw Error('Missing TEST DATA record');
+  const b=result.food.evidence.basis,n=b.nutrients;
+  // PostgreSQL JSONB preserves values, but does not preserve object key order.
+  const basis={milliliters:b.milliliters,count:b.count,unit:b.unit,nutrients:{fat:n.fat,carbs:n.carbs,protein:n.protein,calories:n.calories},grams:b.grams};
+  const restored={...result.food.evidence,basis};
+  expect(scaleEvidence(q({portion:{amount:130,unit:'g'}}),restored,'usda')).toMatchObject({kind:'found',food:{grams:130,calories:208}});
+  expect(scaleEvidence(q(),{...restored,basis:{...basis,nutrients:{...basis.nutrients,calories:999}}},'usda').kind).toBe('unavailable');
+  expect(scaleEvidence(q(),{...restored,basis:{...basis,grams:200}},'usda').kind).toBe('unavailable');
+ });
  it.each(['Egg, whole, boiled or poached','Egg, whole, raw','Egg, whole, fried','Egg whites, boiled','Whole wheat bread'])('rejects incompatible identity %s',async description=>expect((await searchNutrition(q(),deps([{...egg,description}]))).kind).toBe('unavailable'));
  it('replaces whole egg with a matching whites lookup rather than reusing whole egg',async()=>{
   const whites={...egg,description:'Egg whites, cooked, hard-boiled',foodNutrients:ns.map(n=>({...n,value:n.nutrientId===1008?50:n.value}))};

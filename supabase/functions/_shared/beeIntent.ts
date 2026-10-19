@@ -328,7 +328,7 @@ export function explicitMemory(value: string): MemoryChange | null {
 }
 export function portionCorrection(value: string): Portion | null {
   const match = value.trim().match(
-    /^(?:actually[, ]*|instead[, ]*)?(?:(?:make (?:it|that)|change (?:it|that) to|use)\s+)?(\d+(?:\.\d+)?)\s*(grams?|g|ounces?|oz|milliliters?|ml|cups?|pieces?|bars?|servings?|packs?)[.!]?$/i,
+    /^(?:actually[, ]*|instead[, ]*)?(?:(?:make (?:it|that)|change (?:it|that) to|use|how about|what about)\s+)?(\d+(?:\.\d+)?)\s*(grams?|g|ounces?|oz|milliliters?|ml|cups?|pieces?|bars?|servings?|packs?)[.!?]?$/i,
   );
   if (!match) return null;
   const unit = match[2].toLowerCase();

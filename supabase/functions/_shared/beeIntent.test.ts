@@ -36,6 +36,16 @@ describe("Bee untrusted input boundaries", () => {
     expect(portionCorrection("Actually, make it 100 grams.")).toEqual({amount:100,unit:"g"});
     expect(portionCorrection("Egg whites only")).toBeNull();
   });
+  it.each(["how about 200g?", "What about 200 grams?", "Actually, how about 200 g?"])("recognizes a conversational portion correction: %s", message => {
+    expect(portionCorrection(message)).toEqual({amount:200,unit:"g"});
+  });
+  it("does not infer a unit or drop other foods from a portion correction", () => {
+    for (const message of ["how about 200?", "how about 200 g chicken?", "200 g and an egg", "how about 200 kg?"]) {
+      expect(portionCorrection(message)).toBeNull();
+    }
+    expect(() => portionCorrection("how about 0 g?")).toThrow();
+    expect(() => portionCorrection("how about 10001 g?")).toThrow();
+  });
   it.each(["How many calories in 72 g egg and one slice of toast?", "72 g egg and tea from a café", "Calories for egg plus a slice of toast"])("does not drop a food list containing internal prepositions: %s", message => {
     const intent = parseIntent({ kind: "nutrition", query: { name: "egg", preparation: "boiled", brand: null, variant: null, packageGrams: null, market: null, portion: { amount: 72, unit: "g" } } });
     expect(retainFoodList(intent, message)).toEqual({ kind: "multiple" });

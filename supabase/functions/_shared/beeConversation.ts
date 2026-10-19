@@ -205,6 +205,13 @@ export function deterministicTurn(
     return {lookup_query:withPreparation(previousFood,normalized),invalidate_pending:true};
   }
   const portion = portionCorrection(text);
+  if (portion && !context.pending) {
+    if (previousFood) return {lookup_query:{...previousFood,portion},invalidate_pending:true};
+    return {
+      text: "Which food and preparation should I use that portion for?",
+      state: { awaiting: "clarification" },
+    };
+  }
   if (portion && context.pending && (!context.pending.kind || context.pending.kind === "food")) {
     if (context.pending.food.source === "ai_estimate") {
       return {

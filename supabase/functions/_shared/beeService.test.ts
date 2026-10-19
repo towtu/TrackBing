@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleBeeRequest, type BeeStore, type BeeDependencies } from "./beeService.ts";
 import type { BeeSnapshot, BeeResult } from "./beeTypes.ts";
+import { foodFromUserLabel } from "./beeCreation.ts";
 
 const id="6d2f4d59-a884-49be-b7a8-e98d2c524ec9";
 const snapshot:BeeSnapshot={thread:{id,version:0},messages:[],memories:[],profile:{},pending:null};
@@ -12,6 +13,18 @@ function setup() {
 function request(text:string,extras:Record<string,unknown>={}) {return new Request("https://bee.test",{method:"POST",headers:{Authorization:"Bearer test", "Content-Type":"application/json"},body:JSON.stringify({requestId:id,threadId:id,expectedVersion:0,timeZone:"Asia/Manila",command:{kind:"message",text},...extras})});}
 async function result(response:Response):Promise<BeeResult> {return response.json();}
 describe("Bee endpoint enforcement",()=>{
+  it.each(["130g", "how about 200g?"])("recalculates restored rice context for %s without a paid call or confirmation",async text=>{
+    const {dependencies,store}=setup();
+    // Explicit label TEST DATA, not a real rice nutrition claim.
+    const food=foodFromUserLabel('Label food "cooked rice TEST" per 100 g: calories 100, protein 2 g, carbs 20 g, fat 1 g.',new Date("2026-09-14T16:00:00Z"))!;
+    const pending={id,thread_id:id,kind:"food" as const,review_version:0,status:"pending" as const,local_date:"2026-09-15",time_zone:"Asia/Manila",expires_at:"2026-09-14T16:30:00Z",food};
+    vi.mocked(store.begin).mockResolvedValue({ok:true,replay:false,thread_id:id,token:id,state:{awaiting:"review",query:food.query},pending});
+    await handleBeeRequest(request(text),dependencies);
+    expect(dependencies.interpret).not.toHaveBeenCalled();expect(dependencies.search).not.toHaveBeenCalled();expect(dependencies.ground).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();
+    const outcome=vi.mocked(store.finish).mock.calls.at(-1)?.[2];
+    expect(outcome?.draft).toMatchObject({name:"cooked rice TEST",grams:text==="130g"?130:200,source:"user_label"});
+    expect(outcome?.invalidate_pending).toBe(true);expect(outcome?.confirm).toBeUndefined();
+  });
   it('accepts a complete explicit branded label without guessing package size or flavor',async()=>{
     const {dependencies,store}=setup();
     await handleBeeRequest(request('Review my label food "Fudgee Barr Chocolate TEST" per 38 g: calories 100, protein 2 g, carbs 15 g, fat 3 g; portion 38 g.'),dependencies);

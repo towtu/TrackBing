@@ -56,6 +56,15 @@ not claim that the pending full client/billing cutover has occurred.
   a packaged-product flavor that disables USDA lookup.
 - Irrelevant or conflicting packaged OFF products cannot block a generic-food fallback. Mixed boiled/poached records cannot answer a boiled-only question.
 - Completed food reviews use server-calculated text directly, removing the second paid paraphrase and its failure/number-rewriting risk. The planning/accounting call must still succeed. No model reply authorizes a diary write.
+- Portion follow-ups such as `130g`, `how about 200g?` and `what about 200 grams?`
+  retain the last food and preparation. A current independent review reuses its
+  original source basis without another paid model/search call; a known query
+  awaiting evidence triggers that same food lookup with the new portion. Without
+  food context Bee asks which food. Changed portions require a new review.
+- Stored evidence compares serving and nutrient values rather than JSON field
+  order. PostgreSQL JSONB can reorder fields without changing them; this must
+  not cause a source-backed portion correction to be rejected. Changed values
+  and unsupported source/serving conversions still fail validation.
 
 Existing source/serving validation, exact provenance, pending versions, local
 midnight checks and atomic confirmations remain authoritative. Web answers are
@@ -112,7 +121,7 @@ Stateless requests are not a zero-retention or no-training guarantee.
 
 ## Final checks and practical limits
 
-- `npm test`: 961 tests across 64 files passed, using mocked paid APIs and
+- `npm test`: 972 tests across 64 files passed, using mocked paid APIs and
   explicitly identified synthetic nutrition fixtures.
 - `npm run typecheck`, `npm run lint`, `npm run typecheck:functions`: passed.
   Frontend checking is not being used as evidence for Edge Function types.
@@ -132,6 +141,12 @@ Stateless requests are not a zero-retention or no-training guarantee.
   and all macros matched one-decimal server scaling. A question created zero
   diary rows; explicit confirmation created one; the same request replay
   returned success with exactly one row. No nutrition number was hardcoded.
+- Live rice follow-up test used the actual TrackBing Gist record: `600 g cooked
+  white rice` → `130g` → fresh server load → `how about 200g?`. Food, preparation
+  and original evidence stayed the same; server arithmetic matched each portion
+  and corrections made zero additional model calls. Old/cancelled Add requests
+  returned `stale_action`; no diary rows were created. The temporary account was
+  removed. This separately reproduced and verified the JSONB ordering fix.
 - The same account's real Bee history loaded in Chromium at 375/768/1440 with
   zero page errors or failed requests. The test's food, summary and account were
   then removed. This does not establish physical native-device behavior.

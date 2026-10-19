@@ -362,11 +362,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                       <View style={styles.welcome}>
                         <Text style={styles.welcomeTitle}>What can I help with?</Text>
                         <Text style={styles.welcomeText}>
-                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds one-food AI help; Pro adds adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Describe one food and its portion for AI food help. Pro adds adaptive conversations, preferences and progress guidance." : "Ask about food, make a recipe, or review your progress. Saving a food or recipe keeps it in your library; diary additions need a separate review."}
+                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds camera label reading and food suggestions; Pro adds web search and adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Read a nutrition label with your camera, get food suggestions, or check one food and portion. Pro adds web search and adaptive conversations." : "Ask about food, make a recipe, or review your progress. Saving a food or recipe keeps it in your library; diary additions need a separate review."}
                         </Text>
                         <View style={styles.starters}>
                           <BeeAction label="What do you know about me?" disabled={blocked} onPress={() => void sendCommand({ kind: "message", text: "What do you know about me?" })} />
                           <BeeAction label="Help me log a food" disabled={blocked} onPress={() => { setInput("I ate "); inputRef.current?.focus(); }} />
+                          {snapshot.entitlement?.tier !== "basic" ? <BeeAction label="Get food suggestions" disabled={blocked} onPress={() => {setInput("Suggest some foods for ");inputRef.current?.focus();}}/> : null}
                           {snapshot.entitlement?.tier==="pro" ? <BeeAction label="Make a recipe" disabled={blocked} onPress={()=>{setInput("Make me a recipe with ");inputRef.current?.focus();}}/> : null}
                         </View>
                       </View>

@@ -26,6 +26,18 @@ const req = (body: unknown = { requestId, query: "72 g boiled egg", mode: "auto"
 const payload = async (response: Response) => await response.json() as LegacyFoodPayload;
 
 describe("Legacy food migration", () => {
+  it('Plus can use independent fallback without executing Search',async()=>{
+    const {deps,store}=setup();Object.assign(store,{canSearch:async()=>false});
+    vi.mocked(deps.resolve).mockResolvedValue({kind:'unavailable',message:'No preferred match'});deps.fallbackResolve=vi.fn().mockResolvedValue({kind:'found',food});
+    expect(await payload(await handleLegacyFoodRequest(req(),deps))).toHaveProperty('food.serving_grams',72);
+    expect(deps.ground).not.toHaveBeenCalled();expect(store.reserveSearch).not.toHaveBeenCalled();expect(deps.fallbackResolve).toHaveBeenCalledOnce();
+  });
+  it('Plus explicit web requests fail before a model or quota reservation',async()=>{
+    const {deps,store}=setup();Object.assign(store,{canSearch:async()=>false});
+    const r=await handleLegacyFoodRequest(req({requestId,query:'72 g boiled egg',mode:'web'}),deps);
+    expect(r.status).toBe(402);expect(await payload(r)).toMatchObject({error:'pro_required'});
+    expect(store.reserve).not.toHaveBeenCalled();expect(deps.interpret).not.toHaveBeenCalled();expect(deps.ground).not.toHaveBeenCalled();
+  });
   it("returns original portion and licensed evidence in the existing food contract", async () => {
     const { deps, store } = setup(); const response = await handleLegacyFoodRequest(req(), deps);
     expect(await payload(response)).toMatchObject({ food: { name: food.name, serving_grams: 72, serving_label: "72 g", kcal: 112, source: "usda", confidence: "high", evidence: food.evidence, requested_portion: query.portion, requested_query: query }, alternatives: [] });

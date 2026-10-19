@@ -247,8 +247,12 @@ legal copy and optional Plausible account are still operator inputs.
 | Tier | Monthly interactions | Search queries | Insights | Input / output tokens |
 | --- | ---: | ---: | ---: | ---: |
 | Basic | 0 | 0 | 0 | 0 / 0 |
-| Plus | 60 food assistance | 10 | 0 | 160,000 / 50,000 |
+| Plus | 60 food assistance / label / suggestions | 0 | 0 | 160,000 / 50,000 |
 | Pro | 250 food/chat | 50 | 30 | 800,000 / 200,000 |
+
+The [19 October plan decision](plan-access.md) makes live web search Pro-only.
+Pro includes Plus label reading and suggestions; the old Plus Search allowance
+is superseded by migration `20261019000100_pro_search_policy.sql`.
 
 One account shares counters across endpoints/devices. Each requested paid turn
 is one interaction, not one charge per internal model step. Insights have their

@@ -6,8 +6,8 @@ DeepSeek decision supersedes the September Gemini specification.
 
 ## Applied setup
 
-- Applied all 16 migrations in filename order through
-  `20261019000000_private_bee_preview.sql` using `supabase db push --linked`.
+- Applied all 17 migrations in filename order through
+  `20261019000100_pro_search_policy.sql` using `supabase db push --linked`.
   Remote migration history now records the actual applied files.
 - Deployed `bee-chat` and `ai-label`. They validate sessions using Auth `getUser`
   themselves; gateway legacy-JWT verification is disabled deliberately to support
@@ -25,6 +25,11 @@ DeepSeek decision supersedes the September Gemini specification.
 - Kept public release, legal approval, payment and optional analytics flags off.
   The privacy gate covers this explicitly requested personal evaluation, not
   legal approval for processing every customer's private body/diary data.
+- Applied the user's [plan decision](../plan-access.md): Plus includes camera
+  label reading and non-search food suggestions; Pro includes both plus live
+  web search. Only Plus's former Search allowance changes, from ten to zero.
+  The server and restricted reservation RPC enforce the split. Redeployed
+  `bee-chat`; rebuilt the localhost client. No new secret or payment activation.
 
 The app at **http://localhost:8091** uses the real linked Supabase backend.
 Sign in normally, then choose **Ask Bee**. Its private-test label distinguishes
@@ -121,7 +126,7 @@ Stateless requests are not a zero-retention or no-training guarantee.
 
 ## Final checks and practical limits
 
-- `npm test`: 972 tests across 64 files passed, using mocked paid APIs and
+- `npm test`: 978 tests across 64 files passed, using mocked paid APIs and
   explicitly identified synthetic nutrition fixtures.
 - `npm run typecheck`, `npm run lint`, `npm run typecheck:functions`: passed.
   Frontend checking is not being used as evidence for Edge Function types.
@@ -129,10 +134,18 @@ Stateless requests are not a zero-retention or no-training guarantee.
   the new preview grant/cap/replay invariants; 17 Deno endpoint tests passed.
   The complete 16-file migration chain also passed against the schema-only
   production copy before the actual push.
+- The seventeenth policy migration passed the full disposable PostgreSQL suite,
+  including Basic/Plus/Pro capability checks, zero Plus Search charges,
+  concurrent Pro caps, private-evaluation precedence and service-only RPC grants.
+  The baseline test failed on the old Plus allowance before the migration.
 - Production web export/finalizer and controlled recipe/chat checks passed at
   375/768/1440, including long-message wrapping, private-test labeling,
   superseded review buttons, cancel, library saves and separate diary actions.
   These controlled UI checks use mocks, not real customer histories.
+- Updated label/suggestion/plan checks passed at all three widths: Plus sends
+  `food_assist`, suggestions alone make no diary or photo request, label reading
+  keeps its separate review/confirmation, Basic controls stay disabled and Pro
+  inherits label/suggestion access. No unexpected page errors or failed requests.
 - Actual provider readiness confirmed HTTP200 and available balance without
   displaying balances, keys, prompts or private profiles. Live authenticated
   chat and anonymous401 checks were separate from the mocked tests.

@@ -26,9 +26,9 @@ const copy = {
   basic:
     "Manual food and weight tracking, goals, barcode search, personal foods and recipes.",
   plus:
-    "60 food help requests and 10 live Search queries each month. One food at a time; no adaptive chat.",
+    "60 shared requests each month for camera label reading, food suggestions and source-backed food help. Web search is included with Pro.",
   pro:
-    "250 Bee interactions, 50 live Search queries and 30 dashboard insights each month. Adaptive chat, preferences, weight guidance and reviewed goal suggestions.",
+    "Everything in Plus, with 250 Bee interactions, 50 live web Search queries and 30 dashboard insights each month. Adaptive chat, preferences, weight guidance and reviewed goal suggestions.",
 };
 export default function Plans() {
   const router = useRouter();

@@ -46,6 +46,7 @@ Deno.serve(async (req: Request) => {
         const response = await rpc<{ ok: boolean }>("finish_ai_budget", { p_request: request.requestId, p_token: token, p_success: success, p_result: result });
         if (!response.ok) throw new Error("reservation_conflict");
       },
+      canSearch: async () => (await rpc<{tier:string}>("resolve_entitlement", {})).tier === "pro",
       reserveSearch: (request, token) => rpc("reserve_ai_search_queries", { p_request: request.requestId, p_token: token,p_call:request.requestId,p_queries:1 }),
       measureSearch: async (request, token, count) => {
         const response = await rpc<{ ok: boolean }>("measure_ai_search_queries", { p_request: request.requestId, p_token: token,p_call:request.requestId,p_actual:count });

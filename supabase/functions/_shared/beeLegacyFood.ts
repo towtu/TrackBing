@@ -14,6 +14,7 @@ export type LegacyFoodError = "upgrade_required" | "pro_required" | "monthly_req
 export type LegacyFoodPayload = { food: LegacyFood; alternatives: LegacyFood[] } | { error: LegacyFoodError; message?: string; answer?: GroundedAnswer };
 export interface LegacyFoodStore {
   policy?(): Promise<LegacyFoodError | null>;
+  canSearch?(): Promise<boolean>;
   recordCall?(request: LegacyFoodRequest, token:string, callId:string, usage:GeminiUsage):Promise<void>;
   reserve(request: LegacyFoodRequest, fingerprint: string, token: string): Promise<{ ok: true; replay: false } | { ok: true; replay: true; result: LegacyFoodPayload } | { ok: false; error: string }>;
   release(request: LegacyFoodRequest, token: string, success: boolean, result: LegacyFoodPayload | null): Promise<void>;
@@ -84,6 +85,8 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
   try {
     const policyError = await store.policy?.();
     if (policyError) return json({error:policyError},["upgrade_required","pro_required"].includes(policyError)?402:403);
+    const canSearch = store.canSearch ? await store.canSearch() : true;
+    if (request.mode === "web" && !canSearch) return json({error:"pro_required"},402);
     const fingerprint = await requestFingerprint({ endpoint: "ai-food", query: request.query, mode: request.mode });
     const reservation = await store.reserve(request, fingerprint, token);
     if (!reservation.ok) return json({ error: quotaError(reservation.error) },["upgrade_required","pro_required"].includes(reservation.error)?402:429);
@@ -110,7 +113,7 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
     if (request.mode !== "web") {
       const resolved=await deps.resolve(intent.query,signal,user.id);
       const response=await independentResult(resolved);if(response)return response;
-      if (!deps.searchEnabled()) {
+      if (!canSearch || !deps.searchEnabled()) {
         if (deps.fallbackResolve) {const fallback=await independentResult(await deps.fallbackResolve(intent.query,signal,user.id));if(fallback)return fallback;}
         return await finish({error:"needs_input",message:resolved.kind!=="found" ? resolved.message : "Enter the label manually."},false);
       }

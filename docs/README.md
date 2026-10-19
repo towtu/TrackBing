@@ -7,6 +7,7 @@
 | Understand folders and local generated files | [Project structure](project-structure.md) |
 | Configure the current DeepSeek assistant and label reader | [DeepSeek Bee](deepseek-label-photos.md) |
 | Use the deployed private Bee backend on localhost | [Private evaluation](launch/2026-10-19-private-bee.md) |
+| Compare Plus camera/suggestions and Pro web search | [Plan access](plan-access.md) |
 | See what is verified and what still blocks launch | [Launch readiness](launch/2026-10-18-release-readiness.md) |
 | Continue the verified Vercel/GitHub setup | [Hosting connection](launch/2026-10-19-release-connection.md) |
 | Run CI, prepare releases, or recover a failed release | [CI and releases](CI_CD.md) |

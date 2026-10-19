@@ -13,6 +13,11 @@ describe("Bee untrusted input boundaries", () => {
   it("a model cannot dispatch confirmation, memory writes, arbitrary requests or SQL", () => {
     for (const kind of ["confirm", "memory_set", "fetch", "sql", "save"]) expect(() => parseIntent({kind})).toThrow();
   });
+  it("validates bounded food suggestions without invented nutrition or success claims",()=>{
+    const good={kind:'suggestion',foods:['tofu','boiled egg'],explanation:'Pick a food you enjoy; I can check a specific portion.'};
+    expect(parseIntent(good)).toEqual(good);
+    for(const bad of [{...good,foods:[]},{...good,foods:['one','two','three','four']},{...good,explanation:'Tofu contains 100 kcal.'},{...good,explanation:'Saved your food.'},{...good,foods:['https://example.org']},{...good,confirm:true}])expect(()=>parseIntent(bad)).toThrow();
+  });
   it("keeps cooking identity and does not accept invented conversions", () => {
     const query = {name:"egg",preparation:"boiled whole edible portion",brand:null,variant:null,packageGrams:null,market:null,portion:{amount:72,unit:"g"}};
     expect(parseIntent({kind:"nutrition", query})).toEqual({kind:"nutrition", query});

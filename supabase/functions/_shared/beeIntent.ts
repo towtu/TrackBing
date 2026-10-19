@@ -210,12 +210,24 @@ export function parseFoodQuery(value: unknown): FoodQuery {
 }
 export type BeeIntent =
   | { kind: "nutrition"; query: FoodQuery }
+  | { kind: "suggestion"; foods: string[]; explanation: string }
   | { kind: "clarify"; question: string; query: FoodQuery | null }
   | { kind: "history"; daysAgo: number; repeat: boolean }
   | { kind: "multiple" | "chat" };
 export function parseIntent(value: unknown): BeeIntent {
   const r = record(value);
   switch (r.kind) {
+    case "suggestion": {
+      fields(r, ["kind", "foods", "explanation"]);
+      if (!Array.isArray(r.foods) || r.foods.length < 1 || r.foods.length > 3) throw new Error("bad_request");
+      const safe = (value: unknown, max: number) => {
+        const valueText = text(value, max);
+        // Suggestions are ideas, not sourced nutrition, medical advice or saved actions.
+        if (/[\d<>]|https?:|\b(?:kcal|calories|grams|macros|saved|added|logged|recorded|updated|deleted|cure|diagnose|treat|secret|token|password)\b/i.test(valueText)) throw new Error("bad_request");
+        return valueText;
+      };
+      return { kind: "suggestion", foods: r.foods.map(food => safe(food, 80)), explanation: safe(r.explanation, 320) };
+    }
     case "nutrition":
       fields(r, ["kind", "query"]);
       return { kind: "nutrition", query: parseFoodQuery(r.query) };

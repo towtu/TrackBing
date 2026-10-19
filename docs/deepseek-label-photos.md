@@ -5,11 +5,15 @@ Gemini provider choice in the September brief. Local implementation is separate
 from production deployment and live provider verification.
 
 **19 October update:** [Private Bee evaluation](launch/2026-10-19-private-bee.md)
-records the 16 applied migrations and restricted Bee/label deployment. The
+records the 17 applied migrations and restricted Bee/label deployment. The
 older local-only observations below describe the 18 October checkpoint. The
 legacy deployed `ai-food`/`usda-search` pair remains unchanged: do not use the
 full-cutover commands below on that project until its client/billing migration
 is authorized and verified.
+
+[Current plan access](plan-access.md): Plus includes label reading and food
+suggestions; Pro inherits those and adds live web search. This supersedes the
+earlier Plus Search allowance. Request/token budgets otherwise remain unchanged.
 
 ## What changed
 

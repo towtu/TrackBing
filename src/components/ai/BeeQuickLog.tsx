@@ -50,6 +50,7 @@ const LIVE_ANSWER_PLACEHOLDER = "I showed a live search answer. Search again to 
 export function BeeQuickLog({ userId }: { userId: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const isDashboard = pathname === "/" || pathname === "/dashboard";
   const companion = useBeeCompanion();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -261,12 +262,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
   return (
     <>
-      {!visible && !keyboardOpen && !companion.librarySheetOpen && pathname !== "/" && pathname !== "/dashboard" ? <BeeAction
+      {!visible && !keyboardOpen && !companion.librarySheetOpen ? <BeeAction
         label="Open Bee quick log"
         iconOnly
         onPress={open}
-        style={[styles.floatingButton, isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile]}
-        icon={(
+        style={[styles.floatingButton, isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile, isDashboard && styles.dashboardLauncher]}
+        icon={isDashboard ? <ChatCircleText size={28} color={Colors.textOnAccent} weight="bold" /> : (
           <>
             <View style={styles.launcherMascotViewport}><BeeMascot size="small" situation={launcherSituation} /></View>
             <View style={styles.floatingBadge}><ChatCircleText size={13} color={Colors.textOnAccent} weight="fill" /></View>
@@ -552,6 +553,7 @@ const styles = StyleSheet.create({
   launcherMascotViewport: { width: 54, height: 54, alignItems: "center", justifyContent: "center", overflow: "visible" },
   floatingButtonMobile: { right: 16, bottom: 112, width: 60, height: 60, borderRadius: 30 },
   floatingButtonDesktop: { right: 24, bottom: 24, width: 60, height: 60 },
+  dashboardLauncher: { backgroundColor: Colors.accent },
   floatingBadge: {
     position: "absolute", right: -1, bottom: -1, width: 22, height: 22, borderRadius: 11,
     alignItems: "center", justifyContent: "center", backgroundColor: Colors.accent, borderWidth: 2, borderColor: Colors.primary,

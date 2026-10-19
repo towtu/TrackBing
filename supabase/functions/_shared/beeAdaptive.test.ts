@@ -4,6 +4,17 @@ import { parseBeeDecision, parseBeeReply, weightTrend, makeWeightDraft, makeGoal
 const now = new Date("2026-09-27T02:00:00Z");
 const profile = {age:30,gender:"male",current_weight:72.4,height:175,activity_level:"1.375",goal_mode:"estimated_rate",goal_rate:-0.005,calorie_target:1800,protein_grams:112,carbs_grams:202,fat_grams:60,protein_ratio:25,carbs_ratio:45,fat_ratio:30,target_weight:68,profile_revision:4};
 describe("adaptive Bee read decisions", () => {
+  it("accepts absent optional capabilities encoded as JSON null",()=>{
+    const reply={reply:"Hello! How can I help?",nextStep:"answer",suggestedPose:"greeting"};
+    expect(parseBeeDecision({...reply,requestedReads:null,followUpQuestion:null,query:null,recipe:null})).toEqual(reply);
+  });
+  it.each(["", "  "])("treats an unused blank follow-up as absent: %j",followUpQuestion=>{
+    expect(parseBeeDecision({reply:"Let me check the food.",nextStep:"lookup_food",suggestedPose:"searching",followUpQuestion})).not.toHaveProperty("followUpQuestion");
+  });
+  it.each([{query:false},{requestedReads:"today_food"},{followUpQuestion:42},{recipe:[]},{reply:null},{nextStep:null},{suggestedPose:null}])("continues rejecting malformed populated or required fields: %j",invalid=>{
+    expect(()=>parseBeeDecision({reply:"Hello",nextStep:"answer",suggestedPose:"greeting",...invalid})).toThrow();
+  });
+
   it("allows bounded read-only decisions and an approved pose",()=>{
     expect(parseBeeDecision({reply:"Let me check your recorded week.",nextStep:"read_data",requestedReads:["weight_history","current_goal"],suggestedPose:"thinking"})).toMatchObject({nextStep:"read_data",requestedReads:["weight_history","current_goal"]});
   });

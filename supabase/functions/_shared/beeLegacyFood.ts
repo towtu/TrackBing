@@ -14,6 +14,7 @@ export type LegacyFoodError = "upgrade_required" | "pro_required" | "monthly_req
 export type LegacyFoodPayload = { food: LegacyFood; alternatives: LegacyFood[] } | { error: LegacyFoodError; message?: string; answer?: GroundedAnswer };
 export interface LegacyFoodStore {
   policy?(): Promise<LegacyFoodError | null>;
+  canSearch?(): Promise<boolean>;
   recordCall?(request: LegacyFoodRequest, token:string, callId:string, usage:GeminiUsage):Promise<void>;
   reserve(request: LegacyFoodRequest, fingerprint: string, token: string): Promise<{ ok: true; replay: false } | { ok: true; replay: true; result: LegacyFoodPayload } | { ok: false; error: string }>;
   release(request: LegacyFoodRequest, token: string, success: boolean, result: LegacyFoodPayload | null): Promise<void>;
@@ -62,7 +63,7 @@ function validLiveAnswer(value: GroundedAnswer): boolean {
   return typeof value.text === "string" && !!value.text.trim() && value.text.length <= 20_000 && Number.isSafeInteger(value.searchQueryCount) && value.searchQueryCount > 0 && value.searchQueryCount <= 32
     && Array.isArray(value.citations) && value.citations.length > 0 && value.citations.length <= 100
     && value.citations.every(c => isSafeGroundingUrl(c.url) && typeof c.title === "string" && !!c.title.trim() && Number.isSafeInteger(c.startIndex) && Number.isSafeInteger(c.endIndex) && c.startIndex >= 0 && c.startIndex < c.endIndex && c.endIndex <= value.text.length)
-    && Array.isArray(value.searchSuggestionsHtml) && value.searchSuggestionsHtml.length > 0 && value.searchSuggestionsHtml.length <= 5 && value.searchSuggestionsHtml.every(validateSuggestionsHtml);
+    && Array.isArray(value.searchSuggestionsHtml) && (value.provider === "deepseek" ? value.searchSuggestionsHtml.length === 0 : value.searchSuggestionsHtml.length > 0 && value.searchSuggestionsHtml.length <= 5) && value.searchSuggestionsHtml.every(validateSuggestionsHtml);
 }
 function quotaError(error: string): LegacyFoodError { return ["upgrade_required", "pro_required", "monthly_request_limit", "monthly_insight_limit", "monthly_input_limit", "monthly_output_limit", "monthly_search_limit", "rate_limited", "over_free_quota", "over_pro_cap", "busy", "conflict"].includes(error) ? error as LegacyFoodError : "ai_unavailable"; }
 
@@ -84,6 +85,8 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
   try {
     const policyError = await store.policy?.();
     if (policyError) return json({error:policyError},["upgrade_required","pro_required"].includes(policyError)?402:403);
+    const canSearch = store.canSearch ? await store.canSearch() : true;
+    if (request.mode === "web" && !canSearch) return json({error:"pro_required"},402);
     const fingerprint = await requestFingerprint({ endpoint: "ai-food", query: request.query, mode: request.mode });
     const reservation = await store.reserve(request, fingerprint, token);
     if (!reservation.ok) return json({ error: quotaError(reservation.error) },["upgrade_required","pro_required"].includes(reservation.error)?402:429);
@@ -110,7 +113,7 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
     if (request.mode !== "web") {
       const resolved=await deps.resolve(intent.query,signal,user.id);
       const response=await independentResult(resolved);if(response)return response;
-      if (!deps.searchEnabled()) {
+      if (!canSearch || !deps.searchEnabled()) {
         if (deps.fallbackResolve) {const fallback=await independentResult(await deps.fallbackResolve(intent.query,signal,user.id));if(fallback)return fallback;}
         return await finish({error:"needs_input",message:resolved.kind!=="found" ? resolved.message : "Enter the label manually."},false);
       }
@@ -119,14 +122,14 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
     // A consumed Search reservation is never reusable, even when the lookup credit was refunded.
     if (!search.ok || search.replay !== false) return await finish({ error: search.ok ? "search_unavailable" : quotaError(search.error) }, false);
     let groundedUsage:GeminiUsage|undefined; const searchCall=crypto.randomUUID();
-    let searchQueries = 3; let answer: GroundedAnswer | undefined; let searchFailed=false;
+    let searchQueries = 1; let answer: GroundedAnswer | undefined; let searchFailed=false;
     try {
       answer = await deps.ground(intent.query, signal, usage => { groundedUsage=usage; searchQueries = usage.searchQueries; });
       if (!validLiveAnswer(answer)) throw new Error("invalid_response");
       searchQueries = answer.searchQueryCount;
     } catch { searchFailed=true;answer=undefined; } finally {
       // Actual queries remain accounted for even if citation/widget validation rejects the answer.
-      await store.recordCall?.(request,token,searchCall,groundedUsage??{inputTokens:2000,outputTokens:4096,searchQueries:3});
+      await store.recordCall?.(request,token,searchCall,groundedUsage??{inputTokens:2000,outputTokens:4096,searchQueries:1});
       await store.measureSearch(request, token, searchQueries);
     }
     // No grounded text or links enter this independent lookup.

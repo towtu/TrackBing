@@ -10,22 +10,6 @@
       "expires": "2026-10-18"
     },
     {
-      "package": "image-size",
-      "advisory": "GHSA-5p2g-fcmc-qvqq",
-      "severity": "high",
-      "owner": "towtu",
-      "reason": "Temporary acknowledgement of the current JXL/HEIF parser denial-of-service finding in the Expo/Metro image tooling dependency. Verify a compatible patched version and exported assets before adopting the fix; remediate by the expiry date. This finding remains open.",
-      "expires": "2026-10-18"
-    },
-    {
-      "package": "image-size",
-      "advisory": "GHSA-w3rx-r6r6-pgpr",
-      "severity": "high",
-      "owner": "towtu",
-      "reason": "Temporary acknowledgement of the current ICNS parser denial-of-service finding in the Expo/Metro image tooling dependency. Verify a compatible patched version and exported assets before adopting the fix; remediate by the expiry date. This finding remains open.",
-      "expires": "2026-10-18"
-    },
-    {
       "package": "node-forge",
       "advisory": "GHSA-86w9-cpqp-85rv",
       "severity": "high",

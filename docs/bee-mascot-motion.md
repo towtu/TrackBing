@@ -8,7 +8,9 @@ permission. Production publication and a native device walkthrough remain separa
 
 - The dashboard has a larger 116 px full-body Bee beside its daily guidance,
   with an accessible “Ask Bee” button and a tappable mascot. It has no duplicate
-  floating Bee. Other routes retain the compact shared chat launcher; page
+  floating Bee. A bottom-right chat icon opens the same conversation and stays
+  above mobile navigation. It hides while chat, the keyboard or a library sheet
+  is open. Other routes retain the compact shared chat launcher; page
   guidance uses text rather than repeating artwork. The plans page no longer
   repeats an unrelated greeting image.
 - Opening chat hides the dashboard artwork and moves Bee into its fixed header. The transcript and welcome state

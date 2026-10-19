@@ -110,7 +110,7 @@ export type PendingCreation = PendingBase & ({ kind: "personal_food"; creation: 
 export type PendingAction = PendingFood | PendingWeight | PendingGoal | PendingCreation;
 export type BeeInsight = { text: string; suggested_pose: BeePose; context_revision: string; expires_at: string };
 export type BeeTier = "basic" | "plus" | "pro";
-export type BeeEntitlement = { tier: BeeTier; capabilities: Record<string, boolean>; remaining: Record<string, number>; limits: Record<string, number>; reset_at: string | null };
+export type BeeEntitlement = { tier: BeeTier; access_mode?: "basic" | "subscription" | "private_preview" | "complimentary"; access_expires_at?: string | null; capabilities: Record<string, boolean>; remaining: Record<string, number>; limits: Record<string, number>; reset_at: string | null };
 export type MemoryKey =
   | "preferred_name"
   | "preferred_units"
@@ -126,6 +126,7 @@ export type BeeMessage = {
 };
 /** Transient display only: never persist, index, or use as a log payload. */
 export type GroundedAnswer = {
+  provider?: 'google' | 'deepseek';
   text: string;
   citations: {
     title: string;

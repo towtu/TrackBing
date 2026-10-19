@@ -3,8 +3,8 @@ import { isSafeGroundingUrl, validateSuggestionsHtml } from "./beeGrounding.ts";
 
 /** One official REST response format; never fetch pages or URLs returned by the model. */
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
-type Endpoint = typeof GEMINI_ENDPOINT;
-type FetchOptions = { signal: AbortSignal; fetch?: typeof fetch; headers?: Record<string, string>; timeoutMs?: number; maxBytes?: number };
+type Endpoint = typeof GEMINI_ENDPOINT | 'https://api.deepseek.com/chat/completions' | 'https://api.deepseek.com/v1/tools/search';
+type FetchOptions = { signal: AbortSignal; fetch?: typeof fetch; headers?: Record<string, string>; timeoutMs?: number; maxBytes?: number; maxRequestBytes?: number };
 export type GeminiUsage = { inputTokens: number; outputTokens: number; searchQueries: number };
 export type GeminiOptions = { apiKey: string; model?: string; signal: AbortSignal; maxTokens?: number; fetch?: typeof fetch; onUsage?: (usage: GeminiUsage) => void };
 
@@ -19,13 +19,14 @@ function boundedNumber(value: number | undefined, maximum: number): number {
 }
 
 export async function boundedJsonFetch(url: Endpoint, body: unknown, options: FetchOptions): Promise<unknown> {
-  if (url !== GEMINI_ENDPOINT) throw new Error("unsupported_endpoint");
+  if (![GEMINI_ENDPOINT, 'https://api.deepseek.com/chat/completions', 'https://api.deepseek.com/v1/tools/search'].includes(url)) throw new Error("unsupported_endpoint");
   if (options.signal.aborted) throw new Error("aborted");
   const maxBytes = boundedNumber(options.maxBytes, 256_000);
   const timeoutMs = boundedNumber(options.timeoutMs, 25_000);
   let serialized: string | undefined;
   try { serialized = JSON.stringify(body); } catch { throw new Error("context_too_large"); }
-  if (!serialized || new TextEncoder().encode(serialized).byteLength > 100_000) throw new Error("context_too_large");
+  const requestLimit = options.maxRequestBytes === undefined ? 100_000 : boundedNumber(options.maxRequestBytes, 3_000_000);
+  if (!serialized || new TextEncoder().encode(serialized).byteLength > requestLimit) throw new Error("context_too_large");
   const controller = new AbortController();
   let rejectAbort: (error: Error) => void = () => {};
   const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });

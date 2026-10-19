@@ -13,6 +13,7 @@ const suites = Object.freeze({
   cookbook: 'check-cookbook-ui.cjs',
   motion: 'check-bee-motion.cjs',
   creation: 'check-bee-creation-ui.cjs',
+  label: 'check-label-photo-ui.cjs',
 });
 const suiteTimeoutMs = 180_000;
 

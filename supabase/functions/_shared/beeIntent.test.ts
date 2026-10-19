@@ -13,6 +13,11 @@ describe("Bee untrusted input boundaries", () => {
   it("a model cannot dispatch confirmation, memory writes, arbitrary requests or SQL", () => {
     for (const kind of ["confirm", "memory_set", "fetch", "sql", "save"]) expect(() => parseIntent({kind})).toThrow();
   });
+  it("validates bounded food suggestions without invented nutrition or success claims",()=>{
+    const good={kind:'suggestion',foods:['tofu','boiled egg'],explanation:'Pick a food you enjoy; I can check a specific portion.'};
+    expect(parseIntent(good)).toEqual(good);
+    for(const bad of [{...good,foods:[]},{...good,foods:['one','two','three','four']},{...good,explanation:'Tofu contains 100 kcal.'},{...good,explanation:'Saved your food.'},{...good,foods:['https://example.org']},{...good,confirm:true}])expect(()=>parseIntent(bad)).toThrow();
+  });
   it("keeps cooking identity and does not accept invented conversions", () => {
     const query = {name:"egg",preparation:"boiled whole edible portion",brand:null,variant:null,packageGrams:null,market:null,portion:{amount:72,unit:"g"}};
     expect(parseIntent({kind:"nutrition", query})).toEqual({kind:"nutrition", query});
@@ -36,6 +41,16 @@ describe("Bee untrusted input boundaries", () => {
     expect(portionCorrection("Actually, make it 100 grams.")).toEqual({amount:100,unit:"g"});
     expect(portionCorrection("Egg whites only")).toBeNull();
   });
+  it.each(["how about 200g?", "What about 200 grams?", "Actually, how about 200 g?"])("recognizes a conversational portion correction: %s", message => {
+    expect(portionCorrection(message)).toEqual({amount:200,unit:"g"});
+  });
+  it("does not infer a unit or drop other foods from a portion correction", () => {
+    for (const message of ["how about 200?", "how about 200 g chicken?", "200 g and an egg", "how about 200 kg?"]) {
+      expect(portionCorrection(message)).toBeNull();
+    }
+    expect(() => portionCorrection("how about 0 g?")).toThrow();
+    expect(() => portionCorrection("how about 10001 g?")).toThrow();
+  });
   it.each(["How many calories in 72 g egg and one slice of toast?", "72 g egg and tea from a café", "Calories for egg plus a slice of toast"])("does not drop a food list containing internal prepositions: %s", message => {
     const intent = parseIntent({ kind: "nutrition", query: { name: "egg", preparation: "boiled", brand: null, variant: null, packageGrams: null, market: null, portion: { amount: 72, unit: "g" } } });
     expect(retainFoodList(intent, message)).toEqual({ kind: "multiple" });
@@ -48,4 +63,18 @@ describe("Bee untrusted input boundaries", () => {
     const intent = parseIntent({ kind: "nutrition", query: { name: "mac and cheese", preparation: null, brand: null, variant: null, packageGrams: null, market: null, portion: { amount: 72, unit: "g" } } });
     expect(retainFoodList(intent, "Calories in 72 g mac and cheese")).toEqual(intent);
   });
+});
+
+// Optional model attributes may be blank; required food identity stays strict.
+import {parseFoodQuery} from './beeIntent.ts';
+it('normalizes blank optional product metadata without accepting blank food names',()=>{
+ const base={name:'egg',preparation:'boiled',brand:'',variant:'',market:'',barcode:'',packageGrams:null,portion:{amount:72,unit:'g'}};
+ expect(parseFoodQuery(base)).toMatchObject({brand:null,variant:null,market:null,portion:{amount:72,unit:'g'}});
+ expect(parseFoodQuery(base)).not.toHaveProperty('barcode');
+ expect(()=>parseFoodQuery({...base,name:''})).toThrow();expect(()=>parseFoodQuery({...base,brand:42})).toThrow();expect(()=>parseFoodQuery({...base,barcode:'bad'})).toThrow();
+});
+it('retains whole egg as food identity so generic USDA lookup is eligible',()=>{
+ const q=parseFoodQuery({name:'egg',preparation:'boiled',brand:null,variant:'whole',portion:{amount:72,unit:'g'}});
+ expect(q).toMatchObject({name:'whole egg',preparation:'boiled',variant:null,portion:{amount:72,unit:'g'}});
+ expect(parseFoodQuery({name:'Fudgee Barr',preparation:null,brand:'Rebisco',variant:'Dark Chocolate',portion:{amount:1,unit:'bar'}}).variant).toBe('Dark Chocolate');
 });

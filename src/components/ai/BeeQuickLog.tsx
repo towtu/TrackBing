@@ -21,6 +21,7 @@ import { BeeMascot } from "@/src/components/ai/BeeGuide";
 import { BeeAction, BeeMemories } from "@/src/components/ai/BeeMemories";
 import { BeeGroundedAnswer } from "@/src/components/ai/BeeGroundedAnswer";
 import { BeeCreationReview } from "./BeeCreationReview";
+import { BeeLabelPhoto } from './BeeLabelPhoto';
 import { useResponsive } from "@/src/hooks/useResponsive";
 import {
   createBeeClient,
@@ -49,6 +50,7 @@ const LIVE_ANSWER_PLACEHOLDER = "I showed a live search answer. Search again to 
 export function BeeQuickLog({ userId }: { userId: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const isDashboard = pathname === "/" || pathname === "/dashboard";
   const companion = useBeeCompanion();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -63,6 +65,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const lastSavedLog = useRef<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [view, setView] = useState<"chat" | "memories">("chat");
+  const [labelOpen,setLabelOpen]=useState(false);
   const [input, setInput] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
   const [snapshot, setSnapshot] = useState<BeeSnapshot | null>(null);
@@ -86,6 +89,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setFailed(null);
     setNotice(null);
     setVisible(false);
+    setLabelOpen(false);
     return () => {
       client.dispose();
       clientRef.current = null;
@@ -188,7 +192,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     if (!busyRef.current && !failed) void sendCommand({ kind: "load" });
   };
   useEffect(()=>onOpenBee(()=>{setVisible(true);focusAfterOpenRef.current=true; if(!busyRef.current)void executeRef.current(createBeeRequest({kind:"load"},snapshotRef.current));}),[userId]);
-  const close = () => { inputRef.current?.blur(); Keyboard.dismiss(); setVisible(false); };
+  const close = () => { inputRef.current?.blur(); Keyboard.dismiss(); setLabelOpen(false); setVisible(false); };
   const enterManually = () => {
     close();
     router.push("/create-food");
@@ -212,6 +216,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     inputRef.current?.focus();
   };
 
+  useEffect(()=>{if(labelOpen)scrollRef.current?.scrollTo({y:0,animated:false});},[labelOpen]);
   const loading = activeRequest !== null;
   const feedback = failed ? getBeeErrorFeedback(failed.error) : null;
   const messages = snapshot?.messages.slice(-50) ?? [];
@@ -232,7 +237,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setReviewSituation(currentPending ? reviewSituation : null);
     return () => setReviewSituation(null);
   }, [currentPending, reviewSituation, setReviewSituation]);
-  const blocked = loading || failed !== null || snapshot === null;
+  const blocked = labelOpen || loading || failed !== null || snapshot === null;
   useEffect(() => {
     if (Platform.OS === "web" && visible && view === "chat" && !blocked && focusAfterOpenRef.current) {
       focusAfterOpenRef.current = false;
@@ -257,12 +262,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
   return (
     <>
-      {!visible && !keyboardOpen && !companion.librarySheetOpen && pathname !== "/" && pathname !== "/dashboard" ? <BeeAction
+      {!visible && !keyboardOpen && !companion.librarySheetOpen ? <BeeAction
         label="Open Bee quick log"
         iconOnly
         onPress={open}
-        style={[styles.floatingButton, isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile]}
-        icon={(
+        style={[styles.floatingButton, isDesktop ? styles.floatingButtonDesktop : styles.floatingButtonMobile, isDashboard && styles.dashboardLauncher]}
+        icon={isDashboard ? <ChatCircleText size={28} color={Colors.textOnAccent} weight="bold" /> : (
           <>
             <View style={styles.launcherMascotViewport}><BeeMascot size="small" situation={launcherSituation} /></View>
             <View style={styles.floatingBadge}><ChatCircleText size={13} color={Colors.textOnAccent} weight="fill" /></View>
@@ -291,14 +296,14 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.headerAvatar} testID="bee-current-companion"><BeeMascot size="small" situation={headerSituation} active={visible && !inputFocused} /></View>
                 <View style={styles.headerCopy}>
                   <Text accessibilityRole="header" style={styles.title}>Bee</Text>
-                  <Text style={styles.subtitle}>Food, recipes and progress</Text>
+                  <Text style={styles.subtitle}>{snapshot?.entitlement?.access_mode === "private_preview" ? "Private Bee test · no subscription" : snapshot?.entitlement?.access_mode === "complimentary" ? "Pro · complimentary access" : "Food, recipes and progress"}</Text>
                 </View>
                 <BeeAction label="Close Bee quick log" iconOnly onPress={close} icon={<X size={18} color={Colors.textSecondary} weight="bold" />} />
               </View>
 
               <View style={styles.toolbar}>
                 <BeeAction label={companion.motionEnabled ? "Pause Bee motion" : "Animate Bee"} onPress={companion.toggleMotion} />
-                <BeeAction label={view === "chat" ? "Saved preferences" : "Back to conversation"} disabled={!snapshot} onPress={() => setView(view === "chat" ? "memories" : "chat")} />
+                <BeeAction label={view === "chat" ? "Saved preferences" : "Back to conversation"} disabled={!snapshot || labelOpen} onPress={() => setView(view === "chat" ? "memories" : "chat")} />
                 {view === "chat" ? (
                   <>
                     <BeeAction label="New conversation" disabled={blocked} onPress={() => { setClearingChat(false); setStartingNew((current) => !current); }} />
@@ -333,9 +338,10 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 contentContainerStyle={styles.messagesContent}
                 keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => {
-                  if (view === "chat") scrollRef.current?.scrollToEnd({ animated: false });
+                  if (view === "chat" && !labelOpen) scrollRef.current?.scrollToEnd({ animated: false });
                 }}
               >
+                {view==='chat'&&labelOpen?<BeeLabelPhoto key={userId} userId={userId} disabled={loading||Boolean(failed)} onClose={()=>setLabelOpen(false)} onReview={text=>sendCommand({kind:'food_assist',text})}/>:null}
                 {view === "memories" && snapshot ? (
                   <BeeMemories
                     canWrite={snapshot.entitlement?.tier === "pro"}
@@ -344,7 +350,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                     onCommand={sendCommand}
                     onProfile={() => { close(); router.push("/(tabs)/profile"); }}
                   />
-                ) : (
+                ) : !labelOpen ? (
                   <>
                     {!snapshot && loading ? (
                       <View accessible={false} style={styles.loadingSkeleton}>
@@ -357,11 +363,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                       <View style={styles.welcome}>
                         <Text style={styles.welcomeTitle}>What can I help with?</Text>
                         <Text style={styles.welcomeText}>
-                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds one-food AI help; Pro adds adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Describe one food and its portion for AI food help. Pro adds adaptive conversations, preferences and progress guidance." : "Ask about food, make a recipe, or review your progress. Saving a food or recipe keeps it in your library; diary additions need a separate review."}
+                          {snapshot.entitlement?.tier === "basic" ? "Manual food and weight tracking are free. Plus adds camera label reading and food suggestions; Pro adds web search and adaptive Bee chat." : snapshot.entitlement?.tier === "plus" ? "Read a nutrition label with your camera, get food suggestions, or check one food and portion. Pro adds web search and adaptive conversations." : "Ask about food, make a recipe, or review your progress. Saving a food or recipe keeps it in your library; diary additions need a separate review."}
                         </Text>
                         <View style={styles.starters}>
                           <BeeAction label="What do you know about me?" disabled={blocked} onPress={() => void sendCommand({ kind: "message", text: "What do you know about me?" })} />
                           <BeeAction label="Help me log a food" disabled={blocked} onPress={() => { setInput("I ate "); inputRef.current?.focus(); }} />
+                          {snapshot.entitlement?.tier !== "basic" ? <BeeAction label="Get food suggestions" disabled={blocked} onPress={() => {setInput("Suggest some foods for ");inputRef.current?.focus();}}/> : null}
                           {snapshot.entitlement?.tier==="pro" ? <BeeAction label="Make a recipe" disabled={blocked} onPress={()=>{setInput("Make me a recipe with ");inputRef.current?.focus();}}/> : null}
                         </View>
                       </View>
@@ -383,7 +390,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                     ) : null}
                     {pending && !pendingInMessages ? renderReview(pending) : null}
                   </>
-                )}
+                ) : null}
 
                 {loading ? (
                   <View accessibilityLiveRegion="polite" style={styles.loadingRow}>
@@ -395,11 +402,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 ) : null}
                 {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
                 {snapshot?.saved_action?.kind==="recipe" || snapshot?.saved_action?.kind==="personal_food" ? <BeeAction label={snapshot.saved_action.kind==="recipe" ? "Open Cookbook" : "Open My Foods"} onPress={()=>{const kind=snapshot.saved_action?.kind;close();router.push(kind==="recipe" ? "/(tabs)/cookbook" : "/my-foods");}}/> : null}
-                {view === "chat" ? (
+                {view === "chat" && !labelOpen ? (
                   <View style={styles.actions}>
                     <BeeAction label="Plans and usage" onPress={()=>{close();router.push("/plans");}} style={styles.manualButton}/>
                     <BeeAction label="Enter food manually" onPress={enterManually} style={styles.manualButton} />
                     <BeeAction label="Scan a barcode" onPress={scanBarcode} style={styles.manualButton} />
+                    <BeeAction label="Read a label photo" disabled={loading||!snapshot||snapshot.entitlement?.tier==='basic'} onPress={()=>{inputRef.current?.blur();setLabelOpen(true);}} style={styles.manualButton}/>
                   </View>
                 ) : null}
                 {view === "chat" && messages.length > 0 ? <Text style={styles.retention}>Chats are kept for up to 30 days. Showing the latest 50 messages.</Text> : null}
@@ -418,7 +426,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 </View>
               ) : null}
 
-              {view === "chat" ? (
+              {view === "chat" && !labelOpen ? (
                 <View style={styles.composer}>
                   {editingPortion ? <Text style={styles.subtitle}>{pending?.kind==="recipe" ? "Describe ingredient changes or a new serving count. Bee will show a fresh recipe review." : pending?.kind==="personal_food" ? "Describe the food change or provide a complete label. Bee will show a fresh review." : "Enter the new amount and unit. Bee will show an updated review."}</Text> : null}
                   <View style={styles.inputRow}>
@@ -545,6 +553,7 @@ const styles = StyleSheet.create({
   launcherMascotViewport: { width: 54, height: 54, alignItems: "center", justifyContent: "center", overflow: "visible" },
   floatingButtonMobile: { right: 16, bottom: 112, width: 60, height: 60, borderRadius: 30 },
   floatingButtonDesktop: { right: 24, bottom: 24, width: 60, height: 60 },
+  dashboardLauncher: { backgroundColor: Colors.accent },
   floatingBadge: {
     position: "absolute", right: -1, bottom: -1, width: 22, height: 22, borderRadius: 11,
     alignItems: "center", justifyContent: "center", backgroundColor: Colors.accent, borderWidth: 2, borderColor: Colors.primary,
@@ -571,7 +580,7 @@ const styles = StyleSheet.create({
   userMessageRow: { alignSelf: "flex-end", justifyContent: "flex-end", maxWidth: "88%" },
   messageBubble: { borderRadius: Radii.card, paddingHorizontal: 12, paddingVertical: 11 },
   beeBubble: { flex: 1, minWidth: 0, backgroundColor: Colors.surface },
-  userBubble: { backgroundColor: Colors.accent },
+  userBubble: { backgroundColor: Colors.accent, flexShrink: 1, minWidth: 0, maxWidth: "100%" },
   messageText: { color: Colors.text, fontSize: 14, lineHeight: 21 },
   userMessageText: { color: Colors.textOnAccent },
   welcome: { alignItems: "center", gap: 12, paddingVertical: 12 },

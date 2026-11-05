@@ -237,7 +237,8 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setReviewSituation(currentPending ? reviewSituation : null);
     return () => setReviewSituation(null);
   }, [currentPending, reviewSituation, setReviewSituation]);
-  const blocked = labelOpen || loading || failed !== null || snapshot === null;
+  const managementBlocked = labelOpen || loading || snapshot === null;
+  const blocked = managementBlocked || failed !== null;
   useEffect(() => {
     if (Platform.OS === "web" && visible && view === "chat" && !blocked && focusAfterOpenRef.current) {
       focusAfterOpenRef.current = false;
@@ -306,8 +307,8 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <BeeAction label={view === "chat" ? "Saved preferences" : "Back to conversation"} disabled={!snapshot || labelOpen} onPress={() => setView(view === "chat" ? "memories" : "chat")} />
                 {view === "chat" ? (
                   <>
-                    <BeeAction label="New conversation" disabled={blocked} onPress={() => { setClearingChat(false); setStartingNew((current) => !current); }} />
-                    <BeeAction label="Clear chat" disabled={blocked || messages.length === 0} onPress={() => { setStartingNew(false); setClearingChat((current) => !current); }} />
+                    <BeeAction label="New conversation" disabled={managementBlocked} onPress={() => { setClearingChat(false); setStartingNew((current) => !current); }} />
+                    <BeeAction label="Clear chat" disabled={managementBlocked || messages.length === 0} onPress={() => { setStartingNew(false); setClearingChat((current) => !current); }} />
                   </>
                 ) : null}
               </View>
@@ -316,7 +317,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.newConversation}>
                   <Text style={styles.messageText}>Start fresh here? Bee keeps your saved preferences and earlier conversations. Unconfirmed food stays unlogged.</Text>
                   <View style={styles.actions}>
-                    <BeeAction label="Start new" primary disabled={blocked} onPress={() => void sendCommand({ kind: "new_thread" })} />
+                    <BeeAction label="Start new" primary disabled={managementBlocked} onPress={() => void sendCommand({ kind: "new_thread" })} />
                     <BeeAction label="Keep chatting" disabled={loading} onPress={() => setStartingNew(false)} />
                   </View>
                 </View>
@@ -326,7 +327,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                 <View style={styles.newConversation}>
                   <Text style={styles.messageText}>Delete this conversation? Your saved preferences, earlier conversations, and food diary stay available.</Text>
                   <View style={styles.actions}>
-                    <BeeAction label="Delete this chat" primary disabled={blocked} onPress={() => void sendCommand({ kind: "clear_chat" })} />
+                    <BeeAction label="Delete this chat" primary disabled={managementBlocked} onPress={() => void sendCommand({ kind: "clear_chat" })} />
                     <BeeAction label="Keep chatting" disabled={loading} onPress={() => setClearingChat(false)} />
                   </View>
                 </View>

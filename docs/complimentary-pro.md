@@ -102,3 +102,25 @@ staged secret scan and focused security review found no new issues. The linked
 database dry run listed only migration 18; it was **not applied** and no real
 account grant was made. The requested account identity and duration remained
 unconfirmed. Public release blockers in the launch guides are unchanged.
+
+## 5 November 2026 applied setup
+
+Applied migration 18 to the linked private Bee backend after rerunning the full
+disposable PostgreSQL suite and its 17 handler tests. Granted one explicitly
+identified, verified adult account one month of complimentary Pro; read-back
+confirmed the normal Pro limits, an explicit expiry and no renewal/payment.
+Owner food/history/profile row counts and existing monthly usage were unchanged;
+any existing billing anchor was preserved. Account identifiers and exact grant details stay in
+ignored operator records, not this guide. No new secret, function deployment or
+public web/native release was needed for the grant. Reopen Bee after refreshing
+the client to load the new entitlement. The revoke procedure above remains the
+recovery path; preserve the additive schema and user records.
+
+The client also keeps Clear chat and New conversation available after a failed
+paid turn. A shared failure flag had disabled these free conversation controls.
+They now use separate availability checks, while loading, an open label reader
+and missing conversation data still block them. Food confirmations and ordinary
+Send remain blocked until recovery. Both management actions retain their explicit
+confirmation step; no real chat was deleted while verifying this change.
+The regression runs at 375/768/1440 through the existing creation browser suite,
+using controlled accounts/network responses and no real diary writes.

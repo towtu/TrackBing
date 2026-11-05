@@ -35,6 +35,7 @@ describe("recorded weight and exact reviews",()=>{
   it("same-day measurements do not imply a reliable trend",()=>expect(weightTrend([{weight_kg:72.4,measured_at:"2026-09-27T01:00:00Z"},{weight_kg:73.2,measured_at:"2026-09-27T02:00:00Z"}])).toBeNull());
   it("converts an explicit lb correction using the current pending date",()=>{
     const original=makeWeightDraft("My weight today is 72.4 kg",now,"Asia/Manila",[]);
+    if (!original) throw new Error("Expected a valid initial weight draft for the correction test");
     const corrected=makeWeightDraft("I meant 160 lb",now,"Asia/Manila",[],original);
     expect(corrected?.weightKg).toBeCloseTo(72.5747792);expect(corrected?.localDate).toBe(original?.localDate);expect(corrected?.originalAmount).toBe(160);expect(corrected?.unit).toBe("lb");
   });

@@ -107,7 +107,7 @@ jobs:
           if [ "$INCLUDE_ALL" = 'true' ]; then migration_flags+=(--include-all); fi
           supabase db push --linked --dry-run --yes "${migration_flags[@]}"
           supabase db push --linked --yes "${migration_flags[@]}"
-          supabase functions deploy bee-chat ai-food usda-search billing billing-webhook billing-reconcile --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt --use-api --jobs 2
+          supabase functions deploy bee-chat ai-food ai-label usda-search billing billing-webhook billing-reconcile --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt --use-api --jobs 2
       - name: Upload candidate without moving live domains
         id: candidate
         env:
@@ -147,7 +147,7 @@ jobs:
         run: |
           {
             printf '### %s release\n\n' "$RELEASE_ENVIRONMENT"
-            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf "Commit: \`%s\`\n\n" "$GITHUB_SHA"
             printf 'Candidate: %s\n\nLive: %s\n\n' "$DEPLOYMENT_URL" "$EXPO_PUBLIC_SITE_ORIGIN"
             printf '%s\n' 'Verification passed; additive migrations and functions deployed before site promotion.'
           } >> "$GITHUB_STEP_SUMMARY"

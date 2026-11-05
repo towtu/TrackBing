@@ -1,0 +1,50 @@
+import {randomUUID} from 'node:crypto';
+// Real PostgreSQL with synthetic identities; never connects to a live account.
+export async function runPreviewDatabaseTests({assert,query,queryAsync,literal:q,json,rpc}) {
+  assert.equal(query("select to_regclass('public.bee_preview_access') is not null;"),'t','private evaluation must have server-owned storage');
+  const owner=randomUUID(), other=randomUUID();
+  query(`insert into auth.users values(${q(owner)}),(${q(other)});`);
+  const grant=`insert into public.bee_preview_access(user_id) values(${q(owner)});`;
+  assert.throws(()=>query(grant,'authenticated'),/permission denied/);
+  query(grant,'service_role');
+  const entitlement=()=>rpc('resolve_entitlement',[q(owner)]);
+  let e=entitlement();
+  assert.equal(e.access_mode,'private_preview');
+  assert.equal(e.tier,'pro');
+  assert.equal(e.limits.requests,20);
+  assert.equal(e.limits.search,6);
+  assert.equal(e.limits.insights,3);
+  assert.equal(query(`select count(*) from public.subscriptions where user_id=${q(owner)};`),'0');
+  assert.equal(rpc('resolve_entitlement',[q(other)]).tier,'basic');
+  assert.equal(query(`set request.jwt.claim.sub=${q(other)};select count(*) from public.bee_preview_access;`,'authenticated'),'0');
+  assert.throws(()=>query(`select public.resolve_entitlement(${q(owner)});`,'authenticated'),/permission denied/);
+  assert.throws(()=>query(`update public.bee_preview_access set expires_at=created_at+interval '8 days';`,'service_role'),/check constraint/);
+  const period=e.period;
+  query(`insert into public.ai_monthly_usage(user_id,period,requests) values(${q(owner)},${q(period)},19);`);
+  const request=randomUUID(), token=randomUUID();
+  const args=[q(owner),q(request),q('TEST preview concurrency'),q(token),q('bee_chat'),'15000','12288'];
+  const attempts=[args,...Array.from({length:3},()=>[q(owner),q(randomUUID()),q('TEST competing request'),q(randomUUID()),q('bee_chat'),'15000','12288'])];
+  const outcomes=await Promise.all(attempts.map(a=>queryAsync(`select public.reserve_ai_budget(${a.join(',')});`).then(JSON.parse)));
+  assert.equal(outcomes.filter(x=>x.ok).length,1);
+  const winning=attempts[outcomes.findIndex(x=>x.ok)];
+  const winnerRequest=winning[1],winnerToken=winning[3];
+  const searchOutcomes=await Promise.all(Array.from({length:6},()=>queryAsync(`select public.reserve_ai_search_queries(${q(owner)},${winnerRequest},${winnerToken},${q(randomUUID())},2);`).then(JSON.parse)));
+  assert.equal(searchOutcomes.filter(x=>x.ok).length,3);
+  assert.equal(query(`select search_queries from public.ai_monthly_usage where user_id=${q(owner)};`),'6');
+  assert.equal(query(`select requests from public.ai_monthly_usage where user_id=${q(owner)};`),'20');
+  assert.equal(rpc('record_ai_call',[q(owner),winnerRequest,winnerToken,q(randomUUID()),'10','20']).ok,true);
+  assert.equal(rpc('finish_ai_budget',[q(owner),winnerRequest,winnerToken,'true',json({ok:true})]).ok,true);
+  assert.equal(rpc('reserve_ai_budget',[q(owner),q(randomUUID()),q('next'),q(randomUUID()),q('bee_chat'),'15000','12288']).error,'monthly_request_limit');
+  assert.equal(rpc('reserve_ai_budget',winning).replay,true);
+  query(`update public.bee_preview_access set expires_at=clock_timestamp()-interval '1 second',created_at=clock_timestamp()-interval '1 day' where user_id=${q(owner)};`);
+  assert.equal(entitlement().tier,'basic');
+  assert.equal(rpc('reserve_ai_budget',[q(owner),q(randomUUID()),q('expired'),q(randomUUID()),q('bee_chat'),'15000','12288']).error,'upgrade_required');
+  query(`update public.bee_preview_access set expires_at=created_at+interval '7 days' where user_id=${q(owner)};`);
+  // A real paid subscription wins; evaluation must not lower its limits.
+  const now=Date.now();
+  rpc('reconcile_subscription',[q('web'),q(randomUUID()),q(new Date(now).toISOString()),q(owner),json({external_id:owner,product_id:'TEST-paid-plus',tier:'plus',status:'active',current_period_start:new Date(now-86400000).toISOString(),current_period_end:new Date(now+86400000*29).toISOString(),paid_through:new Date(now+86400000*29).toISOString(),auto_renew:true,billing_interval:'monthly'})]);
+  e=entitlement();assert.equal(e.tier,'plus');assert.equal(e.limits.requests,60);assert.notEqual(e.access_mode,'private_preview');
+  query(`update public.subscriptions set status='revoked' where user_id=${q(owner)};delete from public.bee_preview_access where user_id=${q(owner)};`);
+  assert.equal(entitlement().tier,'basic');
+  process.stdout.write('Private Bee evaluation ownership, expiry, paid precedence, replay and concurrent cap checks passed.\n');
+}

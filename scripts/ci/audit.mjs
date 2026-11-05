@@ -180,9 +180,13 @@ export function evaluateAudit(execution, policy, now = new Date()) {
   try {
     const parsed = parseAudit(execution);
     result.totals = parsed.totals;
-    const exceptions = validateExceptions(policy, now);
+    // Keep validated findings visible even if exception policy validation fails.
+    // Until the entire policy is accepted, every high/critical finding blocks.
     result.advisories = parsed.advisories
       .sort((first, second) => key(first.package, first.advisory).localeCompare(key(second.package, second.advisory)))
+      .map((advisory) => ({ ...advisory, decision: ['high', 'critical'].includes(advisory.severity) ? 'block' : 'report' }));
+    const exceptions = validateExceptions(policy, now);
+    result.advisories = result.advisories
       .map((advisory) => {
         if (advisory.severity === 'critical') return { ...advisory, decision: 'block' };
         if (advisory.severity !== 'high') return { ...advisory, decision: 'report' };

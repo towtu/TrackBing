@@ -13,6 +13,25 @@ function setup(tier:BeeEntitlement['tier']='pro'){
 }
 const request=(text='How am I doing today?',kind='message')=>new Request('https://example.test/bee',{method:'POST',headers:{Authorization:'Bearer test-data','Content-Type':'application/json'},body:JSON.stringify({requestId:id,threadId:id,expectedVersion:0,timeZone:'Asia/Manila',command:{kind,text}})});
 describe('adaptive server decisions and paid boundaries',()=>{
+ it('Plus offers non-search food suggestions without diary actions or private progress context',async()=>{
+  const {deps,store}=setup('plus');deps.generate=vi.fn().mockResolvedValue({kind:'suggestion',foods:['tofu','boiled egg','grilled fish'],explanation:'These are protein food options. Choose one and I can check its preparation and portion.'});
+  const response=await handleBeeRequest(request('Suggest some protein foods','food_assist'),deps);
+  expect(response.status).toBe(200);expect((await response.json()).snapshot.messages[0].text).toContain('tofu');
+  const outcome=vi.mocked(store.finish).mock.calls.at(-1)?.[2];expect(outcome?.draft).toBeUndefined();expect(outcome?.confirm).toBeUndefined();
+  expect(deps.ground).not.toHaveBeenCalled();expect(deps.search).not.toHaveBeenCalled();expect(store.progress).not.toHaveBeenCalled();expect(JSON.stringify(vi.mocked(deps.generate!).mock.calls)).not.toContain('current_weight');
+ });
+ it('Plus uses independent food fallback without reserving or executing web search',async()=>{
+  const {deps,store}=setup('plus');const food=foodFromUserLabel('Label food "TEST rice" per 100 g: calories 100, protein 2 g, carbs 20 g, fat 1 g.',new Date())!;
+  deps.generate=vi.fn().mockResolvedValue({kind:'nutrition',query:food.query});deps.search=vi.fn().mockResolvedValue({kind:'unavailable',message:"I couldn't verify this food."});deps.fallbackSearch=vi.fn().mockResolvedValue({kind:'found',food});
+  expect((await handleBeeRequest(request('100 g TEST rice','food_assist'),deps)).status).toBe(200);
+  expect(store.reserveSearch).not.toHaveBeenCalled();expect(deps.ground).not.toHaveBeenCalled();expect(deps.fallbackSearch).toHaveBeenCalledOnce();
+  expect(vi.mocked(store.finish).mock.calls.at(-1)?.[2]).toMatchObject({draft:food});
+ });
+ it('Plus explicit Search requests fail before any paid model attempt',async()=>{
+  const {deps,store}=setup('plus');
+  expect((await handleBeeRequest(request('Search the web for rice nutrition','food_assist'),deps)).status).toBe(402);
+  expect(deps.generate).not.toHaveBeenCalled();expect(deps.ground).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();
+ });
  it('custom food creation reviews actual user label values and makes no Search or diary request',async()=>{
   const {deps,store}=setup();deps.generate=vi.fn().mockResolvedValueOnce({reply:'Review your label.',nextStep:'create_food',suggestedPose:'thinking'}).mockResolvedValueOnce({reply:'Check the label before saving to My Foods.',suggestedPose:'thinking'});
   await handleBeeRequest(request('Create food "Fixture shake" per serving: calories 200, protein 20, carbs 10, fat 8'),deps);

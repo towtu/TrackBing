@@ -94,7 +94,7 @@ module.exports = async function installBeeUiMock(page) {
         snapshot.messages.push(message("assistant", "There isn't a reviewed food ready to add. Scan a barcode or enter your package label to review a serving."));
       } else if (/egg/i.test(command.text)) {
         const draft = {
-          id: "33333333-3333-4333-8333-333333333333", thread_id: snapshot.thread.id, review_version: 1, status: "pending",
+          kind: "food", id: `33333333-3333-4333-8333-${String(snapshot.thread.version).padStart(12, "0")}`, thread_id: snapshot.thread.id, review_version: snapshot.thread.version, status: "pending",
           local_date: new Date().toLocaleDateString("en-CA"), time_zone: "Asia/Manila", expires_at: "2099-09-26T00:00:00Z",
           food: { name: "Egg, whole, cooked, hard-boiled", query: { name: "egg", preparation: "boiled", brand: null, variant: null, packageGrams: null, market: null, portion: { amount: 72, unit: "g" } }, portion: { amount: 72, unit: "g" }, grams: 72, servingLabel: "72 g", calories: 111.6, protein: 9.06, carbs: 0.8, fat: 7.64, source: "usda",
             evidence: { url: "https://fdc.nal.usda.gov/food-details/173424/nutrients", title: "USDA FoodData Central", identity: "Egg, whole, cooked, hard-boiled", retrievedAt: "2026-09-26T00:00:00Z", excerpt: "Controlled USDA-like browser fixture", record: "independent", basis: { grams: 100, nutrients: { calories: 155, protein: 12.58, carbs: 1.12, fat: 10.61 }, unit: "g", count: null, milliliters: null } } },

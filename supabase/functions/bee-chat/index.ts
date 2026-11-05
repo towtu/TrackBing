@@ -2,10 +2,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handleBeeRequest } from "../_shared/beeService.ts";
 import { createBeeStore } from "../_shared/beeStore.ts";
 import {
-  geminiGrounded,
-  geminiJson,
-  type GeminiUsage,
-} from "../_shared/beeProviders.ts";
+  deepseekGrounded,
+  deepseekJson,
+  type DeepSeekUsage,
+} from "../_shared/deepseekProviders.ts";
 import { loadGistNutrition, searchNutrition } from "../_shared/beeNutrition.ts";
 import { INTENT_PROMPT } from "../_shared/beeConversation.ts";
 import { savedRecipeRecord } from "../_shared/beeRecipeRecord.ts";
@@ -20,15 +20,15 @@ const boundedFetch: typeof fetch = (input, init) =>
     ]),
   });
 // Numeric usage only; no prompts, tokens, IDs, food queries or response bodies.
-function reportUsage(usage: GeminiUsage) {
+function reportUsage(usage: DeepSeekUsage) {
   console.info(JSON.stringify({ event: "bee_provider_usage", ...usage }));
 }
 Deno.serve(async (req: Request) => {
   const url = Deno.env.get("SUPABASE_URL");
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
+  const apiKey = Deno.env.get("DEEPSEEK_API_KEY") ?? "";
+  const model = Deno.env.get("DEEPSEEK_MODEL") ?? "deepseek-v4-pro";
   // Missing configuration never exposes an environment value in the response.
   if (!url || !anon || !service) {
     return new Response(
@@ -63,19 +63,19 @@ Deno.serve(async (req: Request) => {
     savedTimeZone: async(userId)=>{const {data,error}=await admin.from("user_goals").select("time_zone").eq("user_id",userId).maybeSingle();if(error)throw new Error("profile_unavailable");return data?.time_zone??null;},
     store: (userId) => createBeeStore(admin, userId),
     configured: () => Boolean(apiKey) && Deno.env.get("BEE_AI_ENABLED") !== "false",
-    paidDataApproved: () => Deno.env.get("GEMINI_PAID_DATA_USE_CONFIRMED") === "true",
-    generate: (system,context,signal,onUsage) => geminiJson(system,context,{apiKey,model,signal,maxTokens:4096,onUsage:usage=>{reportUsage(usage);onUsage(usage);}}),
+    paidDataApproved: () => Deno.env.get("DEEPSEEK_DATA_USE_CONFIRMED") === "true",
+    generate: (system,context,signal,onUsage) => deepseekJson(system,context,{apiKey,model,signal,maxTokens:4096,onUsage:usage=>{reportUsage(usage);onUsage(usage);}}),
     interpret: (context, signal) =>
-      geminiJson(INTENT_PROMPT, context, {
+      deepseekJson(INTENT_PROMPT, context, {
         apiKey,
         model,
         signal,
         maxTokens: 4096,
         onUsage: reportUsage,
       }),
-    searchEnabled: () => Deno.env.get("GEMINI_SEARCH_ENABLED") === "true",
+    searchEnabled: () => Deno.env.get("DEEPSEEK_SEARCH_ENABLED") === "true",
     ground: (query, signal, onUsage) =>
-      geminiGrounded(query, {
+      deepseekGrounded(query, {
         apiKey,
         model,
         signal,

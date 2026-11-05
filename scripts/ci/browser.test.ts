@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseSuites, requireExport, resolveBrowser, runCheck } from './browser.cjs';
 
 const directories: string[] = [];
-const suiteNames = ['web', 'auth', 'account', 'cookbook', 'motion', 'creation'];
+const suiteNames = ['web', 'auth', 'account', 'cookbook', 'motion', 'creation', 'label'];
 
 function temporaryDirectory() {
   const directory = mkdtempSync(join(tmpdir(), 'trackbing-browser-'));

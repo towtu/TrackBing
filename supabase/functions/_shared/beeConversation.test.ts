@@ -28,6 +28,31 @@ describe("Bee conversation state",()=>{
     expect(outcome.text).toContain("Add this to today’s food?");
     expect(outcome.confirm).toBeUndefined();
   });
+  it.each(["130g", "how about 200g?"])("retains the exact rice record for %s after restoring the thread",message=>{
+    // Illustrative TEST DATA reused only to test portions, not actual rice nutrition.
+    const riceQuery={...query,name:"white rice",preparation:"cooked",portion:{amount:600,unit:"g" as const}};
+    const evidence={...pending.food.evidence,identity:"Cooked white rice"};
+    evidence.excerpt=JSON.stringify({identity:evidence.identity,url:evidence.url,sourceId:evidence.sourceId,packageGrams:null,basis:evidence.basis,data:{testFixture:true}});
+    const ricePending={...pending,food:{...pending.food,name:evidence.identity,query:riceQuery,portion:riceQuery.portion,grams:600,servingLabel:"600 g",calories:960,protein:78,carbs:12,fat:66,evidence}};
+    const restored:BeeContext=JSON.parse(JSON.stringify({...ctx,state:{awaiting:"review",query:riceQuery},pending:ricePending}));
+    const outcome=deterministicTurn(req(message),restored)!;
+    const grams=message.startsWith("130")?130:200;
+    expect(outcome.draft).toMatchObject({grams,calories:Math.round(160*grams/100),query:{name:"white rice",preparation:"cooked",portion:{amount:grams,unit:"g"}},evidence:ricePending.food.evidence});
+    expect(outcome.invalidate_pending).toBe(true);
+    expect(outcome.confirm).toBeUndefined();
+    expect(outcome.text).toContain("Add this to today’s food?");
+  });
+  it("retains food identity for a portion follow-up while a source is still being clarified",()=>{
+    const outcome=deterministicTurn(req("how about 200g?"),{...ctx,pending:null,state:{awaiting:"clarification",query}});
+    expect(outcome).toMatchObject({lookup_query:{...query,portion:{amount:200,unit:"g"}},invalidate_pending:true});
+    expect(outcome?.confirm).toBeUndefined();
+  });
+  it("asks which food a portion refers to when there is no food context",()=>{
+    const outcome=deterministicTurn(req("130g"),{...ctx,pending:null,state:{},recent:[]});
+    expect(outcome?.text).toContain("Which food");
+    expect(outcome?.lookup_query).toBeUndefined();
+    expect(outcome?.draft).toBeUndefined();
+  });
   it("reads only actual memories and profile; deleted memories cannot return from transcript",()=>{
     const context={...ctx,recent:[{role:"user" as const,text:"Remember that I prefer ounces"}],memories:[]};
     expect(deterministicTurn(req("What do you remember about me?"),context)?.text).toContain("no saved preferences");

@@ -114,6 +114,22 @@ describe('dependency audit policy', () => {
     expect(result.problems.join(' ')).toContain('expired');
   });
 
+  it.each([null, policy()])('keeps validated blockers visible when policy validation fails %#', (invalidPolicy) => {
+    const forgeId = 'GHSA-86w9-cpqp-85rv';
+    const result = evaluateAudit(command([
+      known,
+      vulnerability('node-forge', [advisory('node-forge', forgeId)]),
+    ]), invalidPolicy, new Date('2026-10-19T00:00:00.000Z'));
+    expect(result.status).toBe('error');
+    expect(result.acknowledgedHighAdvisories).toBe(0);
+    expect(result.advisories).toEqual([
+      { package: 'braces', advisory: knownId, severity: 'high', decision: 'block' },
+      { package: 'node-forge', advisory: forgeId, severity: 'high', decision: 'block' },
+    ]);
+    expect(JSON.stringify(result)).not.toContain(advisory().title);
+    expect(result.problems.length).toBeGreaterThan(0);
+  });
+
   it('expires at the start of the stated UTC date', () => {
     expect(evaluateAudit(command([known]), policy(), new Date('2026-10-17T23:59:59.999Z')).status).toBe('passed');
     expect(evaluateAudit(command([known]), policy(), new Date('2026-10-18T00:00:00.000Z')).status).toBe('error');

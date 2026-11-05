@@ -830,13 +830,15 @@ export function AuthScreen() {
 
       <View style={{ marginBottom: 24 }}>
         {!isDesktop && (
+          <View style={{ width: 72, height: 72, marginBottom: 16, alignSelf: "center", justifyContent: "center" }}>
             <Image
               accessibilityLabel="TrackBing logo"
               accessible
               source={require("../../assets/images/TrackBingLogo.png")}
-              style={{ width: 72, height: 72, marginBottom: 16, alignSelf: "center" }}
+              style={{ width: 72, height: 72 * (277 / 577) }}
               resizeMode="contain"
             />
+          </View>
         )}
         {!isLogin && <Text style={[styles.helperText, { marginTop: 0, marginBottom: 8 }]}>Step 2 of 3 · Your account</Text>}
         <Text accessibilityRole="header" style={{ color: Colors.text, fontSize: 28, fontWeight: "700" }}>
@@ -945,7 +947,7 @@ export function AuthScreen() {
 
       <TouchableOpacity
         accessibilityRole="button"
-        accessibilityLabel={isLogin ? "Create a new TrackBing account" : "Sign in to an existing account"}
+        accessibilityLabel={isLogin ? "New to TrackBing? Sign Up" : "Already have an account? Log In"}
         accessibilityState={{ disabled: loading }}
         disabled={loading}
         style={{ minHeight: 44, paddingVertical: 12, alignItems: "center" }}

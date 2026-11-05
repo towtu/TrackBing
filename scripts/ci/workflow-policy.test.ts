@@ -205,6 +205,14 @@ describe('workflow safety policy', () => {
     expect(problems(release.replace('    needs: verify\n', '    needs: context\n'), '.github/workflows/release.yml')).toContain('verification');
   });
 
+  it('requires native smoke assets to be built on the same runner before checking the live site', () => {
+    const source = release.replace('      - run: node scripts/ci/release.mjs deploy', '      - run: node scripts/ci/smoke.mjs');
+    expect(problems(source, '.github/workflows/native-build.yml')).toContain('trusted web export');
+    const built = source.replace('      - run: node scripts/ci/smoke.mjs', '      - run: npm run build:web\n      - run: node scripts/ci/smoke.mjs');
+    expect(problems(built, '.github/workflows/native-build.yml')).not.toContain('trusted web export');
+    expect(problems(built.replace('      - run: npm run build:web', '      - if: false\n        run: npm run build:web'), '.github/workflows/native-build.yml')).toContain('trusted web export');
+  });
+
   it('blocks release credentials after failed verification even when needs is present', () => {
     expect(problems(release.replace('  deploy:\n', '  deploy:\n    if: always()\n'), '.github/workflows/release.yml')).toContain('failed or cancelled');
   });

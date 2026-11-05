@@ -23,7 +23,9 @@ import {
   type TurnOutcome,
 } from "./beeConversation.ts";
 import { adaptiveTurn, type ProgressContext } from "./beeAdaptiveTurn.ts";
-import { explicitMemory } from "./beeIntent.ts";
+import { explicitMemory, portionCorrection } from "./beeIntent.ts";
+import { foodFromUserLabel } from "./beeCreation.ts";
+import { scaleEvidence } from "./beeNutrition.ts";
 import { readBoundedRequestJson } from "./beeRequest.ts";
 import type { GeminiUsage } from "./beeProviders.ts";
 import type { NutritionResult } from "./beeNutrition.ts";
@@ -181,12 +183,14 @@ export async function handleBeeRequest(
   } catch {
     return json({ ok: false, error: "bad_request" }, 400);
   }
-  try { const savedZone = await deps.savedTimeZone?.(user.id); if(validTimeZone(savedZone))request={...request,timeZone:savedZone}; } catch {return json({ok:false,error:"error"});}
-  const store = deps.store(user.id);
+  // Identity is bound to the validated client command, not mutable profile data.
+  // A later timezone edit must not prevent recovery of an already saved turn.
   const fingerprint = await requestFingerprint({
     endpoint: "bee-chat",
     ...request,
   });
+  try { const savedZone = await deps.savedTimeZone?.(user.id); if(validTimeZone(savedZone))request={...request,timeZone:savedZone}; } catch {return json({ok:false,error:"error"});}
+  const store = deps.store(user.id);
   let lease: TurnLease;
   let entitlement: BeeEntitlement | undefined;
   try {
@@ -218,15 +222,18 @@ export async function handleBeeRequest(
   // normalized food query and independently retrieved nutrition records.
   async function searchThenFallback(query:FoodQuery,outcome:TurnOutcome,answerOnly=false):Promise<TurnOutcome> {
     let failed = false;
-    if (deps.searchEnabled()) {
+    if (entitlement && entitlement.tier !== "pro") {
+      if (answerOnly) return {error:"pro_required"};
+      outcome.text="I couldn't verify a matching nutrition record. Try a barcode or enter the package label. Live web search is included with Pro.";
+    } else if (deps.searchEnabled()) {
       const reservation=await store.reserveSearch(request,lease);
       if (!reservation.ok || reservation.replay) return {error:reservation.ok?"search_unavailable":reservation.error};
       let usage:GeminiUsage|undefined;const callId=crypto.randomUUID();
       try {outcome.liveAnswer=await deps.ground(query,signal,value=>{usage=value;});}
       catch {failed=true;}
       finally {
-        await store.recordCall?.(request,lease,callId,usage??{inputTokens:2000,outputTokens:4096,searchQueries:3});
-        await store.measureSearch(request,lease,usage?.searchQueries??outcome.liveAnswer?.searchQueryCount??3);
+        await store.recordCall?.(request,lease,callId,usage??{inputTokens:2000,outputTokens:4096,searchQueries:1});
+        await store.measureSearch(request,lease,usage?.searchQueries??outcome.liveAnswer?.searchQueryCount??1);
       }
       if (outcome.liveAnswer) {
         outcome.text="I showed a live search answer. Search again to refresh it, or use a barcode or package label to add food.";
@@ -249,11 +256,24 @@ export async function handleBeeRequest(
     entitlement = store.entitlement ? await store.entitlement() : undefined;
     const kind = request.command.kind;
     const isMessage = kind === "message" || kind === "food_assist";
+    const explicitWeb = isMessage && "text" in request.command &&
+      /\b(search (?:again|(?:the )?web|online)|find (?:more|on (?:the )?web)|google (?:it|search))\b/i.test(request.command.text);
+    if (entitlement && entitlement.tier !== "pro" && explicitWeb) return await finish({error:"pro_required"});
     const memoryWrite = kind === "memory_set" || (isMessage && "text" in request.command && explicitMemory(request.command.text)?.kind === "set");
     if (entitlement && memoryWrite && entitlement.tier !== "pro") return await finish({error:"pro_required"});
     const readOnlyHistory = kind === "message" && knownHistory(request.command.text);
 
     if (entitlement && kind === "food_assist" && entitlement.tier === "basic") return await finish({error:"upgrade_required"});
+    if (isMessage && 'text' in request.command && request.command.text.startsWith('Review my label food ')) {
+      if(entitlement?.tier==='basic')return await finish({error:'upgrade_required'});
+      const label=foodFromUserLabel(request.command.text,(deps.now??(()=>new Date()))());
+      const portionText=/; portion (\d+(?:\.\d+)? (?:g|serving))\.$/.exec(request.command.text)?.[1];
+      const portion=portionText?portionCorrection(portionText):null;
+      if(!label||!portion)return await finish({text:'Please check the label name, basis, calories and all three macros before requesting a review.',invalidate_pending:true,state:{awaiting:'clarification'}});
+      const result=scaleEvidence({...label.query,portion},label.evidence,'user_label');
+      if(result.kind!=='found')return await finish({text:result.message,invalidate_pending:true,state:{awaiting:'clarification'}});
+      return await finish(review(result.food));
+    }
     if (entitlement && (kind === "confirm" || (isMessage && "text" in request.command && /^(yes|yep|confirm|save it|add it)[.! ]*$/i.test(request.command.text))) && lease.pending && (entitlement.tier === "basic" || (lease.pending.kind && lease.pending.kind !== "food" && entitlement.tier !== "pro"))) return await finish({error:lease.pending.kind === "food" || !lease.pending.kind ? "upgrade_required" : "pro_required"});
     const context = {
       state: lease.state,
@@ -355,9 +375,6 @@ export async function handleBeeRequest(
       parseIntent(await deps.interpret(modelContext(request.command.text,context),signal)),
       request.command.text,
     );
-    const explicitWeb =
-      /\b(search (?:again|(?:the )?web|online)|find (?:more|on (?:the )?web)|google (?:it|search))\b/i
-        .test(request.command.text);
     const outcome = intent.kind === "history"
       ? await history(intent.daysAgo, intent.repeat)
       : await resolveNutritionIntent(

@@ -2,9 +2,18 @@
 
 Every pull request and push to `main` runs verification. Web/backend releases
 and native builds require an operator to start a workflow from `main`. The
-workflows are implemented in the repository; GitHub protection rules and
-provider configuration still need the setup below. No hosted release, signed
-native build, store submission, or production migration is claimed here.
+workflows are implemented in the repository. On 18 October 2026, `main` protection
+was applied and verified: required pull requests, up-to-date GitHub Actions
+**Ready to merge**, administrator enforcement, conversation resolution, and no
+force push/deletion. Staging and Production environments now allow protected
+branches (currently only `main`). No minimum human-approval count was added to
+this owner-operated repository. On 19 October, the existing Vercel production
+project was linked, future build settings aligned and verified production
+identities/public values registered in GitHub. Both release flags remain false;
+deployment credentials, staging identities and any team reviewer policy still
+need setup. See the [applied hosting setup and next credential step](launch/2026-10-19-release-connection.md).
+No hosted release, signed native build, store submission, or production migration
+is claimed here.
 
 ## From a pull request to a release
 
@@ -28,7 +37,7 @@ never cancelled automatically during a migration.
 | Dependencies and secrets | Dependency audit policy and tracked secret patterns |
 | Web export | Expo static web export with dummy public configuration and exported secret-pattern checks |
 | Native export | Android and iOS JavaScript/assets export and secret patterns, including Hermes bundles; no signing or binary build |
-| Browser, six suites | Public web, auth, account, Cookbook, Bee motion, and creation flows at 375/768/1440 px against the same web export |
+| Browser, seven suites | Public web, auth, account, Cookbook, Bee motion, creation, and label-photo flows at 375/768/1440 px against the same web export |
 | Ready to merge | Passes only when every required job succeeds, including all browser/native matrix entries |
 
 Browser checks intercept Auth, database, and provider requests. They use marked
@@ -53,7 +62,7 @@ environment/CI gates, and migrations omitted from database-test coverage.
    review, and the **Ready to merge** status check from CI. Keep force pushes
    and deletion disabled. Run CI once so its check is selectable. If using a
    merge queue, retain the `merge_group` trigger. These repository settings
-   are operator setup, not settings applied by this change. See
+   were applied as described above; recheck them before release. See
    [GitHub protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches).
 3. Create environments named **staging** and **production** in
    **Settings → Environments**. Allow only the `main` branch, configure
@@ -67,6 +76,15 @@ environment/CI gates, and migrations omitted from database-test coverage.
    Supabase and Vercel projects for staging and production. The release helper
    rejects missing identities, shared projects, and a selected environment
    pointing to the wrong registered project.
+
+The release smoke check reads actual public/legal content, head metadata and
+private noindex tags; it rejects SPA fallbacks and conflicting/commented tags.
+Crawler files must match the approved public-only/draft policy. Social/favicon
+bytes must match the trusted local `dist` build. It verifies the deployed commit,
+real unknown-route 404, same-origin HTTP→HTTPS redirect and unauthenticated API
+denial. Bypass credentials never enter the HTTP probe. Response bodies and the
+whole run are bounded; no signed-in writes or paid provider calls are made.
+See the [current launch evidence and remaining setup](launch/2026-10-18-release-readiness.md).
 
 Set these four **repository variables** under
 **Settings → Secrets and variables → Actions → Variables**:
@@ -129,17 +147,19 @@ secret before testing the release.
 
 **Supabase:** Keep the existing server-only configuration in each Supabase
 project. The release workflow deploys code; it does not provision or overwrite
-Gemini, USDA, billing, payment, or store secrets. The safe
+DeepSeek, USDA, billing, payment, or store secrets. The safe
 [server template](../supabase/functions/.env.example) and
-[backend deployment guide](bee-gemini-deployment.md) list the exact names.
-Paid AI needs `GEMINI_API_KEY`, model/settings, and the explicit
-`GEMINI_PAID_DATA_USE_CONFIRMED` gate. USDA needs `USDA_API_KEY`. Enabled billing
+[current backend deployment guide](deepseek-label-photos.md) list the exact names.
+Paid AI needs `DEEPSEEK_API_KEY`, model/settings, and the explicit
+`DEEPSEEK_DATA_USE_CONFIRMED` gate. Search and label-photo reading have separate
+enablement flags; label transcription uses the configured vision model.
+USDA needs `USDA_API_KEY`. Enabled billing
 needs the product mapping, relevant PayMongo/Apple/Google credentials,
 webhook configuration, and `BILLING_RECONCILE_SECRET`. Keep sandbox and live
 settings separate. Configure Auth redirect URLs, recovery email templates,
 and SMTP using the [account guide](account-and-diary-ux.md).
 
-Six functions are deployed: `bee-chat`, `ai-food`, `usda-search`, `billing`,
+Seven functions are deployed: `bee-chat`, `ai-food`, `ai-label`, `usda-search`, `billing`,
 `billing-webhook`, and `billing-reconcile`. The CLI uses `--no-verify-jwt`
 because these handlers implement their own authentication: user endpoints
 verify Supabase sessions; webhooks verify provider signatures; reconciliation
@@ -169,7 +189,7 @@ The job performs these steps in order:
    Check web and Vercel static output secret patterns and stamp `/release.json` with the commit.
    A failed frontend build stops before changing the backend.
 3. Link the selected Supabase project, print the migration dry run, apply
-   migrations, then deploy the six functions.
+   migrations, then deploy the seven functions.
 4. Upload the prebuilt candidate with `--prod --skip-domain`, keeping live
    domains on the existing deployment. See
    [Vercel staged domain assignment](https://vercel.com/docs/cli/deploy#skip-domain).
@@ -248,22 +268,34 @@ writes `output/ci/audit.json`. Every new high finding and every critical
 finding blocks CI. Registry failures, malformed reports, and invalid/expired
 exceptions also fail closed.
 
-The checked-in [exception policy](../.github/security-audit-exceptions.json)
-acknowledges these four underlying high advisories. Their owner is `towtu`;
-all expire at **2026-10-18 00:00 UTC**. Passing this policy is **not a clean
-dependency audit**: the findings remain open until a compatible fix is verified.
+The two remaining entries in the checked-in
+[exception policy](../.github/security-audit-exceptions.json) **expired at
+2026-10-18 00:00 UTC**. They no longer authorize a passing check. Their
+findings remain open; CI and release workflows must stay blocked until
+remediated. No exception was renewed during the October 18 remediation.
 
 | Package | Open advisory |
 | --- | --- |
 | `braces` | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) |
-| `image-size` | [GHSA-5p2g-fcmc-qvqq](https://github.com/advisories/GHSA-5p2g-fcmc-qvqq) |
-| `image-size` | [GHSA-w3rx-r6r6-pgpr](https://github.com/advisories/GHSA-w3rx-r6r6-pgpr) |
 | `node-forge` | [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) |
 
 Exceptions match exact package/advisory pairs. Resolve compatible dependency
 updates, rerun app/backend/browser/native-export checks, and remove resolved
 entries. Inherited vulnerable package counts can exceed four. Expired entries
 fail even if the dependency disappeared; keep the policy current.
+
+The October 18 change removes `image-size` through Metro's upstream 0.83.8
+patch and patches source-map, CSS-selector and Xcode UUID dependencies.
+Its follow-up uses the upstream patched URI decoder with a CommonJS export
+and moves coverage configuration to YAML 4, eliminating both moderate findings.
+The decoder's MIT license and exact source-integrity checks are committed under
+`vendor/decode-uri-component`; include this directory and its generated archive
+when copying/building the project. `npm ci` installs the local archive as a
+normal auditable package without an installation script or network transformation.
+The resolved image-parser exceptions were removed. See the
+[dependency remediation record](dependency-remediation.md) for exact versions,
+compatibility tests and remaining moderate findings. Historical results below
+describe the October 4 run; they are not the current security status.
 
 ## Reproduce verification locally
 
@@ -294,8 +326,40 @@ npx playwright install --with-deps chromium
 npm run ci:browser -- --all
 ```
 
-`ci:browser` also accepts `web`, `auth`, `account`, `cookbook`, `motion`, or
-`creation`, or multiple suite names. It serves `dist` on an ephemeral localhost
+### Return from a controlled export to a real local preview
+
+The fixture URL/key above are intentionally unusable for real accounts. Do not
+serve that export to sign in. Expo inlines public settings into JavaScript;
+on 19 October, a local export without a cache reset retained the fixture auth
+client even though `.env.local` contained the real project. The sign-in form
+then failed to fetch from the test host. `build:web` now always uses Expo's
+[documented `--clear` export option](https://docs.expo.dev/more/expo-cli/#exporting).
+This trades a cold transform for reliable configuration after switching builds.
+
+Build without the inline fixture variables, using your existing public local
+configuration, then serve the regenerated files:
+
+```sh
+npm run build:web
+node scripts/serve-web-export.cjs
+```
+
+Open `http://localhost:8091` and reload an already-open tab. Changing an env file
+after exporting does not rewrite its compiled JavaScript. This procedure changes
+no account, password, database row or server secret. Backend features still need
+their documented migration/function deployment; a local client build does not
+deploy them.
+If the preview server is already running, leave it running and reload after the
+build instead of starting a second server on the same port.
+
+The corrected preview was verified with an intercepted TEST DATA sign-in: its
+actual request origin and public key match local configuration. A separate
+browser GET to the real public Auth settings returned HTTP 200 with CORS;
+no account login or password was needed. The built JavaScript contains neither
+the fixture host nor its placeholder key. All three-width auth suites passed.
+
+`ci:browser` also accepts `web`, `auth`, `account`, `cookbook`, `motion`,
+`creation`, `label`, or multiple suite names. It serves `dist` on an ephemeral localhost
 port, uses bundled Chromium by default, and bounds each suite to 180 seconds.
 `CHROME_BIN` can override it with an executable path. Missing exports/browsers,
 invalid suites, test failures, cancellation, and timeouts fail the command.

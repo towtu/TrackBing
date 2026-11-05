@@ -26,7 +26,7 @@ describe("Bee provider boundaries", () => {
     await expect(boundedJsonFetch(endpoint, { hello: "world" }, { ...options(), fetch: fetcher })).resolves.toEqual({ ready: true });
     expect(fetcher).toHaveBeenCalledWith(endpoint, expect.objectContaining({ method: "POST", redirect: "error", body: '{"hello":"world"}' }));
   });
-  it.each(["http://127.0.0.1/secret", "https://api.deepseek.com/chat/completions", "https://api.tavily.com/search", `${endpoint}/other`])("rejects arbitrary and legacy endpoints %s", async (url) => {
+  it.each(["http://127.0.0.1/secret", "https://api.deepseek.com/arbitrary", "https://api.tavily.com/search", `${endpoint}/other`])("rejects arbitrary and legacy endpoints %s", async (url) => {
     const fetcher = vi.fn<typeof fetch>();
     await expect(boundedJsonFetch(url as typeof endpoint, {}, { ...options(), fetch: fetcher })).rejects.toThrow("unsupported_endpoint");
     expect(fetcher).not.toHaveBeenCalled();

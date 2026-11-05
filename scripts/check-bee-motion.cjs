@@ -69,10 +69,26 @@ async function exercise(browser, base, width) {
   await page.waitForTimeout(200);
   assert.equal((await sample(mascot(page))).size, 1, 'changed OS setting stops movement immediately');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  assert.equal(await page.getByRole('button', { name: 'Open Bee quick log', exact: true }).count(), 0, 'dashboard has no duplicate floating mascot');
+  const dashboardChat = page.getByRole('button', { name: 'Open Bee quick log', exact: true });
+  assert.equal(await dashboardChat.isVisible(), true, 'dashboard keeps a bottom-right chat entry point');
+  assert.equal(await dashboardChat.locator('[data-testid^="bee-mascot-"]').count(), 0, 'chat shortcut does not duplicate the dashboard mascot');
+  const bounds = await dashboardChat.boundingBox();
+  assert.ok(bounds.x >= width - 110 && bounds.y >= 740 && bounds.y + bounds.height <= 950, 'chat shortcut stays in the bottom-right viewport above mobile navigation');
   assert.equal(await page.getByTestId('bee-dashboard-companion').locator('[data-testid^="bee-mascot-"]').count(), 1, 'Bee belongs to the dashboard');
   assert.equal(await mascot(page).evaluate(el => parseFloat(getComputedStyle(el).width)), 116, 'dashboard Bee has a larger full-body slot');
   const launcher = page.getByRole('button', { name: 'Open Bee chat', exact: true });
+  await dashboardChat.focus();
+  await page.waitForFunction(() => {
+    const button = document.querySelector('[aria-label="Open Bee quick log"]');
+    if (!button) return false;
+    const style = getComputedStyle(button);
+    return style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) >= 2;
+  });
+  await dashboardChat.press('Enter');
+  await page.getByRole('dialog', { name: 'Bee conversation', exact: true }).waitFor();
+  await dashboardChat.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Close Bee quick log', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Bee conversation', exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Bee encourages your first food log', exact: true }).press('Enter');
   await page.getByRole('button', { name: 'Pause Bee motion', exact: true }).click();
   await page.getByRole('button', { name: 'Animate Bee', exact: true }).waitFor();

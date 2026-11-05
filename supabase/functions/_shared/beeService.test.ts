@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleBeeRequest, type BeeStore, type BeeDependencies } from "./beeService.ts";
 import type { BeeSnapshot, BeeResult } from "./beeTypes.ts";
+import { foodFromUserLabel } from "./beeCreation.ts";
 
 const id="6d2f4d59-a884-49be-b7a8-e98d2c524ec9";
 const snapshot:BeeSnapshot={thread:{id,version:0},messages:[],memories:[],profile:{},pending:null};
@@ -12,6 +13,30 @@ function setup() {
 function request(text:string,extras:Record<string,unknown>={}) {return new Request("https://bee.test",{method:"POST",headers:{Authorization:"Bearer test", "Content-Type":"application/json"},body:JSON.stringify({requestId:id,threadId:id,expectedVersion:0,timeZone:"Asia/Manila",command:{kind:"message",text},...extras})});}
 async function result(response:Response):Promise<BeeResult> {return response.json();}
 describe("Bee endpoint enforcement",()=>{
+  it.each(["130g", "how about 200g?"])("recalculates restored rice context for %s without a paid call or confirmation",async text=>{
+    const {dependencies,store}=setup();
+    // Explicit label TEST DATA, not a real rice nutrition claim.
+    const food=foodFromUserLabel('Label food "cooked rice TEST" per 100 g: calories 100, protein 2 g, carbs 20 g, fat 1 g.',new Date("2026-09-14T16:00:00Z"))!;
+    const pending={id,thread_id:id,kind:"food" as const,review_version:0,status:"pending" as const,local_date:"2026-09-15",time_zone:"Asia/Manila",expires_at:"2026-09-14T16:30:00Z",food};
+    vi.mocked(store.begin).mockResolvedValue({ok:true,replay:false,thread_id:id,token:id,state:{awaiting:"review",query:food.query},pending});
+    await handleBeeRequest(request(text),dependencies);
+    expect(dependencies.interpret).not.toHaveBeenCalled();expect(dependencies.search).not.toHaveBeenCalled();expect(dependencies.ground).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();
+    const outcome=vi.mocked(store.finish).mock.calls.at(-1)?.[2];
+    expect(outcome?.draft).toMatchObject({name:"cooked rice TEST",grams:text==="130g"?130:200,source:"user_label"});
+    expect(outcome?.invalidate_pending).toBe(true);expect(outcome?.confirm).toBeUndefined();
+  });
+  it('accepts a complete explicit branded label without guessing package size or flavor',async()=>{
+    const {dependencies,store}=setup();
+    await handleBeeRequest(request('Review my label food "Fudgee Barr Chocolate TEST" per 38 g: calories 100, protein 2 g, carbs 15 g, fat 3 g; portion 38 g.'),dependencies);
+    expect(store.finish).toHaveBeenLastCalledWith(expect.anything(),expect.anything(),expect.objectContaining({draft:expect.objectContaining({source:'user_label',calories:100,query:expect.objectContaining({packageGrams:null,variant:null})})}));
+  });
+  it('reviews explicit label numbers without a model call or a food write',async()=>{
+    const {dependencies,store}=setup();
+    await handleBeeRequest(request('Review my label food "TEST label" per 30 g: calories 100, protein 2 g, carbs 15 g, fat 3 g; portion 60 g.'),dependencies);
+    expect(dependencies.interpret).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();
+    expect(store.finish).toHaveBeenLastCalledWith(expect.anything(),expect.anything(),expect.objectContaining({draft:expect.objectContaining({source:'user_label',calories:200,portion:{amount:60,unit:'g'}})}));
+    expect(vi.mocked(store.finish).mock.calls.at(-1)?.[2].confirm).toBeUndefined();
+  });
   it("validates the JWT instead of accepting a nonempty Authorization header",async()=>{
     const {dependencies,store}=setup(); dependencies.authenticate=vi.fn().mockResolvedValue(null);
     expect((await handleBeeRequest(request("hello"),dependencies)).status).toBe(401);
@@ -36,6 +61,39 @@ describe("Bee endpoint enforcement",()=>{
     const {dependencies,store}=setup(); store.begin=vi.fn().mockResolvedValue({ok:true,replay:true,result:{ok:true,snapshot:{...snapshot,saved_log_id:id}}});
     expect(await result(await handleBeeRequest(request("yes"),dependencies))).toMatchObject({ok:true,snapshot:{saved_log_id:id}});
     expect(store.finish).not.toHaveBeenCalled(); expect(store.reserve).not.toHaveBeenCalled();
+  });
+  it("recovers a completed confirmation after the saved timezone changes",async()=>{
+    const {dependencies,store}=setup();
+    let savedZone="Asia/Manila";
+    let originalFingerprint:string|undefined;
+    const savedResult:BeeResult={ok:true,snapshot:{...snapshot,saved_log_id:id}};
+    dependencies.savedTimeZone=async()=>savedZone;
+    // Match the database's identity check before its completed-result replay.
+    store.begin=vi.fn<BeeStore["begin"]>().mockImplementation(async(_request,fingerprint)=>{
+      if(originalFingerprint!==undefined)return fingerprint===originalFingerprint
+        ? {ok:true,replay:true,result:savedResult}
+        : {ok:false,error:"conflict"};
+      originalFingerprint=fingerprint;
+      return {ok:true,replay:false,thread_id:id,token:id,state:{awaiting:"review"},pending:null};
+    });
+    store.finish=vi.fn<BeeStore["finish"]>().mockResolvedValue(savedResult);
+    const extras={command:{kind:"confirm",actionId:id,reviewVersion:1}};
+    expect(await result(await handleBeeRequest(request("",extras),dependencies))).toEqual(savedResult);
+    savedZone="America/New_York";
+    expect(await result(await handleBeeRequest(request("",extras),dependencies))).toEqual(savedResult);
+    expect(store.finish).toHaveBeenCalledOnce();
+    expect(store.reserve).not.toHaveBeenCalled();
+    expect(dependencies.interpret).not.toHaveBeenCalled();
+    // A genuinely changed command must still conflict with the same request ID.
+    expect((await handleBeeRequest(request("",{command:{kind:"confirm",actionId:id,reviewVersion:2}}),dependencies)).status).toBe(409);
+    expect(store.finish).toHaveBeenCalledOnce();
+  });
+  it("uses the saved timezone for a new turn and its actual diary boundaries",async()=>{
+    const {dependencies,store}=setup();
+    dependencies.savedTimeZone=async()=>"America/New_York";
+    await handleBeeRequest(request("What did I eat today?"),dependencies);
+    expect(store.begin).toHaveBeenCalledWith(expect.objectContaining({timeZone:"America/New_York"}),expect.any(String));
+    expect(store.history).toHaveBeenCalledWith("2026-09-14T04:00:00.000Z","2026-09-15T04:00:00.000Z");
   });
   it("denied ownership and concurrent turns cannot call paid services",async()=>{
     const {dependencies,store}=setup(); store.begin=vi.fn().mockResolvedValue({ok:false,error:"not_found"});

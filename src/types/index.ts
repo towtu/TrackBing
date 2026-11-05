@@ -1,4 +1,4 @@
-// src/types.ts
+// Shared food and product domain types.
 
 export interface FoodLog {
   id?: string;

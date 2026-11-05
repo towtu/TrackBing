@@ -78,12 +78,12 @@ function containsWords(text: string, requested: string): boolean {
   );
 }
 
-function preflight(query: FoodQuery): NutritionResult | null {
+function preflight(query: FoodQuery, userLabel = false): NutritionResult | null {
   if (
     typeof query.name !== "string" || !query.name.trim() ||
     query.name.length > 160 || INJECTION.test(query.name)
   ) return unavailable();
-  if (/\bchicken\s+breast\b/i.test(query.name) && !/\b(raw|uncooked|cooked|boiled|fried|grilled|steamed|roasted|baked)\b/i.test(`${query.name} ${query.preparation ?? ''}`)) {
+  if (!userLabel && /\bchicken\s+breast\b/i.test(query.name) && !/\b(raw|uncooked|cooked|boiled|fried|grilled|steamed|roasted|baked)\b/i.test(`${query.name} ${query.preparation ?? ''}`)) {
     return clarify('Was the chicken breast weighed raw or after cooking?');
   }
   if (
@@ -96,7 +96,7 @@ function preflight(query: FoodQuery): NutritionResult | null {
     (!positive(query.packageGrams) || query.packageGrams > 50_000)
   ) return unavailable();
   if (
-    !query.barcode && /fudgee/i.test(`${query.name} ${query.brand ?? ""}`) &&
+    !userLabel && !query.barcode && /fudgee/i.test(`${query.name} ${query.brand ?? ""}`) &&
     (!query.variant?.trim() || !query.packageGrams)
   ) {
     return clarify(
@@ -120,7 +120,7 @@ export function scaleEvidence(
   evidence: NutritionEvidence,
   source: ReviewedFood["source"],
 ): NutritionResult {
-  const early = preflight(query);
+  const early = preflight(query, source === "user_label");
   if (early) return early;
   if (!evidence.record) return unavailable();
   return scaleRecord(query, evidence, source);
@@ -150,7 +150,7 @@ export function identityMatches(query: FoodQuery, identity: string): boolean {
   }
   for (
     const word of actual.match(
-      /\b(raw|uncooked|fried|scrambled|roasted|baked|boiled|steamed|dry|dried)\b/g,
+      /\b(raw|uncooked|fried|scrambled|roasted|baked|boiled|poached|steamed|dry|dried)\b/g,
     ) ?? []
   ) if (!wanted.split(" ").includes(word)) return false;
   for (
@@ -175,6 +175,15 @@ function compatiblePackage(
     ["bar", "piece", "serving"].includes(basis.unit) &&
     positive(basis.grams) && positive(basis.count) &&
     basis.grams / basis.count === query.packageGrams;
+}
+/** JSONB may reorder fields; every serving and nutrient value must still match. */
+function basisMatches(value: unknown, basis: NutritionBasis): boolean {
+  const stored = object(value);
+  const nutrients = object(stored?.nutrients);
+  return stored !== null && nutrients !== null &&
+    Object.keys(stored).length === 5 && Object.keys(nutrients).length === 4 &&
+    (["grams", "unit", "count", "milliliters"] as const).every(key => stored[key] === basis[key]) &&
+    (["calories", "protein", "carbs", "fat"] as const).every(key => nutrients[key] === basis.nutrients[key]);
 }
 function scaleRecord(
   query: FoodQuery,
@@ -207,7 +216,7 @@ function scaleRecord(
   if (
     snapshot.identity !== evidence.identity || snapshot.url !== evidence.url ||
     snapshot.sourceId !== evidence.sourceId ||
-    JSON.stringify(snapshot.basis) !== JSON.stringify(evidence.basis)
+    !basisMatches(snapshot.basis, evidence.basis)
   ) return unavailable();
   if (
     source === "usda" &&
@@ -528,7 +537,10 @@ export async function searchNutrition(
       ? raw.products
       : [];
   if (
-    !query.barcode && products.some((value) => {
+    !query.barcode &&
+    (query.brand !== null || query.variant !== null ||
+      ["bar", "piece", "serving", "pack"].includes(query.portion!.unit)) &&
+    products.some((value) => {
       const p = object(value);
       return p && typeof p.product_name === "string" &&
         containsWords(p.product_name, query.name) &&
@@ -646,7 +658,12 @@ export async function searchNutrition(
       ),
     ];
   });
-  return select(query, entries, "openfoodfacts") ?? (phase === "all" ? await searchUsda(query,deps,now) : unavailable());
+  const selected = select(query, entries, "openfoodfacts");
+  const generic = !query.barcode && !query.brand && !query.variant && query.packageGrams === null;
+  // Conflicting packaged brands do not resolve a generic food question. Keep
+  // them rejected and try an independent generic record, never average them.
+  if (selected && (selected.kind === "found" || !generic)) return selected;
+  return phase === "all" ? await searchUsda(query,deps,now) : unavailable();
 }
 
 async function searchUsda(query:FoodQuery,deps:NutritionDependencies,now:string):Promise<NutritionResult> {

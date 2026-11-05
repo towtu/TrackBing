@@ -4,8 +4,10 @@ import { isSafeGroundingUrl, validateSuggestionsHtml } from "../../../supabase/f
 export function isBeeGroundedAnswer(value: unknown): value is GroundedAnswer {
   if (!record(value) || typeof value.text !== "string" || !value.text.trim() || value.text.length > 20_000 ||
       !Array.isArray(value.citations) || !value.citations.length || value.citations.length > 100 ||
-      !Array.isArray(value.searchSuggestionsHtml) || !value.searchSuggestionsHtml.length || value.searchSuggestionsHtml.length > 5 ||
+      !Array.isArray(value.searchSuggestionsHtml) || (value.provider !== "deepseek" && !value.searchSuggestionsHtml.length) || value.searchSuggestionsHtml.length > 5 ||
       !Number.isInteger(value.searchQueryCount) || Number(value.searchQueryCount) < 1 || Number(value.searchQueryCount) > 100) return false;
+  if (value.provider !== undefined && value.provider !== "google" && value.provider !== "deepseek") return false;
+  if (value.provider === "deepseek" && value.searchSuggestionsHtml.length !== 0) return false;
   return value.citations.every((citation) => record(citation) && typeof citation.title === "string" &&
     isSafeGroundingUrl(citation.url) && Number.isInteger(citation.startIndex) && Number.isInteger(citation.endIndex) &&
     Number(citation.startIndex) >= 0 && Number(citation.endIndex) > Number(citation.startIndex) &&

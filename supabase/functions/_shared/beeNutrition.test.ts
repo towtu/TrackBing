@@ -15,7 +15,18 @@ describe('independent source nutrition',()=>{
   const d=deps(),r=await searchNutrition(q(),d);expect(r).toMatchObject({kind:'found',food:{calories:115,protein:9.4,grams:72,query:{preparation:'boiled'},source:'usda',evidence:{sourceId:'123',license:'CC0-1.0',retrievedAt:'2026-09-26T00:00:00.000Z'}}});expect(d.fetch.mock.calls.filter(([url])=>url.includes("usda.gov"))).toHaveLength(1);
   if(r.kind==='found')expect(scaleEvidence(q({portion:{amount:100,unit:'g'}}),r.food.evidence,'usda')).toMatchObject({kind:'found',food:{calories:160,protein:13,grams:100}});
  });
- it.each(['Egg, whole, raw','Egg, whole, fried','Egg whites, boiled','Whole wheat bread'])('rejects incompatible identity %s',async description=>expect((await searchNutrition(q(),deps([{...egg,description}]))).kind).toBe('unavailable'));
+ it('reuses stored evidence after JSONB changes object key order without accepting changed nutrition',async()=>{
+  const result=await searchNutrition(q(),deps());expect(result.kind).toBe('found');
+  if(result.kind!=='found')throw Error('Missing TEST DATA record');
+  const b=result.food.evidence.basis,n=b.nutrients;
+  // PostgreSQL JSONB preserves values, but does not preserve object key order.
+  const basis={milliliters:b.milliliters,count:b.count,unit:b.unit,nutrients:{fat:n.fat,carbs:n.carbs,protein:n.protein,calories:n.calories},grams:b.grams};
+  const restored={...result.food.evidence,basis};
+  expect(scaleEvidence(q({portion:{amount:130,unit:'g'}}),restored,'usda')).toMatchObject({kind:'found',food:{grams:130,calories:208}});
+  expect(scaleEvidence(q(),{...restored,basis:{...basis,nutrients:{...basis.nutrients,calories:999}}},'usda').kind).toBe('unavailable');
+  expect(scaleEvidence(q(),{...restored,basis:{...basis,grams:200}},'usda').kind).toBe('unavailable');
+ });
+ it.each(['Egg, whole, boiled or poached','Egg, whole, raw','Egg, whole, fried','Egg whites, boiled','Whole wheat bread'])('rejects incompatible identity %s',async description=>expect((await searchNutrition(q(),deps([{...egg,description}]))).kind).toBe('unavailable'));
  it('replaces whole egg with a matching whites lookup rather than reusing whole egg',async()=>{
   const whites={...egg,description:'Egg whites, cooked, hard-boiled',foodNutrients:ns.map(n=>({...n,value:n.nutrientId===1008?50:n.value}))};
   const r=await searchNutrition(q({name:'egg whites'}),deps([egg,whites]));expect(r).toMatchObject({kind:'found',food:{name:whites.description,calories:36}});
@@ -69,4 +80,16 @@ it("does not choose an unspecified branded flavor from the first result",async()
 it("supports a32g labeled bar sold in a320g multipack without changing pack weight",async()=>{
  expect(await searchNutrition({...bar(),packageGrams:32},deps([],[product]))).toMatchObject({kind:"found",food:{grams:32,calories:140}});
  expect((await searchNutrition({...bar(),packageGrams:32,portion:{amount:1,unit:"pack"}},deps([],[product]))).kind).not.toBe("found");
+});
+
+it('an unrelated raw OFF product cannot block a matching boiled USDA record',async()=>{
+ const d=deps([egg],[{code:'12345678',product_name:'Whole egg',brands:'TEST brand',nutriments:{'energy-kcal_100g':999}}]);
+ const r=await searchNutrition(q(),d);
+ expect(r).toMatchObject({kind:'found',food:{source:'usda',grams:72}});
+ expect(d.fetch.mock.calls.some(([url])=>url.includes('usda.gov'))).toBe(true);
+});
+it('conflicting packaged egg brands do not block the generic USDA match',async()=>{
+ const packaged=[0,1].map(i=>({...product,code:i?'12345679':'12345678',product_name:'Whole boiled egg',brands:`TEST brand ${i}`,product_quantity:100,serving_size:'100 g',serving_quantity:100,nutriments:{'energy-kcal_100g':160+i*30,proteins_100g:13,carbohydrates_100g:2,fat_100g:11}}));
+ const result=await searchNutrition(q(),deps([egg],packaged));
+ expect(result).toMatchObject({kind:'found',food:{source:'usda',grams:72}});
 });

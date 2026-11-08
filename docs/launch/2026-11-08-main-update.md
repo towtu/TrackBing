@@ -1,5 +1,12 @@
 # Main update — 8 November 2026
 
+**Publishing follow-up:** the owner subsequently requested restoration of
+native Vercel Git deployment and a production cutover. The newer configuration
+removes `git.deploymentEnabled=false`; see [current publishing mode](../CI_CD.md).
+The deployment-disabled observations below record the initial main publication,
+not the restored configuration. A Git deployment still does not migrate or
+deploy Supabase; compatible backend deployment must precede this web cutover.
+
 This source update includes the existing adaptive Bee/food/weight work and the
 following final fixes. Source publication and a production deployment are
 separate operations.

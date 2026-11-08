@@ -31,7 +31,7 @@
     "@supabase/supabase-js": "^2.94.0",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
-    "decode-uri-component": "file:vendor/decode-uri-component-0.5.0.tgz",
+    "decode-uri-component": "file:vendor/decode-uri-component-0.5.1.tgz",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
     "expo-file-system": "~19.0.24",

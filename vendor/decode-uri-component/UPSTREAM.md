@@ -1,9 +1,9 @@
 # CommonJS compatibility copy
 
-This is **decode-uri-component 0.5.0**, MIT licensed, by Sam Verschueren.
+This is **decode-uri-component 0.5.1**, MIT licensed, by Sam Verschueren.
 TrackBing needs the upstream security fix while Expo Router 6's query-string 7
 still requires a directly callable CommonJS export. A direct registry override
-to 0.5.0 returns an ESM namespace to that caller and breaks query-string decoding.
+to 0.5.1 returns an ESM namespace to that caller and breaks query-string decoding.
 
 The only source change in `index.cjs` is replacing
 `export default function decodeUriComponent(` with
@@ -13,11 +13,11 @@ unchanged upstream license. Retain this notice and license in distributions.
 
 ## Provenance
 
-- Source: [upstream v0.5.0](https://github.com/SamVerschueren/decode-uri-component/blob/v0.5.0/index.js)
-- Security fix: [GHSA-vcc3-ghjq-m6fr](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr)
-- Registry archive: `https://registry.npmjs.org/decode-uri-component/-/decode-uri-component-0.5.0.tgz`
-- Archive SHA-512 (base64): `1BiQVoK8C9gUbQU6NzAtO/tkz2qOFpEObMWpcFvhx4fYnj4Oc5yzaJN/LD36ihkVUdXyh5ZekzX+yM+ty/SrPg==`
-- Unmodified `index.js` SHA-256: `9401353df38f8010ad7035fe8d666bce6a4902bc1cff809afc4ab23fa2e0bdaa`
+- Source: [upstream v0.5.1](https://github.com/SamVerschueren/decode-uri-component/blob/v0.5.1/index.js)
+- Security fix: [GHSA-qr28-fpjm-wq7f](https://github.com/advisories/GHSA-qr28-fpjm-wq7f)
+- Registry archive: `https://registry.npmjs.org/decode-uri-component/-/decode-uri-component-0.5.1.tgz`
+- Archive SHA-512 (base64): `vWHQkXgg2cE3BB4rR0c+PYw9BCQzLoNIRMI7AunIkZst74tw/vpPp7VLoYtsR/cy1f55g3XDWUslfeCZjiZJyA==`
+- Unmodified `index.js` SHA-256: `6a86ac891edf15c5efa0841ebb31935e3669d58b98318b57d7b08a4530317cb0`
 - Unmodified license SHA-256: `ed7a9a0f74e43951b2520efe1a4349cb9ed5f3dff0b0f268e2e51a4d38df7ea4`
 
 The offline provenance test reverses the single export substitution and checks
@@ -26,7 +26,7 @@ including malformed UTF-8, normal food/barcode/recovery parameters and a bounded
 malicious-input process. Expo Router 6.0.24 currently calls query-string's
 stringifier and parses inbound queries using `URL.searchParams`; the stress
 test proves dependency behavior, not a reproduced navigation hang. Upstream
-0.5.0 preserves literal `+` in a component; query-string handles form-query
+0.5.1 preserves literal `+` in a component; query-string handles form-query
 `+` → space conversion itself. The app does not use its fragment parser.
 
 A clean npm install must resolve this local package;
@@ -34,7 +34,7 @@ there must be no installed decoder 0.2.x left behind.
 
 ## Installation and audit visibility
 
-The root dependency uses `../decode-uri-component-0.5.0.tgz`, generated with
+The root dependency uses `../decode-uri-component-0.5.1.tgz`, generated with
 `npm pack ./vendor/decode-uri-component --pack-destination ./vendor`.
 Its source directory remains committed for review. The archive contains that
 same source, package manifest, license and this notice; it has no install script.

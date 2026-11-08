@@ -2,7 +2,33 @@
 
 This is a reviewable code change, not a production release. Expo SDK 54,
 React Native 0.81.5, existing food data and database migrations remain unchanged.
-The dependency gate remains blocked by unresolved high-severity advisories.
+The current dependency gate passes; the dated sections below retain the earlier
+findings and verification history.
+
+## 8 November security updates
+
+Compatible patches update the CommonJS decoder copy to upstream 0.5.1,
+`node-forge` to 1.4.3, `undici` to 6.29.1, Vite to 8.3.3 and Vitest to
+4.1.12 through the existing dependency ranges. No Expo/React Native major
+upgrade or new runtime dependency was introduced. The decoder still changes
+only the module export; its source/license hashes and archive are verified.
+Regression tests cover repeated percent escapes and a bounded malformed-input
+stress case. The upstream releases are
+[decoder 0.5.1](https://github.com/SamVerschueren/decode-uri-component/releases/tag/v0.5.1)
+and [Forge 1.4.3](https://github.com/digitalbazaar/forge/releases/tag/v1.4.3).
+
+The obsolete `braces` and `node-forge` exceptions were removed only after the
+actual advisories disappeared from the audit. The audit parser and blocking
+policy are unchanged. Fresh `npm run ci:audit` reports **0 critical, 0 high,
+21 moderate and 1 low** affected packages. Remaining reported roots are
+`glob`, `minimatch` and `deepmerge`; this is not a claim of zero vulnerabilities.
+Clean install, frontend typecheck/lint, decoder regressions and Expo certificate
+and Undici API smoke checks passed. CI remains responsible for verifying the
+full export/browser/database suite at the final commit.
+
+Recovery: revert the dependency commit and run `npm ci`; that also restores
+the older vulnerable dependency versions. No database or user-data rollback
+is needed.
 
 ## 19 October cleanup and diagnostics
 

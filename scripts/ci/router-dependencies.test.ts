@@ -33,7 +33,7 @@ describe('router query decoding', () => {
     const source = readFileSync('vendor/decode-uri-component/index.cjs', 'utf8');
     expect(source.match(/module\.exports = function decodeUriComponent\(/g)).toHaveLength(1);
     const upstream = source.replace('module.exports = function decodeUriComponent(', 'export default function decodeUriComponent(');
-    expect(createHash('sha256').update(upstream).digest('hex')).toBe('9401353df38f8010ad7035fe8d666bce6a4902bc1cff809afc4ab23fa2e0bdaa');
+    expect(createHash('sha256').update(upstream).digest('hex')).toBe('6a86ac891edf15c5efa0841ebb31935e3669d58b98318b57d7b08a4530317cb0');
     expect(createHash('sha256').update(readFileSync('vendor/decode-uri-component/LICENSE')).digest('hex')).toBe('ed7a9a0f74e43951b2520efe1a4349cb9ed5f3dff0b0f268e2e51a4d38df7ea4');
   });
 
@@ -46,6 +46,26 @@ describe('router query decoding', () => {
       const routerRequire = createRequire(require.resolve('expo-router/package.json'));
       const input = '%FF'.repeat(4000);
       assert.equal(routerRequire('query-string').parse('food=' + input).food, input);
+    `], { timeout: 2000, killSignal: 'SIGKILL', encoding: 'utf8', maxBuffer: 4096 });
+    expect(child.error).toBeUndefined();
+    expect(child.status).toBe(0);
+  });
+
+  it('does not decode percent escapes produced by an earlier replacement', () => {
+    expect(queryString.parse('food=%2541 %41 %FF').food).toBe('%41 A %FF');
+  });
+
+  it('decodes many distinct percent-encoded runs without repeatedly scanning the query', () => {
+    // GHSA-qr28-fpjm-wq7f: a malformed byte forces the fallback decoder,
+    // followed by distinct runs that previously rescanned the whole input.
+    const child = spawnSync(process.execPath, ['--max-old-space-size=128', '-e', `
+      const assert = require('node:assert/strict');
+      const { createRequire } = require('node:module');
+      const routerRequire = createRequire(require.resolve('expo-router/package.json'));
+      const values = Array.from({ length: 200000 }, (_, index) => index.toString(16));
+      const input = '%FF!' + values.map(value => Array.from(value,
+        character => '%' + character.charCodeAt(0).toString(16)).join('')).join('!');
+      assert.equal(routerRequire('query-string').parse('food=' + input).food, '%FF!' + values.join('!'));
     `], { timeout: 2000, killSignal: 'SIGKILL', encoding: 'utf8', maxBuffer: 4096 });
     expect(child.error).toBeUndefined();
     expect(child.status).toBe(0);

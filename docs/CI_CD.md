@@ -1,5 +1,33 @@
 # CI and release guide
 
+## Current web publishing mode — 8 November 2026
+
+At the owner's explicit request, Vercel's native Git deployments are restored.
+`vercel.json` no longer disables `git.deploymentEnabled`: Vercel builds and
+publishes the configured production branch, `main`, and may build previews for
+other branches. Main's required CI/PR protection remains enabled. The existing
+Vercel Git integration uses Vercel's own configured environment; no new GitHub
+deployment token is needed for this mode.
+
+Backend deployment is separate: apply reviewed additive migrations and deploy
+compatible authenticated functions before landing client changes that depend
+on them. A web-only Git deployment cannot update Supabase functions or tables.
+Keep provider/service-role secrets only in the server environment. For this
+cutover all 18 existing migrations were confirmed present before any deployment.
+Payments, optional analytics and legal-review flags are not enabled by restoring
+Git deployment; the site continues to identify unreviewed policies as drafts.
+
+The manual multi-environment workflow below remains an optional, separately
+configured release path. Its GitHub credentials, staging-evidence and release
+flags apply to that workflow, not the native Vercel Git integration. Do not
+dispatch it in parallel with an automatic deployment. Before a backend/schema
+change, coordinate that release explicitly and verify the live functions and
+website. Recover web code with a reviewed revert or Vercel's prior deployment;
+preserve all user data and additive migrations. Temporarily set
+`git.deploymentEnabled=false` only when intentionally pausing Git deployments.
+
+The following dated setup describes the earlier manual-release configuration.
+
 Every pull request and push to `main` runs verification. Web/backend releases
 and native builds require an operator to start a workflow from `main`. The
 workflows are implemented in the repository. On 18 October 2026, `main` protection

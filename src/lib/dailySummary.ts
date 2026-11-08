@@ -1,3 +1,4 @@
+import { getAccountDay } from "./accountDay";
 import { supabase } from "./supabase";
 
 /**
@@ -18,51 +19,19 @@ export async function upsertDailySummary() {
   } = await supabase.auth.getUser();
   if (!user) return;
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayStr = getLocalDateStr(); // local date, not UTC
-
-  // Get today's current totals from food_logs
-  const { data: logs } = await supabase
-    .from("food_logs")
-    .select("calories, protein, carbs, fat")
-    .eq("user_id", user.id)
-    .gte("created_at", todayStart.toISOString());
-
-  const initial = { calories: 0, protein: 0, carbs: 0, fat: 0, meal_count: 0 };
-  const totals = (logs || []).reduce(
-    (acc: typeof initial, log) => ({
-      calories: acc.calories + (log.calories || 0),
-      protein: acc.protein + (log.protein || 0),
-      carbs: acc.carbs + (log.carbs || 0),
-      fat: acc.fat + (log.fat || 0),
-      meal_count: acc.meal_count + 1,
-    }),
-    initial
-  );
-
-  // Upsert into daily_summaries (insert or update if today's row exists)
-  await supabase.from("daily_summaries").upsert(
-    {
-      user_id: user.id,
-      date: todayStr,
-      calories: totals.calories,
-      protein: totals.protein,
-      carbs: totals.carbs,
-      fat: totals.fat,
-      meal_count: totals.meal_count,
-    },
-    { onConflict: "user_id,date" }
-  );
-
-  // Clean up summaries older than 7 days
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 7);
-  const cutoffStr = getLocalDateStr(cutoff);
-
-  await supabase
-    .from("daily_summaries")
-    .delete()
-    .eq("user_id", user.id)
-    .lt("date", cutoffStr);
+  // The authenticated RPC reads the authoritative log and updates its totals
+  // in one transaction. A failed read never overwrites a summary with zeros.
+  let day: Awaited<ReturnType<typeof getAccountDay>>;
+  try { day = await getAccountDay(user.id); } catch {
+    console.warn("Daily date could not refresh. Food entries remain saved.");
+    return false;
+  }
+  const { data, error } = await supabase.rpc("refresh_daily_summary", {
+    p_day: day.date, p_timezone: day.timeZone,
+  });
+  if (error || !data?.ok) {
+    console.warn("Daily totals could not refresh. Food entries remain saved.");
+    return false;
+  }
+  return true;
 }

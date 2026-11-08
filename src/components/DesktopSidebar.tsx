@@ -17,7 +17,7 @@ import {
   User,
   Barcode,
   SignOut,
-} from "phosphor-react-native";
+} from "@/src/components/icons";
 import { Colors, Radii } from "../styles/colors";
 import { supabase } from "../lib/supabase";
 

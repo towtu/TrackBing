@@ -1,0 +1,2 @@
+# Remote release CLI configuration. Credentials and project refs stay outside git.
+project_id = "TrackBing"

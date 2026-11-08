@@ -12,11 +12,11 @@ describe("aiFoodUi", () => {
   it("uses an upgrade prompt for quota caps", () => {
     expect(getAiFoodFeedback("over_free_quota")).toMatchObject({
       type: "info",
-      title: "Bee Pro is coming soon",
+      title: "Upgrade to Plus",
     });
     expect(getAiFoodFeedback("over_pro_cap")).toMatchObject({
       type: "info",
-      title: "Bee Pro is coming soon",
+      title: "Upgrade to Plus",
     });
   });
 
@@ -25,6 +25,7 @@ describe("aiFoodUi", () => {
       type: "warning",
       title: "Bee could not reach the AI",
     });
+    expect(getAiFoodFeedback("ai_unavailable").message).not.toMatch(/DeepSeek|Tavily/i);
   });
 
   it("marks only low-confidence AI fallback estimates as ai_estimated", () => {
@@ -34,3 +35,9 @@ describe("aiFoodUi", () => {
     expect(shouldMarkAiEstimated({ source: "my_food" })).toBe(false);
   });
 });
+
+ it("distinguishes server tier denial from exhausted paid allowances",()=>{
+  expect(getAiFoodFeedback("pro_required").title).toBe("Upgrade to Pro");
+  expect(getAiFoodFeedback("monthly_output_limit").title).toBe("Monthly AI allowance reached");
+  expect(getAiFoodFeedback("paid_data_unavailable").message).toMatch(/manually/);
+ });

@@ -8,8 +8,8 @@ import {
   SlidersHorizontal,
   Trash,
   X,
-} from "phosphor-react-native";
-import React, { useCallback, useState } from "react";
+} from "@/src/components/icons";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -27,8 +27,12 @@ import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-import { supabase } from "@/src/lib/supabase";
 import { upsertDailySummary } from "@/src/lib/dailySummary";
+import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
+import { emitFoodLogChanged } from "@/src/lib/foodLogEvents";
+import { subscribeFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
+import { recipePortionTotal } from "@/src/lib/recipeDetails";
+import { parseRecipePortion, validateRecipe } from "@/src/lib/foodValidation";
 import {
   calcMacros,
   recipeTotal,
@@ -36,11 +40,16 @@ import {
 } from "@/src/lib/macros";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
+import { useBeeCompanion } from "@/src/components/ai/BeeCompanionProvider";
 
 type Recipe = {
   id: string;
   name: string;
   ingredients: RecipeIngredient[];
+  servings: number;
+  instructions: string[];
+  beeCreated: boolean;
+  userEdited: boolean;
 };
 
 // Quick portion fractions of the whole recipe.
@@ -61,18 +70,31 @@ type FeedbackState = {
 export default function CookbookPage() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
+  const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
+  const loadVersion = useRef(0);
+  const mutationInFlight = useRef(false);
+  useEffect(() => {
+    const guard = createFoodAccountGuard();
+    accountRef.current = guard;
+    return () => { guard.dispose(); accountRef.current = null; };
+  }, []);
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [filterQuery, setFilterQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // ── LOG MODAL STATE ──
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [workingIngredients, setWorkingIngredients] = useState<
     RecipeIngredient[]
   >([]);
   const [adjustMode, setAdjustMode] = useState(false);
+  const [ingredientAmounts, setIngredientAmounts] = useState<Record<number, string>>({});
   // Portion of the whole recipe being logged: 1 = the entire recipe.
   const [portion, setPortion] = useState(1);
   const [customPortion, setCustomPortion] = useState("");
@@ -80,22 +102,42 @@ export default function CookbookPage() {
 
   // ── DELETE MODAL STATE ──
   const [deleteModal, setDeleteModal] = useState(false);
+  const {setLibrarySheetOpen}=useBeeCompanion();
+  useFocusEffect(useCallback(()=>{setLibrarySheetOpen("cookbook",Boolean(selectedRecipe||deleteModal));return()=>setLibrarySheetOpen("cookbook",false);},[selectedRecipe,deleteModal,setLibrarySheetOpen]));
   const [deletingRecipe, setDeletingRecipe] = useState<{
     id: string;
     name: string;
   } | null>(null);
 
   const fetchRecipes = async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
-    const { data } = await supabase
+    setLoadError(false);
+    const guard = accountRef.current;
+    const writer = await guard?.authorize();
+    if (!writer?.isActive()) {
+      if (version === loadVersion.current && guard?.isActive()) {
+        setLoadError(true);
+        setLoading(false);
+      }
+      return;
+    }
+    const { data, error } = await writer.client
       .from("recipes")
       .select("*")
+      .eq("user_id", writer.userId)
       .order("created_at", { ascending: false });
+    if (!writer.isActive() || version !== loadVersion.current) return;
+    if (error) { setLoadError(true); setLoading(false); return; }
     const formatted: Recipe[] =
       data?.map((r) => ({
         id: r.id,
         name: r.name,
         ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
+        servings: Number.isInteger(r.servings) && r.servings>=1 && r.servings<=20 ? r.servings : 1,
+        instructions: Array.isArray(r.instructions) ? r.instructions.filter((s:unknown)=>typeof s==="string") : [],
+        beeCreated: Boolean(r.bee_action_id),
+        userEdited: r.bee_provenance?.user_edited===true,
       })) || [];
     setRecipes(formatted);
     setLoading(false);
@@ -106,6 +148,7 @@ export default function CookbookPage() {
       fetchRecipes();
     }, [])
   );
+  useEffect(()=>subscribeFoodLibraryChanged(kind=>{if(kind==="recipe")void fetchRecipes();}),[]);
 
   const filteredRecipes =
     filterQuery.length >= 2
@@ -118,10 +161,12 @@ export default function CookbookPage() {
   const openRecipe = (recipe: Recipe) => {
     Keyboard.dismiss();
     setSelectedRecipe(recipe);
+    setReviewError(null);
     // Deep-clone ingredients so log-time weight edits stay one-off.
     setWorkingIngredients(recipe.ingredients.map((ing) => ({ ...ing })));
     setAdjustMode(false);
-    setPortion(1);
+    setIngredientAmounts({});
+    setPortion(1/recipe.servings);
     setCustomPortion("");
   };
 
@@ -131,7 +176,10 @@ export default function CookbookPage() {
   };
 
   const updateIngredientWeight = (index: number, text: string) => {
-    const value = parseFloat(text.replace(/[^0-9.]/g, "")) || 0;
+    // Preserve invalid input as an invalid preview; never turn 1.2.3 into 1.2.
+    const value = Number(text);
+    setIngredientAmounts(prev => ({ ...prev, [index]: text }));
+    setReviewError(null);
     setWorkingIngredients((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], weight: value };
@@ -141,42 +189,47 @@ export default function CookbookPage() {
 
   // Full recipe total, then scaled to the portion actually being logged.
   const baseTotal = recipeTotal(workingIngredients);
-  const loggedTotal = {
-    c: Math.round(baseTotal.c * portion),
-    p: Math.round(baseTotal.p * portion),
-    cb: Math.round(baseTotal.cb * portion),
-    f: Math.round(baseTotal.f * portion),
-  };
+  const checkedPortion = parseRecipePortion(customPortion || String(portion));
+  const previewPortion = checkedPortion ?? 0;
+  const loggedTotal = recipePortionTotal(workingIngredients,previewPortion);
+  const recipeValidationError = selectedRecipe ? validateRecipe(selectedRecipe.name, workingIngredients) : null;
+  const previewValid = checkedPortion !== null && !recipeValidationError && Object.values(loggedTotal).every(Number.isFinite);
+  const servingFraction=1/(selectedRecipe?.servings??1);
+  const presets=[...(selectedRecipe && selectedRecipe.servings>1 ? [{label:"1 serving",value:servingFraction}] : []),...PORTION_PRESETS.filter(p=>!selectedRecipe || selectedRecipe.servings===1 || Math.abs(p.value-servingFraction)>0.000001).map(p=>({...p,label:p.value===1 ? "Whole recipe" : p.label}))];
 
   const confirmLog = async () => {
-    if (!selectedRecipe || submitting) return;
+    if (!selectedRecipe || mutationInFlight.current) return;
+    const validationError = recipeValidationError;
+    if (checkedPortion === null || validationError || !Object.values(loggedTotal).every(value => Number.isFinite(value) && value >= 0 && value <= 100000)) {
+      setReviewError(validationError ?? "Enter a portion greater than 0 and no more than 100 whole recipes.");
+      return;
+    }
+    const guard = accountRef.current;
+    mutationInFlight.current = true;
     setSubmitting(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      const { error } = await supabase.from("food_logs").insert([
+    setReviewError(null);
+    try {
+      const writer = await guard?.authorize();
+      if (!writer?.isActive()) {
+        if (guard?.isActive()) setReviewError("Your sign-in couldn't be verified. Your reviewed recipe is still here.");
+        return;
+      }
+      const { error } = await writer.client.from("food_logs").insert([
         {
-          user_id: user.id,
+          user_id: writer.userId,
           name: selectedRecipe.name,
           calories: loggedTotal.c,
           protein: loggedTotal.p,
           carbs: loggedTotal.cb,
           fat: loggedTotal.f,
-          serving_size: parseFloat(portion.toFixed(2)).toString(),
+          serving_size: String(checkedPortion),
           serving_unit: "recipe",
         },
       ]);
+      if (!writer.isActive()) return;
       if (error) {
-        setSelectedRecipe(null);
-        setFeedback({
-          type: "error",
-          title: "Could not log recipe",
-          message: error.message,
-        });
+        setReviewError("The save couldn't be confirmed. Your reviewed recipe is still here. Check your connection and diary before retrying.");
       } else {
-        upsertDailySummary();
         setSelectedRecipe(null);
         setFeedback({
           type: "success",
@@ -184,34 +237,53 @@ export default function CookbookPage() {
           message: "Added to today's food log.",
           autoDismissMs: 1100,
         });
+        // A totals/refresh failure cannot turn a confirmed insert into a failed save.
+        try { emitFoodLogChanged(); } catch { console.warn("The food view could not refresh. The recipe remains saved."); }
+        void upsertDailySummary().catch(() => console.warn("Daily totals could not refresh. The recipe remains saved."));
       }
+    } catch {
+      if (guard?.isActive()) setReviewError("The save couldn't be confirmed. Check your connection and diary before retrying.");
+    } finally {
+      mutationInFlight.current = false;
+      if (guard?.isActive()) setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   // ── DELETE ──
   const handleDeletePress = (recipe: Recipe) => {
     setDeletingRecipe({ id: recipe.id, name: recipe.name });
     setDeleteModal(true);
+    setDeleteError(null);
   };
 
   const confirmDelete = async () => {
-    if (!deletingRecipe) return;
-    const { error } = await supabase
-      .from("recipes")
-      .delete()
-      .eq("id", deletingRecipe.id);
-    if (error) {
-      setFeedback({
-        type: "error",
-        title: "Could not remove recipe",
-        message: error.message,
-      });
-    } else {
-      setRecipes((prev) => prev.filter((r) => r.id !== deletingRecipe.id));
+    if (!deletingRecipe || mutationInFlight.current) return;
+    const guard = accountRef.current;
+    mutationInFlight.current = true;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const writer = await guard?.authorize();
+      if (!writer?.isActive()) {
+        if (guard?.isActive()) setDeleteError("Your sign-in couldn't be verified. Try again in a moment.");
+        return;
+      }
+      const { error } = await writer.client.from("recipes").delete()
+        .eq("id", deletingRecipe.id).eq("user_id", writer.userId);
+      if (!writer.isActive()) return;
+      if (error) {
+        setDeleteError("The removal couldn't be confirmed. Check your connection and try again.");
+        return;
+      }
+      setRecipes(prev => prev.filter(recipe => recipe.id !== deletingRecipe.id));
+      setDeleteModal(false);
+      setDeletingRecipe(null);
+    } catch {
+      if (guard?.isActive()) setDeleteError("The removal couldn't be confirmed. Check your connection and try again.");
+    } finally {
+      mutationInFlight.current = false;
+      if (guard?.isActive()) setDeleting(false);
     }
-    setDeleteModal(false);
-    setDeletingRecipe(null);
   };
 
   return (
@@ -231,6 +303,8 @@ export default function CookbookPage() {
         <View style={localStyles.header}>
           {!isDesktop && (
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
               onPress={() => router.back()}
               style={localStyles.backButton}
             >
@@ -239,6 +313,8 @@ export default function CookbookPage() {
           )}
           <Text style={localStyles.headerTitle}>My Cookbook</Text>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Create a recipe"
             onPress={() => router.push("/create-recipe")}
             style={localStyles.backButton}
           >
@@ -254,6 +330,8 @@ export default function CookbookPage() {
             style={{ marginLeft: 15 }}
           />
           <TextInput
+            accessibilityLabel="Filter saved recipes"
+            maxLength={160}
             style={localStyles.input}
             placeholder="Filter your recipes..."
             placeholderTextColor={Colors.textSecondary}
@@ -262,8 +340,10 @@ export default function CookbookPage() {
           />
           {filterQuery.length > 0 && (
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Clear recipe filter"
               onPress={() => setFilterQuery("")}
-              style={{ marginRight: 15 }}
+              style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
             >
               <X size={18} color={Colors.textSecondary} weight="bold" />
             </TouchableOpacity>
@@ -271,7 +351,7 @@ export default function CookbookPage() {
         </View>
 
         {/* ── COUNT BADGE ── */}
-        <View style={localStyles.countRow}>
+        {!loading && !loadError && <View style={localStyles.countRow}>
           <View style={localStyles.countBadge}>
             <BookOpen size={14} color={Colors.accent} weight="fill" />
             <Text style={localStyles.countText}>
@@ -279,11 +359,19 @@ export default function CookbookPage() {
               {filteredRecipes.length === 1 ? "recipe" : "recipes"}
             </Text>
           </View>
-        </View>
+        </View>}
 
         {/* ── RECIPE LIST ── */}
         {loading ? (
           <ActivityIndicator color={Colors.accent} style={{ marginTop: 40 }} />
+        ) : loadError ? (
+          <View style={localStyles.emptyState}>
+            <Text accessibilityRole="alert" style={localStyles.emptyTitle}>Your recipes couldn’t load.</Text>
+            <Text style={localStyles.emptySubtext}>Check your connection and try again.</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry recipes" style={localStyles.emptyCreateBtn} onPress={fetchRecipes}>
+              <Text style={{ color: Colors.accent, fontWeight: "600" }}>Try again</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <FlatList
             key={isDesktop ? "desktop" : "mobile"}
@@ -302,11 +390,13 @@ export default function CookbookPage() {
                   ]}
                 >
                   <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Review ${item.name}`}
                     style={localStyles.itemCard}
                     onPress={() => openRecipe(item)}
                   >
                     <View style={localStyles.iconCircle}>
-                      <Text style={{ fontSize: 18 }}>🍲</Text>
+                      <BookOpen size={20} color={Colors.accent} />
                     </View>
                     <View style={{ flex: 1, flexShrink: 1, marginLeft: 12 }}>
                       <Text style={localStyles.itemName} numberOfLines={2}>
@@ -317,23 +407,33 @@ export default function CookbookPage() {
                         {item.ingredients.length === 1
                           ? "ingredient"
                           : "ingredients"}{" "}
-                        · {total.c} kcal · P:{total.p}g · C:{total.cb}g · F:
-                        {total.f}g
+                        · {total.c} kcal total{item.servings>1 ? ` · ${item.servings} servings` : ""}
+                      </Text>
+                      <Text style={localStyles.itemSub}>
+                        Protein {total.p} g · Carbs {total.cb} g · Fat {total.f} g
                       </Text>
                     </View>
                   </TouchableOpacity>
+                  <View style={localStyles.recipeActions}>
                   <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${item.name}`}
                     style={localStyles.editBtn}
                     onPress={() => editRecipe(item)}
                   >
                     <Pencil size={20} color={Colors.accent} weight="bold" />
+                    <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Edit</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${item.name}`}
                     style={localStyles.deleteBtn}
                     onPress={() => handleDeletePress(item)}
                   >
-                    <Trash size={20} color="#FF4444" weight="bold" />
+                    <Trash size={20} color={Colors.error} weight="bold" />
+                    <Text style={{ color: Colors.error, fontSize: 13 }}>Remove</Text>
                   </TouchableOpacity>
+                  </View>
                 </View>
               );
             }}
@@ -358,6 +458,7 @@ export default function CookbookPage() {
                 </Text>
                 {filterQuery.length < 2 && (
                   <TouchableOpacity
+                    accessibilityRole="button"
                     style={localStyles.emptyCreateBtn}
                     onPress={() => router.push("/create-recipe")}
                   >
@@ -379,7 +480,7 @@ export default function CookbookPage() {
         )}
 
         {/* ── LOG RECIPE MODAL ── */}
-        <Modal visible={!!selectedRecipe} transparent animationType="fade">
+        <Modal visible={!!selectedRecipe} transparent animationType="fade" onRequestClose={() => { if (!submitting) setSelectedRecipe(null); }}>
           <View style={localStyles.modalOverlay}>
             <View style={localStyles.modalContent}>
               <View style={localStyles.modalDragBar} />
@@ -393,8 +494,12 @@ export default function CookbookPage() {
                       ? "Tweak the amounts for this log"
                       : `${workingIngredients.length} ingredients`}
                   </Text>
+                  <Text style={{color:Colors.textSecondary,fontSize:12,marginTop:4}}>Makes {selectedRecipe?.servings ?? 1} servings · {selectedRecipe?.beeCreated ? "Bee recipe; nutrition calculated from ingredients" : "Calculated from ingredients"}{selectedRecipe?.userEdited ? " · Edited by you" : ""}</Text>
                 </View>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Close recipe review"
+                  disabled={submitting}
                   onPress={() => setSelectedRecipe(null)}
                   style={localStyles.closeBtn}
                 >
@@ -405,25 +510,25 @@ export default function CookbookPage() {
               {/* Total */}
               <View style={localStyles.bentoContainer}>
                 <View style={localStyles.bentoMain}>
-                  <Text style={localStyles.bentoValue}>{loggedTotal.c}</Text>
+                  <Text style={localStyles.bentoValue}>{previewValid ? loggedTotal.c : "—"}</Text>
                   <Text style={localStyles.bentoLabel}>Calories</Text>
                 </View>
                 <View style={localStyles.bentoGrid}>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {loggedTotal.p}g
+                      {previewValid ? `${loggedTotal.p} g` : "—"}
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>Protein</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {loggedTotal.cb}g
+                      {previewValid ? `${loggedTotal.cb} g` : "—"}
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>Carbs</Text>
                   </View>
                   <View style={localStyles.bentoSmall}>
                     <Text style={localStyles.bentoValueSmall}>
-                      {loggedTotal.f}g
+                      {previewValid ? `${loggedTotal.f} g` : "—"}
                     </Text>
                     <Text style={localStyles.bentoLabelSmall}>Fat</Text>
                   </View>
@@ -434,24 +539,30 @@ export default function CookbookPage() {
               <View style={localStyles.portionBlock}>
                 <View style={localStyles.portionHeader}>
                   <Text style={localStyles.portionTitle}>How much?</Text>
-                  {portion !== 1 && (
+                  {checkedPortion !== 1 && (
                     <Text style={localStyles.portionHint}>
                       whole recipe = {baseTotal.c} kcal
                     </Text>
                   )}
                 </View>
                 <View style={localStyles.portionRow}>
-                  {PORTION_PRESETS.map((p) => {
+                  {presets.map((p) => {
                     const active =
                       !customPortion && Math.abs(portion - p.value) < 0.001;
                     return (
                       <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={`Recipe portion ${p.label}`}
+                        accessibilityState={{ selected: active, disabled: submitting }}
+                        aria-pressed={active}
+                        disabled={submitting}
                         key={p.label}
                         style={[
                           localStyles.portionChip,
                           active && localStyles.portionChipActive,
                         ]}
                         onPress={() => {
+                          setReviewError(null);
                           setCustomPortion("");
                           setPortion(p.value);
                         }}
@@ -468,24 +579,25 @@ export default function CookbookPage() {
                     );
                   })}
                   <TextInput
+                    accessibilityLabel="Custom recipe portion"
+                    aria-invalid={checkedPortion === null}
+                    editable={!submitting}
+                    maxLength={20}
                     style={[
                       localStyles.portionCustom,
-                      !!customPortion && localStyles.portionChipActive,
+                      !!customPortion && { borderColor: Colors.accent },
                     ]}
                     keyboardType="numeric"
-                    placeholder="0.0"
+                    placeholder="Custom"
                     placeholderTextColor={Colors.textSecondary}
                     value={customPortion}
-                    onChangeText={(t) => {
-                      const cleaned = t.replace(/[^0-9.]/g, "");
-                      setCustomPortion(cleaned);
-                      const v = parseFloat(cleaned);
-                      if (!isNaN(v) && v > 0) setPortion(v);
-                    }}
+                    onChangeText={text => { setCustomPortion(text); setReviewError(null); }}
                     selectTextOnFocus
                   />
                   <Text style={localStyles.portionTimes}>×</Text>
                 </View>
+                {checkedPortion === null && <Text accessibilityRole="alert" style={{ color: Colors.error, marginTop: 8, fontSize: 13 }}>Enter a portion greater than 0 and no more than 100 whole recipes.</Text>}
+                <Text style={{color:Colors.textSecondary,fontSize:12,marginTop:6}}>Portions are fractions of the whole recipe. {checkedPortion===null ? "" : `${Number((checkedPortion*(selectedRecipe?.servings??1)).toFixed(2))} ${(checkedPortion*(selectedRecipe?.servings??1))===1 ? "serving" : "servings"} selected.`}</Text>
               </View>
 
               {/* Ingredient list */}
@@ -502,15 +614,20 @@ export default function CookbookPage() {
                           {ing.name}
                         </Text>
                         <Text style={localStyles.ingSub}>
-                          {m.c} kcal · P{m.p} C{m.cb} F{m.f}
+                          {Number.isFinite(ing.weight) && ing.weight > 0
+                            ? `${m.c} kcal · Protein ${m.p} g · Carbs ${m.cb} g · Fat ${m.f} g`
+                            : "Enter a valid amount to review nutrition."}
                         </Text>
                       </View>
                       {adjustMode ? (
                         <View style={localStyles.weightEditRow}>
                           <TextInput
+                            accessibilityLabel={`Amount of ${ing.name}`}
+                            editable={!submitting}
+                            maxLength={16}
                             style={localStyles.weightEditInput}
                             keyboardType="numeric"
-                            value={ing.weight.toString()}
+                            value={ingredientAmounts[index] ?? ing.weight.toString()}
                             onChangeText={(t) =>
                               updateIngredientWeight(index, t)
                             }
@@ -529,31 +646,42 @@ export default function CookbookPage() {
                     </View>
                   );
                 })}
+                {selectedRecipe?.instructions.length ? <View style={{gap:8,marginTop:14}}><Text style={localStyles.ingName}>Cooking steps</Text>{selectedRecipe.instructions.map((step,index)=><Text key={index} style={{color:Colors.text,fontSize:14,lineHeight:21}}>{index+1}. {step}</Text>)}<Text style={localStyles.ingSub}>Cooking can change water weight; these values are an ingredient calculation.</Text></View> : null}
               </ScrollView>
 
               {/* Actions */}
+              {reviewError && <Text accessibilityRole="alert" style={localStyles.inlineError}>{reviewError}</Text>}
               {adjustMode ? (
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Log reviewed recipe"
+                  accessibilityState={{ disabled: submitting, busy: submitting }}
                   style={localStyles.confirmBtn}
                   onPress={confirmLog}
                   disabled={submitting}
                 >
                   <Text style={localStyles.confirmText}>
-                    {submitting ? "Logging..." : "Log adjusted recipe"}
+                    {submitting ? "Logging..." : "Add adjusted recipe"}
                   </Text>
                 </TouchableOpacity>
               ) : (
                 <View style={{ gap: 12 }}>
                   <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Log reviewed recipe"
+                    accessibilityState={{ disabled: submitting, busy: submitting }}
                     style={localStyles.confirmBtn}
                     onPress={confirmLog}
                     disabled={submitting}
                   >
                     <Text style={localStyles.confirmText}>
-                      {submitting ? "Logging..." : "Log as-is"}
+                      {submitting ? "Logging..." : "Add to today's food"}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Adjust recipe amounts"
+                    disabled={submitting}
                     style={localStyles.adjustToggleBtn}
                     onPress={() => setAdjustMode(true)}
                   >
@@ -569,9 +697,11 @@ export default function CookbookPage() {
         </Modal>
 
         {/* ── DELETE CONFIRMATION MODAL ── */}
-        <Modal visible={deleteModal} transparent animationType="fade">
+        <Modal visible={deleteModal} transparent animationType="fade" onRequestClose={() => { if (!deleting) { setDeleteModal(false); setDeletingRecipe(null); } }}>
           <View style={localStyles.deleteOverlay}>
             <TouchableOpacity
+              accessible={false}
+              disabled={deleting}
               style={RNStyleSheet.absoluteFill}
               activeOpacity={1}
               onPress={() => {
@@ -591,6 +721,8 @@ export default function CookbookPage() {
               </Text>
               <View style={localStyles.deleteModalBtnRow}>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  disabled={deleting}
                   style={localStyles.btnKeep}
                   onPress={() => {
                     setDeleteModal(false);
@@ -600,13 +732,18 @@ export default function CookbookPage() {
                   <Text style={localStyles.btnKeepText}>Keep it</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove saved recipe"
+                  accessibilityState={{ disabled: deleting, busy: deleting }}
+                  disabled={deleting}
                   style={localStyles.btnConfirmDelete}
                   onPress={confirmDelete}
                 >
-                  <Trash size={18} color={Colors.white} weight="bold" />
-                  <Text style={localStyles.btnConfirmDeleteText}>Remove</Text>
+                  <Trash size={18} color={Colors.textOnAccent} weight="bold" />
+                  <Text style={localStyles.btnConfirmDeleteText}>{deleting ? "Removing…" : "Remove"}</Text>
                 </TouchableOpacity>
               </View>
+              {deleteError && <Text accessibilityRole="alert" style={localStyles.inlineError}>{deleteError}</Text>}
             </View>
           </View>
         </Modal>
@@ -632,6 +769,10 @@ const localStyles = RNStyleSheet.create({
     marginBottom: 18,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
     padding: 9,
     backgroundColor: Colors.secondary,
     borderRadius: 12,
@@ -681,12 +822,9 @@ const localStyles = RNStyleSheet.create({
     fontWeight: "700",
   },
   itemRowContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 16,
   },
   itemCard: {
-    flex: 1,
     backgroundColor: Colors.secondary,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -695,7 +833,6 @@ const localStyles = RNStyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    marginRight: 10,
   },
   iconCircle: {
     width: 42,
@@ -715,29 +852,34 @@ const localStyles = RNStyleSheet.create({
   },
   itemSub: {
     color: Colors.textSecondary,
-    fontSize: 10,
+    fontSize: 12,
     marginTop: 2,
   },
   editBtn: {
-    backgroundColor: Colors.surface,
-    padding: 13,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    flexDirection: "row",
+    gap: 6,
+    borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
     minWidth: 48,
-    marginRight: 8,
   },
   deleteBtn: {
-    backgroundColor: "rgba(239,68,68,0.12)",
-    padding: 13,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    flexDirection: "row",
+    gap: 6,
+    borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.3)",
     minWidth: 48,
+  },
+  recipeActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 4,
   },
   emptyState: {
     backgroundColor: Colors.surface,
@@ -844,7 +986,7 @@ const localStyles = RNStyleSheet.create({
   },
   ingSub: {
     color: Colors.textSecondary,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
   ingAmount: {
@@ -977,7 +1119,8 @@ const localStyles = RNStyleSheet.create({
     gap: 8,
   },
   portionChip: {
-    width: 48,
+    minWidth: 44,
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 12,
     backgroundColor: Colors.inputBg,
@@ -992,7 +1135,7 @@ const localStyles = RNStyleSheet.create({
   },
   portionChipText: {
     color: Colors.text,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   portionChipTextActive: {
@@ -1000,6 +1143,7 @@ const localStyles = RNStyleSheet.create({
   },
   portionCustom: {
     flex: 1,
+    minWidth: 64,
     height: 44,
     borderRadius: 12,
     backgroundColor: Colors.inputBg,
@@ -1027,7 +1171,7 @@ const localStyles = RNStyleSheet.create({
     width: "100%",
     maxWidth: 480,
     alignSelf: "center",
-    backgroundColor: "rgba(18, 18, 20, 0.8)",
+    backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.08)",
     borderTopLeftRadius: 32,
@@ -1094,11 +1238,16 @@ const localStyles = RNStyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     gap: 8,
-    elevation: 6,
   },
   btnConfirmDeleteText: {
-    color: Colors.white,
+    color: Colors.textOnAccent,
     fontSize: 16,
     fontWeight: "600",
+  },
+  inlineError: {
+    color: Colors.error,
+    fontSize: 13,
+    lineHeight: 19,
+    marginVertical: 12,
   },
 });

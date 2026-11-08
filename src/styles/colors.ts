@@ -14,9 +14,10 @@ export const Colors = {
   textMuted: "#9b958a",
   border: "#262218",
   borderLight: "#1f1c15",
+  controlBorder: "#756e5f",
   inputBg: "#12100c",
 
-  error: "#b5544a",
+  error: "#cb7166",
   success: "#7da26e",
   white: "#ffffff",
 

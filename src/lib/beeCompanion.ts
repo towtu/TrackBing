@@ -23,6 +23,7 @@ export const BEE_SITUATIONS = [
   "logSuccess",
   "streak",
   "lowProtein",
+  "fatReview",
   "underTarget",
   "nearTarget",
   "overTarget",
@@ -31,6 +32,12 @@ export const BEE_SITUATIONS = [
   "barcodeFound",
   "barcodeNotFound",
   "emptyCollection",
+  "thinking",
+  "encouraging",
+  "celebrating",
+  "caution",
+  "resting",
+  "success",
 ] as const;
 
 export type BeeSituation = (typeof BEE_SITUATIONS)[number];
@@ -45,6 +52,7 @@ const POSE_BY_SITUATION: Record<BeeSituation, BeePose> = {
   logSuccess: "success",
   streak: "celebrating",
   lowProtein: "encouraging",
+  fatReview: "thinking",
   underTarget: "encouraging",
   nearTarget: "success",
   overTarget: "caution",
@@ -53,6 +61,12 @@ const POSE_BY_SITUATION: Record<BeeSituation, BeePose> = {
   barcodeFound: "success",
   barcodeNotFound: "thinking",
   emptyCollection: "encouraging",
+  thinking: "thinking",
+  encouraging: "encouraging",
+  celebrating: "celebrating",
+  caution: "caution",
+  resting: "resting",
+  success: "success",
 };
 
 const ACCESSIBILITY_LABELS: Record<BeeSituation, string> = {
@@ -65,6 +79,7 @@ const ACCESSIBILITY_LABELS: Record<BeeSituation, string> = {
   logSuccess: "Bee celebrates a successful food log",
   streak: "Bee celebrates your logging streak",
   lowProtein: "Bee suggests a protein boost",
+  fatReview: "Bee invites a review of your recorded fat and saved target",
   underTarget: "Bee shows that there is room to fuel",
   nearTarget: "Bee celebrates balanced pacing",
   overTarget: "Bee offers a gentle target reminder",
@@ -73,97 +88,12 @@ const ACCESSIBILITY_LABELS: Record<BeeSituation, string> = {
   barcodeFound: "Bee found the scanned product",
   barcodeNotFound: "Bee needs help identifying the scanned product",
   emptyCollection: "Bee encourages adding the first item",
-};
-
-const TAP_REACTIONS: Record<
-  BeeSituation,
-  readonly [string, string, string]
-> = {
-  greeting: [
-    "Ready when you are.",
-    "What are we logging?",
-    "Let’s make today count.",
-  ],
-  emptyDay: [
-    "One quick log is enough to get today moving.",
-    "Start small—your next meal is a good place.",
-    "I’ll keep the first log easy.",
-  ],
-  firstMeal: [
-    "First log landed.",
-    "That’s the day started.",
-    "Nice first step.",
-  ],
-  searching: [
-    "Checking the closest match.",
-    "Still looking.",
-    "Almost there.",
-  ],
-  needsClarification: [
-    "One detail will sharpen the estimate.",
-    "A little context helps.",
-    "Tell me the portion or preparation.",
-  ],
-  reviewingMatch: [
-    "Check the serving before logging.",
-    "You stay in control of the final numbers.",
-    "Review first, then log.",
-  ],
-  logSuccess: [
-    "Logged and ready.",
-    "That meal is in.",
-    "Nice—your totals are updated.",
-  ],
-  streak: [
-    "Consistency looks good on you.",
-    "Keep the rhythm.",
-    "Small logs, strong streak.",
-  ],
-  lowProtein: [
-    "A small protein add-on can help.",
-    "Eggs, tofu, yogurt, or chicken could fit.",
-    "Your next meal can balance this.",
-  ],
-  underTarget: [
-    "There is still room to fuel.",
-    "Keep listening to your appetite.",
-    "You have space for another meal.",
-  ],
-  nearTarget: [
-    "Smooth pacing today.",
-    "You’re close to the target zone.",
-    "Steady work.",
-  ],
-  overTarget: [
-    "No guilt—just useful information.",
-    "One day does not define progress.",
-    "Log it, learn, and continue.",
-  ],
-  inactiveReturn: [
-    "Welcome back.",
-    "A fresh log is a fresh start.",
-    "No catching up required.",
-  ],
-  lookupError: [
-    "Try again or search manually.",
-    "The lookup paused, not your progress.",
-    "Your other logging tools still work.",
-  ],
-  barcodeFound: [
-    "Product found.",
-    "Check the serving, then log.",
-    "The barcode match is ready.",
-  ],
-  barcodeNotFound: [
-    "Try another scan or create it manually.",
-    "A clearer barcode may help.",
-    "We can still add this food.",
-  ],
-  emptyCollection: [
-    "Your first saved item starts here.",
-    "Add one favorite to make this useful.",
-    "A small collection is still a collection.",
-  ],
+  thinking: "Bee is thinking",
+  encouraging: "Bee is here to help",
+  celebrating: "Bee acknowledges a saved update",
+  caution: "Bee has a detail to review",
+  resting: "Bee is resting and ready to help",
+  success: "Bee acknowledges your recorded progress",
 };
 
 const MOOD_TO_SITUATION: Record<BeeMood, BeeSituation> = {
@@ -188,15 +118,9 @@ export function getBeeAccessibilityLabel(situation: BeeSituation): string {
   return ACCESSIBILITY_LABELS[situation];
 }
 
-export function getBeeTapReaction(
-  situation: BeeSituation,
-  tapCount: number,
-): string {
-  const reactions = TAP_REACTIONS[situation];
-  const index = Math.abs(Math.floor(tapCount)) % reactions.length;
-  return reactions[index];
-}
-
 export function beeMoodToSituation(mood: BeeMood): BeeSituation {
   return MOOD_TO_SITUATION[mood];
 }
+
+/** Semantic model poses cannot imply an unrecorded streak, diet state or error. */
+export function beePoseToSituation(pose: BeePose): BeeSituation { return pose; }

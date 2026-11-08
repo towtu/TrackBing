@@ -10,6 +10,7 @@ import type { FoodSource } from "@/src/lib/aiFood";
  */
 const LABEL: Record<FoodSource, string> = {
   my_food: "My Food",
+  trackbing_gist: "TrackBing foods",
   web: "🔎 Web",
   usda: "USDA",
   openfoodfacts: "OpenFoodFacts",
@@ -24,13 +25,14 @@ export function AiEstimateBadge({
   compact?: boolean;
 }) {
   const estimated = source === "ai_estimate";
-  const tone = estimated ? Colors.accent : Colors.success;
+  const curated = source === "trackbing_gist";
+  const tone = estimated || curated ? Colors.accent : Colors.success;
   return (
     <View
       style={[
         styles.pill,
         compact && styles.pillCompact,
-        { borderColor: tone, backgroundColor: estimated ? Colors.accentDim : "rgba(74,222,128,0.10)" },
+        { borderColor: tone, backgroundColor: estimated || curated ? Colors.accentDim : "rgba(74,222,128,0.10)" },
       ]}
     >
       <Text style={[styles.text, compact && styles.textCompact, { color: tone }]}>

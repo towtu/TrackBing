@@ -109,6 +109,7 @@ export async function searchUSDA(query: string): Promise<USDAFood[]> {
 
     return data.foods
       .filter(isSearchResult)
+      .filter(food=>{const n=food.foodNutrients??[];const has=(id:number)=>n.some(x=>x.nutrientId===id&&typeof x.value==="number"&&Number.isFinite(x.value)&&x.value>=0);return [1003,1005,1004].every(has)&&(has(1008)||has(1062));})
       .sort(
         (a, b) => scoreResult(trimmedQuery, b) - scoreResult(trimmedQuery, a)
       )
@@ -122,8 +123,7 @@ export async function searchUSDA(query: string): Promise<USDAFood[]> {
           default_unit: "g",
           nutriments: {
             "energy-kcal_100g":
-              getNutrient(nutrients, 1008) ||
-              Math.round(getNutrient(nutrients, 1062) / 4.184),
+              nutrients.some(n=>n.nutrientId===1008&&typeof n.value==="number") ? getNutrient(nutrients,1008) : getNutrient(nutrients,1062)/4.184,
             proteins_100g: getNutrient(nutrients, 1003),
             carbohydrates_100g: getNutrient(nutrients, 1005),
             fat_100g: getNutrient(nutrients, 1004),

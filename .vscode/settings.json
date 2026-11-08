@@ -3,5 +3,12 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
+  },
+  "files.exclude": {
+    ".expo": true,
+    ".vercel": true,
+    "node_modules": true,
+    "dist": true,
+    "output": true
   }
 }

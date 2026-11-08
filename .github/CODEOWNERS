@@ -1,0 +1,7 @@
+# The repository owner's review covers deployment and data boundaries.
+/.github/ @towtu
+/scripts/ci/ @towtu
+/supabase/ @towtu
+/vercel.json @towtu
+/eas.json @towtu
+/package*.json @towtu

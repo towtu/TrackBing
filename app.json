@@ -4,19 +4,16 @@
     "slug": "TrackBing",
     "version": "1.0.0",
     "orientation": "portrait",
-
     "icon": "./assets/images/TrackBingIcon.png",
     "scheme": "trackbing",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "TrackBing needs camera access to scan food barcodes."
+        "NSCameraUsageDescription": "TrackBing uses the camera to scan barcodes and photograph nutrition labels."
       }
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/TrackBingIcon.png",
@@ -25,9 +22,10 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.kobinggg.TrackBing",
-      "permissions": ["CAMERA"]
+      "permissions": [
+        "CAMERA"
+      ]
     },
-
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -40,7 +38,6 @@
       "description": "Track your calories and macros.",
       "orientation": "portrait"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -54,7 +51,9 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      ["expo-image-picker", {"cameraPermission":"TrackBing uses the camera to photograph nutrition labels and scan barcodes.","photosPermission":"Choose a nutrition-label photo to review in Bee.","microphonePermission":false}],
+      "expo-iap"
     ],
     "experiments": {
       "typedRoutes": true,

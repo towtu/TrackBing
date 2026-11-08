@@ -5,7 +5,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      development-tools:
+        dependency-type: development
+        update-types: [minor, patch]
+      expo-patches:
+        patterns: ['expo', 'expo-*', '@expo/*', 'react-native*']
+        update-types: [patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

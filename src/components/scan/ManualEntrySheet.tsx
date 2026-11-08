@@ -1,4 +1,4 @@
-import { MagnifyingGlass, X } from "phosphor-react-native";
+import { MagnifyingGlass, X } from "@/src/components/icons";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -40,7 +40,7 @@ export default function ManualEntrySheet({
         <View style={styles.content}>
           <View style={styles.titleRow}>
             <Text style={styles.title}>Enter Barcode</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close barcode entry" onPress={onClose} style={{ minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center" }}>
               <X size={24} color="white" />
             </TouchableOpacity>
           </View>
@@ -49,14 +49,14 @@ export default function ManualEntrySheet({
             accessibilityHint="Enter 4 to 32 digits to look up a product"
             style={styles.input}
             placeholder="e.g. 4800016..."
-            placeholderTextColor="#666"
+            placeholderTextColor={Colors.textMuted}
             keyboardType="numeric"
             maxLength={32}
             value={value}
             onChangeText={onChange}
             autoFocus
           />
-          <TouchableOpacity style={styles.searchBtn} onPress={onSubmit}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Search barcode" style={styles.searchBtn} onPress={onSubmit}>
             <MagnifyingGlass size={20} color="black" weight="bold" />
             <Text style={styles.searchBtnText}>Search Product</Text>
           </TouchableOpacity>

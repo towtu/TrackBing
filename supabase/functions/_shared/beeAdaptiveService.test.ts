@@ -67,6 +67,19 @@ describe('gist then Search then USDA and retained preparation',()=>{
  // TEST DATA: not a nutrition claim about chicken or a live Google result.
  const food:ReviewedFood={name:'TEST DATA raw skinless chicken breast',query,portion:query.portion!,grams:609,servingLabel:'609 g',calories:609,protein:60.9,carbs:12.2,fat:24.4,source:'usda',evidence:{identity:'TEST DATA raw skinless chicken breast',url:'https://fdc.nal.usda.gov/food-details/123/nutrients',title:'TEST DATA independent source',retrievedAt:'2026-09-27T00:00:00Z',excerpt:'TEST DATA',record:'independent',basis:{grams:100,unit:'g',count:null,milliliters:null,nutrients:{calories:100,protein:10,carbs:2,fat:4}}}};
  const answer={text:'TEST DATA live answer only',citations:[{title:'TEST source',url:'https://example.org/test',startIndex:0,endIndex:9}],searchSuggestionsHtml:['<a href="https://www.google.com/search?q=test">Test</a>'],searchQueryCount:1};
+ it.each(['plus','pro'] as const)('%s prepares another serving after confirmation without calling a failing AI provider',async tier=>{
+  const {deps,store}=setup(tier);
+  vi.mocked(store.begin).mockResolvedValue({ok:true,replay:false,thread_id:id,token:id,state:{awaiting:'none',query},pending:null});
+  deps.generate=vi.fn().mockRejectedValue(new Error('An additional portion must not require AI interpretation'));
+  const next={...food,portion:{amount:400,unit:'g' as const},grams:400,servingLabel:'400 g',query:{...query,portion:{amount:400,unit:'g' as const}}};
+  deps.search=vi.fn().mockResolvedValue({kind:'found',food:next});
+  const response=await handleBeeRequest(request('another 400g',tier==='plus'?'food_assist':'message'),deps);
+  expect(response.status).toBe(200);expect((await response.json()).ok).toBe(true);
+  expect(deps.search).toHaveBeenCalledWith(next.query,expect.any(AbortSignal),id);
+  expect(deps.generate).not.toHaveBeenCalled();expect(deps.ground).not.toHaveBeenCalled();expect(store.recordCall).not.toHaveBeenCalled();
+  expect(vi.mocked(store.finish).mock.calls.at(-1)?.[2]).toMatchObject({draft:next});
+  expect(vi.mocked(store.finish).mock.calls.at(-1)?.[2].confirm).toBeUndefined();
+ });
  it('runs Search before the independent USDA fallback and never persists Google data',async()=>{
   const {deps,store}=setup();const order:string[]=[];
   deps.generate=vi.fn().mockResolvedValue({reply:'Let me check the requested food.',nextStep:'lookup_food',suggestedPose:'searching',query});

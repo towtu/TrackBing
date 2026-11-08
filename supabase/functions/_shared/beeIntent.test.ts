@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRequest, parseIntent, explicitMemory, portionCorrection, decisionText, retainFoodList } from "./beeIntent.ts";
+import { parseRequest, parseIntent, explicitMemory, portionCorrection, additionalPortion, decisionText, retainFoodList } from "./beeIntent.ts";
 
 describe("Bee untrusted input boundaries", () => {
   const id = "a7143dc2-87d8-4844-855d-9ea0f72d7e21";
@@ -40,6 +40,11 @@ describe("Bee untrusted input boundaries", () => {
   it("handles portion-only corrections without replacing the food", () => {
     expect(portionCorrection("Actually, make it 100 grams.")).toEqual({amount:100,unit:"g"});
     expect(portionCorrection("Egg whites only")).toBeNull();
+  });
+  it('additional servings require a supported unit, bounded quantity and no dropped foods',()=>{
+    expect(additionalPortion('Please add another 400 grams.')).toEqual({amount:400,unit:'g'});
+    for(const text of ['another 400','another 400 kg','another 400g chicken','another 400g and an egg'])expect(additionalPortion(text)).toBeNull();
+    for(const text of ['another 0g','another 10001g','another 101 servings'])expect(()=>additionalPortion(text)).toThrow();
   });
   it.each(["how about 200g?", "What about 200 grams?", "Actually, how about 200 g?"])("recognizes a conversational portion correction: %s", message => {
     expect(portionCorrection(message)).toEqual({amount:200,unit:"g"});

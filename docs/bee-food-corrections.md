@@ -1,5 +1,39 @@
 # Bee chat clarity, food corrections and source priority
 
+## Current update — 8 November 2026
+
+The active provider is **DeepSeek**, configured with `DEEPSEEK_MODEL`
+(`deepseek-v4-pro`). The Gemini setup and dated verification below are historical;
+use [the current provider guide](deepseek-label-photos.md) for setup.
+
+Bee's public name lookup follows **Gist → DeepSeek web Search → USDA**.
+A supported Gist hit skips Search and USDA. Exact owned recipes/foods retain
+their private serving definitions, and explicit barcodes retain the independent
+Open Food Facts endpoint. Plus does not execute paid web Search; it may use the
+independent USDA fallback. Generic Open Food Facts name search no longer precedes
+the requested web branch in Bee; existing manual search remains available.
+
+Unbranded rice with a gram/ounce portion can use a disclosed plain cooked white
+rice default. Explicit steamed technique wins when a matching record exists;
+raw, brown, fried, branded or different-grain requests are not silently replaced.
+Conflicting copies of the same food still require clarification. Personal food
+lookup uses the original identity, not the public default. A short portion
+correction reuses the retained source basis and still requires a fresh review.
+All arithmetic and the exact pending snapshot remain server owned. This is
+structured retrieval/ranking and application-generated nutrition review, not a
+new embedding index or a claim of a complete RAG generation implementation.
+
+The new regressions use explicitly marked TEST DATA. No new migration, provider
+secret, quota increase or permission grant is needed for this update. Existing
+18 migrations and compatible deployed functions remain rollout prerequisites.
+Publishing source to `main` does not deploy the backend or website: Vercel Git
+deployment is disabled, and the gated release workflow is manual. In particular,
+the latest rice changes need a function release before live behavior changes.
+Revert the focused code commit to recover; keep the additive schema and all
+existing diary/chat data.
+
+## Historical implementation and verification
+
 Implemented on `feat/bee-conversation`, included in draft
 [PR #10](https://github.com/towtu/TrackBing/pull/10). Production is not deployed by
 this change. The user's untracked `codex.diff` is preserved.

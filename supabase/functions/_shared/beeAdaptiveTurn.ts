@@ -19,6 +19,7 @@ import {
 import type { BeeRequest, BeeTier, FoodQuery } from "./beeTypes.ts";
 import type { NutritionResult } from "./beeNutrition.ts";
 import { foodFromUserLabel, makePersonalFoodDraft, resolveRecipe } from "./beeCreation.ts";
+import { readyTypicalRice, riceRequestConflict, RICE_CLARIFICATION } from "./beeFoodRetrieval.ts";
 export type ProgressContext = {
   localDate: string;
   totals: {
@@ -49,10 +50,13 @@ export async function adaptiveTurn(
     ? command.text
     : "";
   if (tier === "plus") {
-    const intent = retainFoodList(
-      parseIntent(await model(INTENT_PROMPT, modelContext(text, {...context,memories:[],profile:{}}))),
-      text,
-    );
+    let parsed = parseIntent(await model(INTENT_PROMPT, modelContext(text, {...context,memories:[],profile:{}})));
+    if ((parsed.kind === "clarify" || parsed.kind === "nutrition") && riceRequestConflict(parsed.query, text)) {
+      parsed = { kind: "clarify", question: RICE_CLARIFICATION, query: parsed.query };
+    }
+    const ready = parsed.kind === "clarify" || parsed.kind === "nutrition"
+      ? readyTypicalRice(parsed.query, context.state.query, text) : null;
+    const intent = retainFoodList(ready ? { kind: "nutrition", query: ready } : parsed, text);
     let missed = false;
     const outcome = await resolveNutritionIntent(intent, context, async (q) => {
       const result = await search(q);
@@ -81,13 +85,20 @@ export async function adaptiveTurn(
     // reviewed identity/state, not raw external records or a grounded corpus.
     activePending: context.pending ? { id:context.pending.id,kind:context.pending.kind??"food",review_version:context.pending.review_version } : null,
   };
-  const decision = parseBeeDecision(
+  let decision = parseBeeDecision(
     await model(BEE_DECISION_PROMPT, {
       ...modelContext(text, context),
       verifiedContext,
       dashboard: command.kind === "insight",
     }),
   );
+  if (riceRequestConflict(decision.query, text) && ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
+    decision = { ...decision, nextStep: "ask_one_question", reply: RICE_CLARIFICATION, followUpQuestion: RICE_CLARIFICATION };
+  }
+  const ready = readyTypicalRice(decision.query, context.state.query, text);
+  if (ready && ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
+    decision = { ...decision, query: ready, nextStep: decision.nextStep === "ask_one_question" ? "lookup_food" : decision.nextStep };
+  }
   const state = {
     awaiting: "none" as const,
     suggested_pose: decision.suggestedPose,

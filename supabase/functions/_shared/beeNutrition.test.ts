@@ -51,6 +51,11 @@ describe('independent source nutrition',()=>{
  it('barcode retrieves a fixed independent product endpoint',async()=>{
   const d=deps([],[product]);const r=await searchNutrition({...bar(),barcode:'12345678'},d);expect(r.kind).toBe('found');expect(d.fetch.mock.calls[0][0]).toContain('/api/v3/product/12345678?');
  });
+ it('an explicit barcode remains a direct lookup in the preferred phase',async()=>{
+  const d=deps([],[product]);
+  expect(await searchNutrition({...bar(),barcode:'12345678'},d,'preferred'))
+   .toMatchObject({kind:'found',food:{source:'openfoodfacts',grams:32}});
+ });
  it('exact owned food is used first with a native per-serving basis and unknown grams',async()=>{
   const d=deps();d.personal=vi.fn().mockResolvedValue([{id:'owned',name:'Boiled whole egg',calories:80,protein:6.5,carbs:1,fat:5.5,default_unit:'serving',ai_estimated:false}]);
   expect(await searchNutrition(q({portion:{amount:2,unit:'serving'}}),d)).toMatchObject({kind:'found',food:{source:'my_food',grams:null,calories:160}});expect(d.fetch).not.toHaveBeenCalled();

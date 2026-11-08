@@ -44,6 +44,11 @@ describe('operator-curated gist source',()=>{
     expect(fetcher).toHaveBeenCalledWith('https://gist.githubusercontent.com/towtu/893f53e31444ad9757f5c4fb6a7edf67/raw/foods.json',expect.objectContaining({redirect:'error',signal:expect.any(AbortSignal)}));
   });
 });
+it('a preferred-source miss leaves public name search to DeepSeek before USDA',async()=>{
+ const d=deps([]);
+ expect((await searchNutrition(query,d,'preferred')).kind).toBe('unavailable');
+ expect(d.fetch).not.toHaveBeenCalled();
+});
 it('rejects invented gist values even when the duplicated basis in the excerpt is changed',async()=>{
  const result=await searchNutrition(query,deps(),'preferred');if(result.kind!=='found')throw new Error('Missing TEST DATA');
  const basis={...result.food.evidence.basis,nutrients:{...result.food.evidence.basis.nutrients,calories:200}};

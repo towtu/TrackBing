@@ -4,6 +4,7 @@ import type {
   NutritionEvidence,
   ReviewedFood,
 } from "./beeTypes.ts";
+import { isPlainRiceIdentity, rankPlainRice, riceMatchText, typicalRiceQuery } from "./beeFoodRetrieval.ts";
 export type NutritionResult = { kind: "found"; food: ReviewedFood } | {
   kind: "clarification" | "unavailable";
   message: string;
@@ -120,6 +121,7 @@ export function scaleEvidence(
   evidence: NutritionEvidence,
   source: ReviewedFood["source"],
 ): NutritionResult {
+  if (["trackbing_gist", "usda", "openfoodfacts"].includes(source)) query = typicalRiceQuery(query) ?? query;
   const early = preflight(query, source === "user_label");
   if (early) return early;
   if (!evidence.record) return unavailable();
@@ -128,17 +130,16 @@ export function scaleEvidence(
 
 /** Conservative identity matching: source text never becomes instructions. */
 export function identityMatches(query: FoodQuery, identity: string): boolean {
-  if (INJECTION.test(identity) || !containsWords(identity, query.name)) {
+  const requested = [query.name, query.preparation, query.brand, query.variant].filter(Boolean).join(" ");
+  const plainRice = isPlainRiceIdentity(requested);
+  if (plainRice && !isPlainRiceIdentity(identity)) return false;
+  const comparable = (value: string) => plainRice ? riceMatchText(value) : normalize(value);
+  if (INJECTION.test(identity) || !containsWords(comparable(identity), comparable(query.name))) {
     return false;
   }
-  const actual = normalize(identity),
-    wanted = normalize(
-      [query.name, query.preparation, query.brand, query.variant].filter(
-        Boolean,
-      ).join(" "),
-    );
+  const actual = comparable(identity), wanted = comparable(requested);
   for (const detail of [query.preparation, query.brand, query.variant]) {
-    if (detail && !containsWords(identity, detail)) return false;
+    if (detail && !containsWords(actual, comparable(detail))) return false;
   }
   if (/\begg\b/.test(wanted)) {
     for (const part of ["white", "yolk"]) {
@@ -399,7 +400,8 @@ function select(
   entries: NutritionEvidence[],
   source: ReviewedFood["source"],
 ): NutritionResult | null {
-  const matched = entries.filter((e) => identityMatches(query, e.identity));
+  const compatible = entries.filter((e) => identityMatches(query, e.identity));
+  const matched = source === "my_food" ? compatible : rankPlainRice(query, compatible);
   if (!matched.length) return null;
   if (matched.length > 1) {
     const first = matched[0].basis;
@@ -471,7 +473,7 @@ export async function searchNutrition(
   const early = preflight(query);
   if (early) return early;
   const now = (deps.now?.() ?? new Date()).toISOString();
-  if (phase === 'fallback') return searchUsda(query,deps,now);
+  if (phase === 'fallback') return searchUsda(typicalRiceQuery(query) ?? query,deps,now);
   // An explicitly named owned recipe defines its own serving. A same-name
   // public ingredient must never replace that private recipe or its yield.
   if (deps.recipes) {
@@ -486,6 +488,8 @@ export async function searchNutrition(
       );
     }
   }
+  const ownedQuery = query;
+  query = typicalRiceQuery(query) ?? query;
   if (deps.gist) {
     let raw:unknown;
     try {raw=await deps.gist();} catch {raw=null;}
@@ -503,11 +507,14 @@ export async function searchNutrition(
     const result=select(query,entries,'trackbing_gist');
     if(result)return result;
   }
-  const personal = await deps.personal(query);
-  const own = personal.filter((p) => !p.ai_estimated && identityMatches(query, p.name))
+  const personal = await deps.personal(ownedQuery);
+  const own = personal.filter((p) => !p.ai_estimated && identityMatches(ownedQuery, p.name))
     .map((p) => personalEvidence(p, now)).filter((e): e is NutritionEvidence => e !== null);
-  const ownResult = select(query, own, "my_food");
+  const ownResult = select(ownedQuery, own, "my_food");
   if (ownResult) return ownResult;
+  // Public name lookup follows Gist -> web -> USDA. Explicit barcodes still
+  // use the independent product endpoint, as do the existing manual callers.
+  if (phase === "preferred" && !query.barcode) return unavailable();
   const fields =
     "code,product_name,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,serving_quantity_unit,nutriments,countries_tags,nutrition_data_per";
   const term = [query.name, query.brand, query.variant].filter(Boolean).join(

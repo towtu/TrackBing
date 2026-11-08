@@ -197,6 +197,12 @@ export function parseFoodQuery(value: unknown): FoodQuery {
     if (!/\bwhole\b/i.test(name)) name = text(`whole ${name}`, 160);
     variant = null;
   }
+  // Grain/color describe a generic food, not a packaged-product flavor.
+  if (!brand && /\brice\b/i.test(name) && variant &&
+    /^(white|brown|red|black|jasmine|basmati|long[- ]grain|medium[- ]grain|short[- ]grain)$/i.test(variant)) {
+    if (!name.toLowerCase().includes(variant.toLowerCase())) name = text(`${variant.toLowerCase()} ${name}`, 160);
+    variant = null;
+  }
   return {
     ...(barcode === null ? {} : { barcode }),
     name,

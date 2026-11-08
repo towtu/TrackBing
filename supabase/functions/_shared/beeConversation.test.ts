@@ -10,6 +10,23 @@ pending.food.evidence.excerpt=JSON.stringify({identity:pending.food.name,url:pen
 const ctx:BeeContext={state:{awaiting:"review",query},pending,memories:[],profile:{unit_system:"metric",calorie_target:2100},recent:[]};
 const req=(text:string):BeeRequest=>({requestId:"r",threadId:"thread",expectedVersion:3,timeZone:"Asia/Manila",command:{kind:"message",text,actionId:"draft",reviewVersion:3}});
 describe("Bee conversation state",()=>{
+  it.each(['another 400g','another400g','Add another 400 grams.','Log another 400 g'])('retains the confirmed food for an additional serving: %s',message=>{
+    const saved={...ctx,pending:null,state:{awaiting:'none' as const,query}};
+    const outcome=deterministicTurn(req(message),saved);
+    expect(outcome).toMatchObject({lookup_query:{...query,portion:{amount:400,unit:'g'}},invalidate_pending:true});
+    expect(outcome?.confirm).toBeUndefined();expect(outcome?.draft).toBeUndefined();
+  });
+  it('asks for the food instead of guessing an additional serving without context',()=>{
+    const outcome=deterministicTurn(req('another 400g'),{...ctx,pending:null,state:{}});
+    expect(outcome?.text).toMatch(/which food/i);
+    expect(outcome?.lookup_query).toBeUndefined();expect(outcome?.confirm).toBeUndefined();
+  });
+  it('asks for a total before replacing an unconfirmed serving with an additional portion',()=>{
+    const outcome=deterministicTurn(req('another 400g'),ctx);
+    expect(outcome?.state?.awaiting).toBe('clarification');expect(outcome?.text).toMatch(/total portion/i);
+    expect(outcome?.invalidate_pending).toBe(true);
+    expect(outcome?.draft).toBeUndefined();expect(outcome?.lookup_query).toBeUndefined();expect(outcome?.confirm).toBeUndefined();
+  });
   it("never writes for a question, no, cancel, or yes without a reviewed action",()=>{
     expect(deterministicTurn(req("No"),ctx)?.cancel).toBe(true);
     expect(deterministicTurn(req("Cancel"),{...ctx,pending:null})?.confirm).toBeUndefined();

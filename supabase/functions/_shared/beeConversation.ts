@@ -20,6 +20,7 @@ import {
   explicitMemory,
   type MemoryChange,
   portionCorrection,
+  additionalPortion,
 } from "./beeIntent.ts";
 import { type NutritionResult, scaleEvidence } from "./beeNutrition.ts";
 
@@ -211,7 +212,12 @@ export function deterministicTurn(
     if (!previousFood) return {text:'Which food and portion should I use that preparation for?',state:{awaiting:'clarification'},invalidate_pending:true};
     return {lookup_query:withPreparation(previousFood,normalized),invalidate_pending:true};
   }
-  const portion = portionCorrection(text);
+  const additional = additionalPortion(text);
+  if (additional && context.pending) {
+    const question = "There’s already an unconfirmed review. What total portion should I review instead?";
+    return {text:question,invalidate_pending:true,state:{awaiting:"clarification",question,...(previousFood?{query:previousFood}:{})}};
+  }
+  const portion = additional ?? portionCorrection(text);
   if (portion && !context.pending) {
     if (previousFood) return {lookup_query:{...previousFood,portion},invalidate_pending:true};
     return {

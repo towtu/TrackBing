@@ -360,6 +360,12 @@ export function portionCorrection(value: string): Portion | null {
   return parsePortion({ amount: Number(match[1]), unit: normalized });
 }
 
+/** A new serving of the retained food; never permission to save it. */
+export function additionalPortion(value: string): Portion | null {
+  const match = value.trim().match(/^(?:please\s+)?(?:(?:add|log)\s+)?(?:another|an additional)\s*(.+)$/i);
+  return match ? portionCorrection(match[1]) : null;
+}
+
 /** Fail closed when an interpreter drops a separately named item from a list. */
 export function retainFoodList(intent: BeeIntent, message: string): BeeIntent {
   if (intent.kind !== "nutrition") return intent;

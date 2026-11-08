@@ -2,6 +2,15 @@
 
 ## Current update — 8 November 2026
 
+Additional servings such as “another 400g” or “add another 400 grams” retain the
+last structured food/preparation after confirmation. They request a fresh source
+lookup and a separate Add review without model interpretation; the earlier log
+is not edited. Without food context Bee asks which food. An unconfirmed review
+requires clarifying the total instead of silently dropping a serving. Explicit
+units, portion bounds and confirmation remain required. This fixes an
+unnecessary model call that caused the generic lookup-service error for that
+follow-up wording; it does not guarantee external provider uptime on other turns.
+
 The active provider is **DeepSeek**, configured with `DEEPSEEK_MODEL`
 (`deepseek-v4-pro`). The Gemini setup and dated verification below are historical;
 use [the current provider guide](deepseek-label-photos.md) for setup.

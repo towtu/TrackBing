@@ -4,6 +4,7 @@
 
 | Need | Guide |
 | --- | --- |
+| Review the latest main-update scope, checks and deployment boundary | [8 November update](launch/2026-11-08-main-update.md) |
 | Understand folders and local generated files | [Project structure](project-structure.md) |
 | Configure the current DeepSeek assistant and label reader | [DeepSeek Bee](deepseek-label-photos.md) |
 | Use the deployed private Bee backend on localhost | [Private evaluation](launch/2026-10-19-private-bee.md) |

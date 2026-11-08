@@ -234,6 +234,7 @@ async function accountSwitch(browser, base) {
       await page.close();
     }
     await accountSwitch(browser, base);
+    await require('./check-bee-insight.cjs')(browser, base);
     console.log('Bee motion PASS: 375/768/1440, single companion, real-state fixtures, review pose, pause/reload, reduced motion, owner scoping/account switch/sign-out, no animation API calls, zero unexpected console/network errors. TEST DATA only.');
   } finally { await browser.close(); if (local) await new Promise(resolve => local.server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -31,7 +31,7 @@ import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
 import { useBeeCompanion } from "@/src/components/ai/BeeCompanionProvider";
 import { useBeeInsight } from "@/src/lib/useBeeInsight";
-import { subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
+import { emitFoodLogChanged, subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { supabase } from "@/src/lib/supabase";
 import { accountDay } from "@/src/lib/accountDay";
 import { shiftDay } from "../../supabase/functions/_shared/beeDates";
@@ -65,6 +65,7 @@ export function DashboardScreen() {
   const [calorieGoal, setCalorieGoal] = useState(2000);
   const [goals, setGoals] = useState({ p: 150, c: 200, f: 70 });
   const [loading, setLoading] = useState(true);
+  const [beeContextRevision, setBeeContextRevision] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editLogModal, setEditLogModal] = useState(false);
   const [editingLog, setEditingLog] = useState<FoodLog | null>(null);
@@ -219,6 +220,7 @@ export function DashboardScreen() {
 
     await calculateStreak(user.id, day);
     await upsertDailySummary();
+    setBeeContextRevision((value) => value + 1);
     setLoading(false);
   }, [calculateStreak]);
 
@@ -285,6 +287,7 @@ export function DashboardScreen() {
       .eq("user_id", user.id);
     if (updateError) { setLogs(previousLogs); calculateTotals(previousLogs); return; }
 
+    emitFoodLogChanged();
     upsertDailySummary();
   };
 
@@ -324,7 +327,7 @@ export function DashboardScreen() {
       .eq("id", id)
       .eq("user_id", user.id);
     if (error) { setLogs(previousLogs); calculateTotals(previousLogs); }
-    else upsertDailySummary();
+    else { emitFoodLogChanged(); upsertDailySummary(); }
   };
 
   useFocusEffect(useCallback(() => { fetchData(); setMenuOpen(false); }, [fetchData]));
@@ -341,7 +344,8 @@ export function DashboardScreen() {
   const displayDiff = Math.abs(Math.round(rawDiff));
 
   const dateStr = new Date(`${diaryDay}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
-  const insight = useBeeInsight(`${diaryDay}:${totals.calories}:${totals.protein}:${logs.length}:${calorieGoal}`);
+  // Request only after persisted data finishes loading, never for optimistic edits.
+  const insight = useBeeInsight(loading ? null : String(beeContextRevision));
   const beeMessage = {title:"Your next step",message:insight?.text ?? "Review your diary, log a food, or record a weigh-in. Tap Bee to ask for help."};
   
   // Format time for logs

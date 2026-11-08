@@ -1,5 +1,6 @@
 import { Session } from "@supabase/supabase-js";
 import { Stack } from "expo-router";
+import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
@@ -16,6 +17,13 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const { isDesktop } = useResponsive();
+  // Router metadata controls the web tab, including before auth finishes loading.
+  const pageHead = (
+    <Head>
+      <title>TrackBing</title>
+      <meta name="description" content="Track your food, calories and macros with TrackBing." />
+    </Head>
+  );
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -49,6 +57,8 @@ export default function RootLayout() {
 
   if (loading) {
     return (
+      <>
+      {pageHead}
       <View
         style={{
           flex: 1,
@@ -59,10 +69,13 @@ export default function RootLayout() {
       >
         <ActivityIndicator size="large" color={Colors.accent} />
       </View>
+      </>
     );
   }
 
   return (
+    <>
+    {pageHead}
     <ErrorBoundary>
       <SafeAreaProvider>
         <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
@@ -78,7 +91,7 @@ export default function RootLayout() {
                 <Stack
                   screenOptions={{
                     headerShown: false,
-                    title: "TrackBing", // <--- THIS SETS THE BROWSER TAB NAME
+                    title: "TrackBing",
                   }}
                 >
                   <Stack.Screen name="(tabs)" />
@@ -90,6 +103,7 @@ export default function RootLayout() {
         </SafeAreaView>
       </SafeAreaProvider>
     </ErrorBoundary>
+    </>
   );
 }
 

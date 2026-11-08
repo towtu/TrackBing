@@ -32,7 +32,7 @@
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "decode-uri-component": "file:vendor/decode-uri-component-0.5.1.tgz",
-    "expo": "~54.0.33",
+    "expo": "~58.0.23",
     "expo-constants": "~18.0.13",
     "expo-file-system": "~19.0.24",
     "expo-font": "~14.0.11",

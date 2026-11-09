@@ -45,7 +45,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - name: Validate main, native identity and staging evidence
@@ -95,7 +95,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: node scripts/ci/smoke.mjs
       - name: Set up authenticated EAS CLI
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9.0.0
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9.0.1
         with:
           eas-version: '24.10.0'
           token: ${{ secrets.EXPO_TOKEN }}
@@ -113,7 +113,7 @@ jobs:
           eas build --platform "$BUILD_PLATFORM" --profile "$BUILD_PROFILE" --non-interactive --wait --json > output/native-build/raw-result.json
           node scripts/ci/release.mjs native-result
       - name: Upload build result
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-build-${{ inputs.profile }}-${{ inputs.platform }}
           path: output/native-build/result.json

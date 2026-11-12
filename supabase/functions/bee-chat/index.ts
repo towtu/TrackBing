@@ -9,6 +9,7 @@ import {
 import { loadGistNutrition, searchNutrition } from "../_shared/beeNutrition.ts";
 import { INTENT_PROMPT } from "../_shared/beeConversation.ts";
 import { savedRecipeRecord } from "../_shared/beeRecipeRecord.ts";
+import {FOOD_CONTEXT_PROMPT} from '../_shared/beeFoodContext.ts';
 
 // Fixed destinations; no user-supplied URLs. Bound auth/database requests too.
 const boundedFetch: typeof fetch = (input, init) =>
@@ -64,7 +65,7 @@ Deno.serve(async (req: Request) => {
     store: (userId) => createBeeStore(admin, userId),
     configured: () => Boolean(apiKey) && Deno.env.get("BEE_AI_ENABLED") !== "false",
     paidDataApproved: () => Deno.env.get("DEEPSEEK_DATA_USE_CONFIRMED") === "true",
-    generate: (system,context,signal,onUsage) => deepseekJson(system,context,{apiKey,model,signal,maxTokens:4096,onUsage:usage=>{reportUsage(usage);onUsage(usage);}}),
+    generate: (system,context,signal,onUsage) => deepseekJson(system,context,{apiKey,model,signal,maxTokens:system===FOOD_CONTEXT_PROMPT?1024:4096,reasoningEffort:system===FOOD_CONTEXT_PROMPT?'none':'low',onUsage:usage=>{reportUsage(usage);onUsage(usage);}}),
     interpret: (context, signal) =>
       deepseekJson(INTENT_PROMPT, context, {
         apiKey,

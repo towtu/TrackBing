@@ -137,7 +137,8 @@ async function verify(browser,base,width){
     const base=process.env.UI_BASE_URL||local.base;
     const creation=await verify(browser,base,width);
     const chatRecovery=await require('./check-bee-chat-recovery-ui.cjs').verify(browser,base,width);
-    results.push({...creation,chatRecovery});
+    const pendingMessages=await require('./check-bee-pending-ui.cjs').verify(browser,base,width);
+    results.push({...creation,chatRecovery,pendingMessages});
   }}
   finally{await browser.close();if(local)await new Promise(resolve=>local.server.close(resolve));}
   fs.writeFileSync(`${output}/results.json`,JSON.stringify(results,null,2));console.log(JSON.stringify(results));

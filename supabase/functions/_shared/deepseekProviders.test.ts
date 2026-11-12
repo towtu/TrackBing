@@ -22,6 +22,12 @@ const response = (content: unknown, finish = "stop") =>
     }),
   );
 describe("DeepSeek provider contract", () => {
+  it('supports bounded non-thinking extraction without changing routine interpretation defaults',async()=>{
+    const fetcher=vi.fn<typeof fetch>().mockResolvedValue(response({query:null}));
+    const requestOptions={...options(),fetch:fetcher,maxTokens:1024,reasoningEffort:'none' as const};
+    await deepseekJson('Extract JSON',{},requestOptions);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({model:'deepseek-v4-pro',reasoning_effort:'none',max_tokens:1024});
+  });
   it("sends inline label pixels to Flash without tools, Search or reasoning", async () => {
     const image = "data:image/jpeg;base64," +
       btoa(

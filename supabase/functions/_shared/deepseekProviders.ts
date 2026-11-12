@@ -12,7 +12,7 @@ import {
 } from "./nutritionLabel.ts";
 import type { FoodQuery, GroundedAnswer } from "./beeTypes.ts";
 export type DeepSeekUsage = GeminiUsage;
-export type DeepSeekOptions = GeminiOptions;
+export type DeepSeekOptions = GeminiOptions & {reasoningEffort?:'none'|'low'};
 const CHAT = "https://api.deepseek.com/chat/completions";
 const SEARCH = "https://api.deepseek.com/v1/tools/search";
 function record(v: unknown): Record<string, unknown> {
@@ -62,7 +62,7 @@ async function completion(
         role: "system",
         content: system + " Return only a JSON object.",
       }, { role: "user", content }],
-      reasoning_effort: vision ? "none" : "low",
+      reasoning_effort: vision ? "none" : o.reasoningEffort??"low",
       max_tokens: Math.min(4096, Math.max(1, Math.floor(o.maxTokens ?? 4096))),
       response_format: { type: "json_object" },
       stream: false,

@@ -8,7 +8,7 @@ import {
   type WeightRecord,
   weightTrend,
 } from "./beeAdaptive.ts";
-import { parseIntent, retainFoodList } from "./beeIntent.ts";
+import { parseIntent, retainFoodList, portionCorrection, additionalPortion } from "./beeIntent.ts";
 import {
   type BeeContext,
   INTENT_PROMPT,
@@ -20,6 +20,7 @@ import type { BeeRequest, BeeTier, FoodQuery } from "./beeTypes.ts";
 import type { NutritionResult } from "./beeNutrition.ts";
 import { foodFromUserLabel, makePersonalFoodDraft, resolveRecipe } from "./beeCreation.ts";
 import { readyTypicalRice, riceRequestConflict, RICE_CLARIFICATION } from "./beeFoodRetrieval.ts";
+import {FOOD_CONTEXT_PROMPT,isFoodClarification,parseFoodContext,mergeFoodClarification} from './beeFoodContext.ts';
 export type ProgressContext = {
   localDate: string;
   totals: {
@@ -33,6 +34,10 @@ export type ProgressContext = {
   weights: WeightRecord[];
   revision: string;
 };
+function foodContextInput(text:string,context:BeeContext){
+  const {currentFood,clarification,recentMessages,userMessage}=modelContext(text,{...context,memories:[],profile:{}});
+  return {currentFood,clarification,recentMessages,userMessage};
+}
 export async function adaptiveTurn(
   request: BeeRequest,
   context: BeeContext,
@@ -51,6 +56,17 @@ export async function adaptiveTurn(
     : "";
   if (tier === "plus") {
     let parsed = parseIntent(await model(INTENT_PROMPT, modelContext(text, {...context,memories:[],profile:{}})));
+    if(parsed.kind==='clarify' || parsed.kind==='nutrition'){
+      const foodScope=isFoodClarification(text,parsed.kind==='clarify'?parsed.question:'',context);
+      let query=parsed.query;
+      if(!query && foodScope)query=parseFoodContext(await model(FOOD_CONTEXT_PROMPT,foodContextInput(text,context)));
+      if(query){
+        query=mergeFoodClarification(foodScope && context.state.awaiting==='clarification'?context.state.query:undefined,query,text);
+        const amount=portionCorrection(text)??additionalPortion(text);
+        if(amount && foodScope)parsed={kind:'nutrition',query:{...query,portion:amount}};
+        else parsed={...parsed,query};
+      }
+    }
     if ((parsed.kind === "clarify" || parsed.kind === "nutrition") && riceRequestConflict(parsed.query, text)) {
       parsed = { kind: "clarify", question: RICE_CLARIFICATION, query: parsed.query };
     }
@@ -92,6 +108,22 @@ export async function adaptiveTurn(
       dashboard: command.kind === "insight",
     }),
   );
+  if(command.kind!=='insight' && !decision.recipe && !context.state.creation &&
+    ['ask_one_question','lookup_food','propose_food','search_food_web'].includes(decision.nextStep)){
+    const foodScope=isFoodClarification(text,decision.followUpQuestion??decision.reply,context);
+    let query=decision.query;
+    if(!query && foodScope)query=parseFoodContext(await model(FOOD_CONTEXT_PROMPT,foodContextInput(text,context)))??undefined;
+    if(query){
+      query=mergeFoodClarification(foodScope && context.state.awaiting==='clarification'?context.state.query:undefined,query,text);
+      const amount=portionCorrection(text)??additionalPortion(text);
+      decision={...decision,query:amount && foodScope?{...query,portion:amount}:query,
+        nextStep:amount && foodScope && decision.nextStep==='ask_one_question'?'lookup_food':decision.nextStep};
+    }
+  }
+  if(decision.query && ['ask_one_question','lookup_food','propose_food','search_food_web'].includes(decision.nextStep)){
+    const list=retainFoodList({kind:'nutrition',query:decision.query},text);
+    if(list.kind==='multiple')return resolveNutritionIntent(list,context,search);
+  }
   if (riceRequestConflict(decision.query, text) && ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
     decision = { ...decision, nextStep: "ask_one_question", reply: RICE_CLARIFICATION, followUpQuestion: RICE_CLARIFICATION };
   }

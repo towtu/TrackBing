@@ -1,6 +1,39 @@
 # Bee chat clarity, food corrections and source priority
 
-## Current update — 8 November 2026
+## Current update — 12 November 2026
+
+Sent messages appear immediately with a Sending status and an empty composer.
+The server transcript replaces that temporary bubble after success. A failed
+send restores the text for editing; Retry preserves a different unsent draft.
+The temporary message is cleared on account/thread changes and is not a food
+save or a second persistent transcript.
+
+Food clarifications retain the structured food, preparation, flavor and portion.
+For example, “Fudgee Barr, one serving” → “chocolate” → “35g” keeps the chocolate
+product and requests 35 edible grams. It does not assert that the whole bar
+weighs 35g. Count/serving requests still need a supported mass conversion. A new
+food clears unrelated product fields; changing a flavor clears the previous
+package size. Cancelled context and an explicit null recovery are not revived.
+
+If the planner omits a food query while asking a question, one bounded read-only
+model call may recover it from the current query and recent chat. Recovery sends
+no profile/progress or saved preferences, returns no nutrition or write action,
+and shares the existing two-model-call/55-second turn limit. Its DeepSeek request
+uses `reasoning_effort: none` and at most 1,024 output tokens; normal planning
+retains its existing settings. See the official
+[chat-completions contract](https://api-docs.deepseek.com/api/create-chat-completion/).
+
+This repairs conversational context, not missing product nutrition. If the exact
+product has no independently usable record, Bee can give an informational Search
+answer or offer barcode, label/manual entry. Search text never supplies a diary
+payload. A source-backed proposal still needs a separate confirmed server write.
+
+There is no new migration, secret, entitlement or dependency. Deploy compatible
+`bee-chat` before the client update. Main now triggers the existing Vercel Git
+deployment; Supabase functions are deployed separately. Current release evidence
+is in [the 12 November update](launch/2026-11-12-chat-clarity.md).
+
+## Previous update — 8 November 2026
 
 Additional servings such as “another 400g” or “add another 400 grams” retain the
 last structured food/preparation after confirmation. They request a fresh source
@@ -35,9 +68,8 @@ new embedding index or a claim of a complete RAG generation implementation.
 The new regressions use explicitly marked TEST DATA. No new migration, provider
 secret, quota increase or permission grant is needed for this update. Existing
 18 migrations and compatible deployed functions remain rollout prerequisites.
-Publishing source to `main` does not deploy the backend or website: Vercel Git
-deployment is disabled, and the gated release workflow is manual. In particular,
-the latest rice changes need a function release before live behavior changes.
+Publishing source to `main` does not deploy Supabase functions. Vercel Git
+deployment was subsequently restored; see [CI and releases](CI_CD.md).
 Revert the focused code commit to recover; keep the additive schema and all
 existing diary/chat data.
 

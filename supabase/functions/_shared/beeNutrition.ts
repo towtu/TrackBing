@@ -98,10 +98,10 @@ function preflight(query: FoodQuery, userLabel = false): NutritionResult | null 
   ) return unavailable();
   if (
     !userLabel && !query.barcode && /fudgee/i.test(`${query.name} ${query.brand ?? ""}`) &&
-    (!query.variant?.trim() || !query.packageGrams)
+    (!query.variant?.trim() || (!query.packageGrams && !['g','oz'].includes(query.portion?.unit??'')))
   ) {
     return clarify(
-      "Which Fudgee Barr flavor and package size in grams did you have?",
+      !query.variant?.trim() ? "Which Fudgee Barr flavor did you have?" : "How many grams is the bar or serving you ate?",
     );
   }
   if (

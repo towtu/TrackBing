@@ -118,8 +118,11 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const execute = async (request: BeeRequest): Promise<boolean> => {
     const client = clientRef.current;
     if (!client || busyRef.current) return false;
+    const sentText = request.command.kind === "message" || request.command.kind === "food_assist"
+      ? request.command.text : null;
     busyRef.current = true;
     setActiveRequest(request);
+    if (sentText !== null) setInput((current) => current.trim() === sentText ? "" : current);
     setFailed(null);
     setNotice(null);
     const result = await client.send(request);
@@ -128,6 +131,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
     setActiveRequest(null);
     if (!result) return false;
     if (!result.ok) {
+      if (sentText !== null) setInput((current) => current.trim() ? current : sentText);
       setFailed({ request, error: result.error });
       return false;
     }
@@ -152,10 +156,6 @@ export function BeeQuickLog({ userId }: { userId: string }) {
       setNotice(result.snapshot.summary_warning
         ? "Food saved. Your daily summary still needs to refresh."
         : "Added to today's food log.");
-    }
-    if ((request.command.kind === "message" || request.command.kind === "food_assist")) {
-      const sent = request.command.text;
-      setInput((current) => current.trim() === sent ? "" : current);
     }
     if (request.command.kind === "new_thread") {
       setInput("");
@@ -218,6 +218,8 @@ export function BeeQuickLog({ userId }: { userId: string }) {
 
   useEffect(()=>{if(labelOpen)scrollRef.current?.scrollTo({y:0,animated:false});},[labelOpen]);
   const loading = activeRequest !== null;
+  const outgoingText = activeRequest?.command.kind === "message" || activeRequest?.command.kind === "food_assist"
+    ? activeRequest.command.text : null;
   const feedback = failed ? getBeeErrorFeedback(failed.error) : null;
   const messages = snapshot?.messages.slice(-50) ?? [];
   const lastMessage = messages[messages.length - 1];
@@ -390,6 +392,14 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                       </View>
                     ) : null}
                     {pending && !pendingInMessages ? renderReview(pending) : null}
+                    {outgoingText !== null ? (
+                      <View testID="bee-outgoing-message" style={[styles.messageRow, styles.userMessageRow]}>
+                        <View style={[styles.messageBubble, styles.userBubble]}>
+                          <Text selectable style={[styles.messageText, styles.userMessageText]}>{outgoingText}</Text>
+                          <Text accessibilityLiveRegion="polite" style={styles.outgoingStatus}>Sending…</Text>
+                        </View>
+                      </View>
+                    ) : null}
                   </>
                 ) : null}
 
@@ -584,6 +594,7 @@ const styles = StyleSheet.create({
   userBubble: { backgroundColor: Colors.accent, flexShrink: 1, minWidth: 0, maxWidth: "100%" },
   messageText: { color: Colors.text, fontSize: 14, lineHeight: 21 },
   userMessageText: { color: Colors.textOnAccent },
+  outgoingStatus: { color: Colors.textOnAccent, fontSize: 12, lineHeight: 18, marginTop: 4 },
   welcome: { alignItems: "center", gap: 12, paddingVertical: 12 },
   welcomeTitle: { color: Colors.text, fontSize: 18, fontWeight: "700" },
   welcomeText: { color: Colors.textSecondary, fontSize: 14, lineHeight: 21, textAlign: "center", maxWidth: 360 },

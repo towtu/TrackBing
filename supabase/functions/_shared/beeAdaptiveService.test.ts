@@ -55,6 +55,37 @@ describe('adaptive server decisions and paid boundaries',()=>{
  it('lets Basic read actual owned yesterday without a paid call',async()=>{const {deps,store}=setup('basic');expect((await handleBeeRequest(request('What did I eat yesterday?'),deps)).status).toBe(200);expect(store.history).toHaveBeenCalledWith('2026-09-25T16:00:00.000Z','2026-09-26T16:00:00.000Z');expect(deps.generate).not.toHaveBeenCalled();});
  it.each(['missing','minor','unpaid'] as const)('fails before exposing context or spending when %s',async mode=>{const {deps,store}=setup();store.snapshot=vi.fn().mockResolvedValue({...snapshot,profile:{age:mode==='minor'?17:mode==='missing'?null:30}});if(mode==='unpaid')deps.paidDataApproved=()=>false;expect((await handleBeeRequest(request(),deps)).status).toBe(mode==='unpaid'?503:403);expect(deps.generate).not.toHaveBeenCalled();expect(store.reserve).not.toHaveBeenCalled();});
  it('a fresh no-search reply uses real state and one quota reservation without logging',async()=>{const {deps,store}=setup();const result=await(await handleBeeRequest(request(),deps)).json();expect(result.ok).toBe(true);expect(store.reserve).toHaveBeenCalledOnce();expect(deps.generate).toHaveBeenCalledOnce();expect(deps.search).not.toHaveBeenCalled();expect(deps.ground).not.toHaveBeenCalled();expect(store.finish).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.not.objectContaining({confirm:true}));expect(store.recordCall).toHaveBeenCalledOnce();});
+ it('generates dashboard advice from bounded local-day diary entries with no profile transcript or tools', async () => {
+  const {deps,store}=setup();
+  const food={name:'TEST DATA grilled tofu',calories:125,serving_size:'1',serving_unit:'serving'};
+  vi.mocked(store.history).mockResolvedValue(Array.from({length:7},()=>food));
+  vi.mocked(deps.generate!).mockResolvedValue({reply:'You logged grilled tofu. Review your protein target when planning your next meal.',suggestedPose:'encouraging'});
+  const response=await handleBeeRequest(new Request('https://example.test/bee',{
+   method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json'},
+   body:JSON.stringify({requestId:id,timeZone:'Asia/Manila',command:{kind:'insight'}}),
+  }),deps);
+  expect((await response.json()).snapshot.insight.text).toContain('grilled tofu');
+  expect(store.history).toHaveBeenCalledWith('2026-09-26T16:00:00.000Z','2026-09-27T16:00:00.000Z',{latest:true});
+  const payload=vi.mocked(deps.generate!).mock.calls[0][1];
+  expect(payload).toMatchObject({recordedFoods:Array.from({length:5},()=>({name:food.name,calories:125}))});
+  expect(payload).not.toHaveProperty('recentMessages');expect(payload).not.toHaveProperty('savedPreferences');
+  expect(JSON.stringify(payload)).not.toContain('current_weight');
+  expect(deps.generate).toHaveBeenCalledOnce();expect(deps.search).not.toHaveBeenCalled();expect(deps.ground).not.toHaveBeenCalled();
+  expect(vi.mocked(store.finish).mock.calls.at(-1)?.[2]).toEqual({});
+ });
+ it('reads today’s actual foods only when the chat decision requests the diary', async () => {
+  const { deps, store } = setup();
+  vi.mocked(store.history).mockResolvedValue([{ name: "TEST DATA cooked rice", calories: 125, serving_size: "1", serving_unit: "serving" }]);
+  vi.mocked(deps.generate!)
+   .mockResolvedValueOnce({ reply: "Let's review your diary.", nextStep: "read_data", requestedReads: ["today_food"], suggestedPose: "thinking" })
+   .mockResolvedValueOnce({ reply: "Your diary includes cooked rice. You can review your targets on the dashboard.", suggestedPose: "encouraging" });
+  const response = await handleBeeRequest(request(), deps);
+  expect((await response.json()).ok).toBe(true);
+  expect(store.history).toHaveBeenCalledOnce();
+  expect(vi.mocked(deps.generate!).mock.calls[1][1]).toMatchObject({ recordedFoods: [{ name: "TEST DATA cooked rice", calories: 125 }] });
+  expect(deps.ground).not.toHaveBeenCalled();
+  expect(vi.mocked(store.finish).mock.calls.at(-1)?.[2]).not.toHaveProperty("draft");
+ });
  it('explicit weight becomes only a review, converted on the server, never a claimed save',async()=>{const {deps,store}=setup();deps.generate=vi.fn().mockResolvedValueOnce({reply:'Let us review that check-in.',nextStep:'propose_weight',suggestedPose:'thinking'}).mockResolvedValueOnce({reply:'Review your measurement below. Your targets stay unchanged.',suggestedPose:'thinking'});await handleBeeRequest(request('My weight today is 160 lb'),deps);const outcome=vi.mocked(store.finish).mock.calls.at(-1)![2];expect(outcome.weight_draft?.weightKg).toBeCloseTo(72.5747792);expect(outcome.confirm).toBeUndefined();expect(outcome.goal_draft).toBeUndefined();expect(store.recordCall).toHaveBeenCalledTimes(2);});
  it('malformed decisions and fake save claims cannot create proposals',async()=>{for(const output of [{reply:'I saved your weight.',nextStep:'propose_weight',suggestedPose:'success'},{reply:'Do this.',nextStep:'execute_sql',sql:'delete users',suggestedPose:'thinking'}]){const {deps,store}=setup();deps.generate=vi.fn().mockResolvedValue(output);const result=await(await handleBeeRequest(request('My weight is 72 kg'),deps)).json();expect(result.ok).toBe(false);expect(store.release).toHaveBeenCalledWith(expect.anything(),expect.anything(),false,null);expect(vi.mocked(store.finish).mock.calls.at(-1)![2]).not.toHaveProperty('weight_draft');}});
  it('an unchanged cached dashboard insight does not reserve or call the model',async()=>{const {deps,store}=setup();store.getInsight=vi.fn().mockResolvedValue({text:'A previously generated current insight.',suggested_pose:'greeting',context_revision:'1',expires_at:'2026-09-28T00:00:00Z'});const req=new Request('https://example.test',{method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json'},body:JSON.stringify({requestId:id,threadId:id,expectedVersion:0,timeZone:'Asia/Manila',command:{kind:'insight'}})});expect((await handleBeeRequest(req,deps)).status).toBe(200);expect(store.reserve).not.toHaveBeenCalled();expect(deps.generate).not.toHaveBeenCalled();});

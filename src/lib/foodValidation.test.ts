@@ -18,6 +18,11 @@ describe("manual food and recipe boundaries",()=>{
     expect(parseManualFood("Water","0","0","0")).toMatchObject({ok:true,value:{protein:0,carbs:0,fat:0,calories:0}});
     expect(parseManualFood("Water","0","","0").ok).toBe(false);
   });
+  it("preserves the calories printed on a label even when macro rounding differs", () => {
+    expect(parseManualFood("TEST DATA bar", "4", "20", "3", "125")).toMatchObject({ ok: true, value: { calories: 125 } });
+    expect(parseManualFood("TEST DATA bar", "4", "20", "3", "").ok).toBe(false);
+    expect(parseManualFood("TEST DATA bar", "4", "20", "3", "-1").ok).toBe(false);
+  });
   it.each(["-1","NaN","Infinity","1.2.3","4g","1e999","10001"])("rejects malformed or unreasonable macro %s",v=>expect(parseManualFood("Test",v,"0","0").ok).toBe(false));
   it("rejects blank or overlong names",()=>{
     expect(parseManualFood(" ","1","2","3").ok).toBe(false);

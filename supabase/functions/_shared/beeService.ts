@@ -85,7 +85,7 @@ export interface BeeStore {
     lease: TurnLease,
     count: number,
   ): Promise<void>;
-  history(start: string, end: string): Promise<HistoryLog[]>;
+  history(start: string, end: string, options?: { latest?: boolean }): Promise<HistoryLog[]>;
 }
 export type BeeDependencies = {
   savedTimeZone?: (userId:string)=>Promise<string|null>;
@@ -332,6 +332,9 @@ export async function handleBeeRequest(
           // Library records require independent values. This branch never
           // searches Google or reuses its links as nutrition leads.
           return result.kind === "unavailable" && deps.fallbackSearch ? deps.fallbackSearch(q,signal,user.id) : result;
+        }, () => {
+          const bounds = dayBounds(progress.localDate, request.timeZone);
+          return store.history(bounds.start, bounds.end, { latest: true });
         });
       const {needsWeb,...persisted}=outcome;
       if (needsWeb) {

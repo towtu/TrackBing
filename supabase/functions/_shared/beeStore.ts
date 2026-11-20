@@ -73,11 +73,11 @@ export function createBeeStore(
       });
       if (!result.ok) throw new Error("search_accounting_failed");
     },
-    history: async (start, end) => {
+    history: async (start, end, options) => {
       const { data, error } = await admin.from("food_logs").select(
         "name,calories,serving_size,serving_unit",
       ).eq("user_id", userId).gte("created_at", start).lt("created_at", end)
-        .order("created_at", { ascending: true }).limit(31);
+        .order("created_at", { ascending: !options?.latest }).limit(options?.latest ? 5 : 31);
       if (error) throw new Error("history_unavailable");
       return data ?? [];
     },

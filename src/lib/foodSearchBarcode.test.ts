@@ -28,6 +28,21 @@ const publicFood: FoodItem = {
 };
 
 describe("resolveBarcodeWithSources", () => {
+  it("uses a shared exact barcode after a private miss, without querying Open Food Facts", async () => {
+    const findShared = vi.fn(async () => ({
+      ok: true as const,
+      food: { ...publicFood, default_unit: "serving", serving_quantity: 1 },
+    }));
+    const findPublic = vi.fn();
+    await expect(resolveBarcodeWithSources("01234567", {
+      findPersonal: async () => ({ ok: true, food: null }),
+      findShared,
+      findPublic,
+    })).resolves.toMatchObject({ ok: true, source: "trackbing-catalog", food: { default_unit: "serving", serving_quantity: 1 } });
+    expect(findShared).toHaveBeenCalledWith("01234567");
+    expect(findPublic).not.toHaveBeenCalled();
+  });
+
   it("returns the personal match without calling Open Food Facts", async () => {
     const findPersonal = vi.fn(async () => ({
       ok: true as const,
@@ -38,9 +53,10 @@ describe("resolveBarcodeWithSources", () => {
       food: publicFood,
       hasNutrition: true,
     }));
+    const findShared = vi.fn();
 
     await expect(
-      resolveBarcodeWithSources("01234567", { findPersonal, findPublic }),
+      resolveBarcodeWithSources("01234567", { findPersonal, findShared, findPublic }),
     ).resolves.toEqual({
       ok: true,
       source: "personal",
@@ -48,6 +64,7 @@ describe("resolveBarcodeWithSources", () => {
       hasNutrition: true,
     });
     expect(findPublic).not.toHaveBeenCalled();
+    expect(findShared).not.toHaveBeenCalled();
   });
 
   it("falls back to Open Food Facts after a personal miss", async () => {

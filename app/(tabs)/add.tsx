@@ -195,6 +195,7 @@ export default function AddFoodPage() {
         product_name: params.initialName as string,
         brands: (params.brand as string) || "Scanned",
         default_unit: initialUnit,
+        ai_estimated: params.initialAiEstimated === "true",
         nutriments: {
           "energy-kcal_100g": parseFloat(params.initialCal as string) || 0,
           proteins_100g: parseFloat(params.initialProt as string) || 0,
@@ -216,6 +217,7 @@ export default function AddFoodPage() {
         initialFat: "",
         brand: "",
         initialUnit: "",
+        initialAiEstimated: "",
       });
     }
   }, [params, router]);

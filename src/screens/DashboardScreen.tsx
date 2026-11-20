@@ -423,8 +423,8 @@ export function DashboardScreen() {
     <View testID="bee-dashboard-companion">
       <BeeGuide
         compact={!isDesktop}
-        interactive
-        showMascot={isFocused && !companion.chatOpen}
+        interactive={!companion.chatOpen}
+        showMascot={isFocused}
         mascotSize="large"
         nutritionDetail={companion.nutritionCue?.detail}
         title={beeMessage.title}

@@ -30,10 +30,89 @@ async function verifyManualFoodReview(page, width, fixture, output) {
  await portion.waitFor({state:'hidden'});
  assert.equal(writes(),before,'closing the review must not insert a food');
 }
+async function verifyBarcodeRegistration(page, width, output) {
+ const base = process.env.UI_BASE_URL || 'http://127.0.0.1:8091';
+ const code = '00480123';
+ const json = (route, body) => route.fulfill({contentType:'application/json',body:JSON.stringify(body)});
+ let personal = null;
+ let publisher = false;
+ let publicLookups = 0;
+ const saveBodies = [];
+ await page.route('**/auth/v1/user', route => json(route, {id:'11111111-1111-4111-8111-111111111111'}));
+ await page.route('**/rest/v1/rpc/can_share_barcodes', route => json(route, publisher));
+ await page.route('**/rest/v1/rpc/lookup_shared_barcode', route => json(route, null));
+ await page.route('**/rest/v1/personal_foods**', route => {
+  const request = route.request();
+  if (request.method() === 'POST') {
+   const body = request.postDataJSON()[0];
+   saveBodies.push(body);
+   personal = {...body, id:'test-food'};
+   return route.fulfill({status:201});
+  }
+  const filtered = new URL(request.url()).searchParams.get('barcode') === 'eq.' + code;
+  return json(route, filtered ? personal : personal ? [personal] : []);
+ });
+ await page.route('https://world.openfoodfacts.org/api/v0/product/**', route => {
+  publicLookups++;
+  return json(route, {status:0});
+ });
+ const button = name => page.getByRole('button',{name,exact:true});
+ const textbox = name => page.getByRole('textbox',{name,exact:true});
+ const scan = async () => {
+  await page.goto(base + '/scan');
+  await button('Type barcode').click();
+  await textbox('Barcode number').fill(code);
+  await button('Search barcode').click();
+ };
+ const fillLabel = async () => {
+  await textbox('Food name').fill('TEST DATA barcode snack');
+  await textbox('Calories from label').fill('125');
+  await textbox('Protein in grams').fill('4');
+  await textbox('Carbohydrate in grams').fill('20');
+  await textbox('Fat in grams').fill('3');
+ };
+ await scan();
+ await page.getByText('Create this food',{exact:true}).click();
+ await page.getByText('Nutrition on the label',{exact:true}).waitFor();
+ assert.equal(await textbox('Barcode number').inputValue(),code);
+ const perServing = page.getByRole('radio',{name:'Per serving',exact:true});
+ assert.equal(await perServing.getAttribute('aria-checked'),'true');
+ assert.equal(await page.getByRole('radio').count(),2);
+ assert.equal(await page.getByRole('checkbox',{name:/Share this label/}).count(),0);
+ await page.getByRole('radio',{name:'Per 100 g',exact:true}).click();
+ await page.getByText('Protein (per 100 g)',{exact:true}).waitFor();
+ await perServing.click();
+ await fillLabel();
+ await page.screenshot({path:`${output}/barcode-label-${width}.png`,fullPage:true});
+ await button('Save Food').click();
+ await page.getByText('Food saved to your My Foods.',{exact:true}).waitFor();
+ assert.equal(saveBodies.length,1);
+ assert.equal(saveBodies[0].default_unit,'serving');
+ assert.equal(saveBodies[0].calories,125);
+ assert.equal(saveBodies[0].barcode,code);
+ assert.equal(saveBodies[0].share_barcode,undefined);
+ await scan();
+ await textbox('Food portion').waitFor();
+ assert.equal(await textbox('Food portion').inputValue(),'1');
+ assert.equal(await button('Portion unit serving, selected').count(),1);
+ assert.equal(publicLookups,1,'re-scanning the saved label skips the public source');
+ await page.screenshot({path:`${output}/barcode-review-${width}.png`,fullPage:true});
+
+ publisher = true;
+ await page.goto(base + '/create-food?barcode=00480124');
+ await fillLabel();
+ const checkbox = page.getByRole('checkbox',{name:/Share this label/});
+ await checkbox.waitFor();
+ assert.equal(await checkbox.getAttribute('aria-checked'),'false');
+ await checkbox.click();
+ await button('Save Food').click();
+ await page.getByText('Food saved to My Foods and shared for barcode lookup.',{exact:true}).waitFor();
+ assert.equal(saveBodies[1].share_barcode,true);
+}
 async function verifyBeeCorrections(page,width,fixture,output) {
  const input=page.getByRole('textbox',{name:/Message to Bee/i});
  const send=async text=>{await input.fill(text);await page.getByRole('button',{name:/Send to Bee/i}).click();};
- const mascot=page.getByTestId('bee-current-companion');
+ const mascot=page.getByTestId('bee-dashboard-companion').locator('[data-testid^="bee-mascot-"]');
  const searchBefore=fixture.getSearchCount();
  await send('I ate 609 grams of skinless chicken breast');
  await page.getByText('Was the chicken breast weighed raw or after cooking?',{exact:true}).waitFor();
@@ -86,6 +165,7 @@ async function verifyBeeCorrections(page,width,fixture,output) {
   await page.screenshot({path:`${output}/account-${width}-${route.slice(1)}.png`,fullPage:true});
  }
  await verifyManualFoodReview(page,width,fixture,output);
+ await verifyBarcodeRegistration(page,width,output);
  await page.goto((process.env.UI_BASE_URL || 'http://127.0.0.1:8091')+'/');await page.waitForTimeout(700);await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();await page.waitForTimeout(200);
  const input=page.getByRole('textbox',{name:/Message to Bee/i});await input.fill('My weight today is 72.4 kg');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Save 72.4 kg for 2026-09-27?',{exact:true}).waitFor();await page.screenshot({path:`${output}/weight-review-${width}.png`});await page.getByRole('button',{name:'Confirm',exact:true}).click();await page.getByText('Weight check-in saved.',{exact:true}).first().waitFor();assert.equal(fixture.getSnapshot().pending,null);
  await verifyBeeCorrections(page,width,fixture,output);
@@ -98,7 +178,7 @@ async function verifyBeeCorrections(page,width,fixture,output) {
  await page.waitForFunction(()=>document.querySelector('[role="progressbar"][aria-label="Calories logged"]')?.getAttribute('aria-valuenow')==='111.6');
  await page.screenshot({path:`${output}/dashboard-confirmed-food-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();
- await input.fill('Fudgee Barr Chocolate 38 g nutrition');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Live answer',{exact:true}).waitFor();assert.equal(fixture.getSnapshot().pending,null);assert.equal(await page.getByTestId('bee-current-companion').count(),1);assert.equal(await page.locator('[aria-label="Google Search suggestions"]').count(),1);await page.screenshot({path:`${output}/search-answer-${width}.png`});await page.getByRole('button',{name:'Saved preferences',exact:true}).click();await page.getByRole('heading',{name:'Saved preferences',exact:true}).waitFor();await page.screenshot({path:`${output}/memories-${width}.png`});
+ await input.fill('Fudgee Barr Chocolate 38 g nutrition');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Live answer',{exact:true}).waitFor();assert.equal(fixture.getSnapshot().pending,null);assert.equal(await page.locator('[data-testid^="bee-mascot-"]').count(),1);assert.equal(await page.locator('[aria-label="Google Search suggestions"]').count(),1);await page.screenshot({path:`${output}/search-answer-${width}.png`});await page.getByRole('button',{name:'Saved preferences',exact:true}).click();await page.getByRole('heading',{name:'Saved preferences',exact:true}).waitFor();await page.screenshot({path:`${output}/memories-${width}.png`});
  assert.deepEqual(errors.filter(e=>!e.includes('404')),[]);assert.deepEqual(failedRequests,[]);
  evidence.push({failedRequests,width,publicRoutes:4,accountRoutes:6,cameraPreviewStarted:true,singleActiveCompanion:true,readableMacros:true,rawTypoClarification:true,retainedPortion:true,staleAddHidden:true,noCancelsWithoutSearch:true,manualFoodReviewAdjustCancel:true,weightReviewConfirm:true,foodReviewCancel:true,calorieProgressAfterConfirmation:true,memories:true,errors:errors.filter(e=>!e.includes('404'))});await context.close();}
  await browser.close();fs.writeFileSync(output+'/results.json',JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));})().catch(e=>{console.error(e);process.exit(1)});

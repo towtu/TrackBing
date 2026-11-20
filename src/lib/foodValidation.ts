@@ -16,13 +16,15 @@ export function parseRecipePortion(text: string): number | null {
   return value !== null && value > 0 ? value : null;
 }
 
-export function parseManualFood(name:string, protein:string, carbs:string, fat:string) {
+export function parseManualFood(name:string, protein:string, carbs:string, fat:string, labelCalories?: string) {
   const error=nameError(name);
   if(error) return {ok:false as const,message:error};
   const p=number(protein,10000), c=number(carbs,10000), f=number(fat,10000);
   if(p===null||c===null||f===null) return {ok:false as const,message:"Enter each macro as a number from 0 to 10,000. Enter 0 only when your label states zero."};
-  const calories=calculateCaloriesFromMacros(p,c,f);
-  if(calories>100000) return {ok:false as const,message:"The nutrition values are too large. Check the label and serving basis."};
+  const calories = labelCalories === undefined ? calculateCaloriesFromMacros(p,c,f) : number(labelCalories, 100000);
+  if (calories === null || calories > 100000) {
+    return { ok: false as const, message: "Enter the calories in kcal using the same label serving basis as the macros." };
+  }
   return {ok:true as const,value:{name:name.trim(),protein:p,carbs:c,fat:f,calories}};
 }
 

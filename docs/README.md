@@ -24,6 +24,7 @@
 | --- | --- |
 | Bee food creation and recipes | [Food and recipes](bee-food-recipes.md) |
 | Portions, preparation corrections and source priority | [Food corrections](bee-food-corrections.md) |
+| Scan and register per-serving labels, share owner entries, and verify dashboard Bee | [Barcode catalog and Bee guide](barcode-catalog-and-bee-guide.md) |
 | Account recovery, diary and export | [Account and diary](account-and-diary-ux.md) |
 | Mascot poses, motion and reduced-motion preference | [Bee motion](bee-mascot-motion.md) |
 | Sign-in and saved-food interaction checks | [Authentication UX](auth-ui-polish.md) |

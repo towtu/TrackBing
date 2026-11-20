@@ -55,6 +55,9 @@ export function BeeQuickLog({ userId }: { userId: string }) {
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const { isDesktop, height } = useResponsive();
+  // Browser focus changes when a button is pressed. Keep its position stable.
+  const nativeKeyboardOpen = Platform.OS !== "web" && keyboardOpen;
+  const sheetRatio = isDashboard && !isDesktop && !nativeKeyboardOpen ? 0.76 : 0.9;
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
   const clientRef = useRef<ReturnType<typeof createBeeClient> | null>(null);
@@ -279,7 +282,7 @@ export function BeeQuickLog({ userId }: { userId: string }) {
       /> : null}
 
       <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
-        <Pressable style={styles.backdrop} onPress={close} accessible={false} tabIndex={-1}>
+        <Pressable style={[styles.backdrop, isDashboard && styles.dashboardBackdrop]} onPress={close} accessible={false} tabIndex={-1}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboardAvoid}>
             <Pressable
               accessibilityViewIsModal
@@ -290,13 +293,13 @@ export function BeeQuickLog({ userId }: { userId: string }) {
               tabIndex={-1}
               style={[
                 styles.sheet,
-                { height: Math.max(260, Math.min(height * 0.9, 760)), paddingBottom: Math.max(16, insets.bottom) },
+                { height: Math.max(260, Math.min(height * sheetRatio, 760)), paddingBottom: Math.max(16, insets.bottom) },
                 isDesktop && styles.sheetDesktop,
               ]}
               onPress={(event) => event.stopPropagation()}
             >
               <View style={styles.header}>
-                <View style={styles.headerAvatar} testID="bee-current-companion"><BeeMascot size="small" situation={headerSituation} active={visible && !inputFocused} /></View>
+                {!isDashboard ? <View style={styles.headerAvatar} testID="bee-current-companion"><BeeMascot size="small" situation={headerSituation} active={visible && !inputFocused} /></View> : null}
                 <View style={styles.headerCopy}>
                   <Text accessibilityRole="header" style={styles.title}>Bee</Text>
                   <Text style={styles.subtitle}>{snapshot?.entitlement?.access_mode === "private_preview" ? "Private Bee test · no subscription" : snapshot?.entitlement?.access_mode === "complimentary" ? "Pro · complimentary access" : "Food, recipes and progress"}</Text>
@@ -372,7 +375,12 @@ export function BeeQuickLog({ userId }: { userId: string }) {
                           <BeeAction label="What do you know about me?" disabled={blocked} onPress={() => void sendCommand({ kind: "message", text: "What do you know about me?" })} />
                           <BeeAction label="Help me log a food" disabled={blocked} onPress={() => { setInput("I ate "); inputRef.current?.focus(); }} />
                           {snapshot.entitlement?.tier !== "basic" ? <BeeAction label="Get food suggestions" disabled={blocked} onPress={() => {setInput("Suggest some foods for ");inputRef.current?.focus();}}/> : null}
-                          {snapshot.entitlement?.tier==="pro" ? <BeeAction label="Make a recipe" disabled={blocked} onPress={()=>{setInput("Make me a recipe with ");inputRef.current?.focus();}}/> : null}
+                          {snapshot.entitlement?.tier === "pro" ? (
+                            <>
+                              <BeeAction label="How am I doing today?" disabled={blocked} onPress={() => void sendCommand({ kind: "message", text: "How am I doing today?" })} />
+                              <BeeAction label="Make a recipe" disabled={blocked} onPress={() => { setInput("Make me a recipe with "); inputRef.current?.focus(); }} />
+                            </>
+                          ) : null}
                         </View>
                       </View>
                     ) : null}
@@ -570,6 +578,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", backgroundColor: Colors.accent, borderWidth: 2, borderColor: Colors.primary,
   },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.58)", justifyContent: "flex-end" },
+  dashboardBackdrop: { backgroundColor: "rgba(0,0,0,0.30)" },
   keyboardAvoid: { flex: 1, justifyContent: "flex-end" },
   sheet: {
     width: "100%", maxWidth: 620, alignSelf: "center", flexShrink: 1, backgroundColor: Colors.secondary,

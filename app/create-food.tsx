@@ -31,6 +31,7 @@ import {
 import { calculateCaloriesFromMacros } from "@/src/lib/macros";
 import { parseManualFood } from "@/src/lib/foodValidation";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
+import { emitFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -46,6 +47,7 @@ type FeedbackState = {
 };
 
 const FOOD_UNITS: FoodUnit[] = ["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"];
+const BARCODE_UNITS = ["serving", "g"] as const;
 
 const formatMacroInput = (value: number) => {
   const rounded = Math.round(value * 10) / 10;
@@ -61,6 +63,12 @@ export default function CreateFoodPage() {
   useEffect(() => {
     const guard = createFoodAccountGuard();
     accountRef.current = guard;
+    void (async () => {
+      const account = await guard.authorize();
+      if (!account?.isActive()) return;
+      const { data, error } = await account.client.rpc("can_share_barcodes");
+      if (account.isActive() && !error) setCanShareBarcode(data === true);
+    })().catch(() => console.warn("Barcode sharing permission could not load"));
     return () => { guard.dispose(); accountRef.current = null; };
   }, []);
   const [name, setName] = useState("");
@@ -68,8 +76,12 @@ export default function CreateFoodPage() {
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
   const [barcode, setBarcode] = useState("");
-
+  const [labelCalories, setLabelCalories] = useState("");
+  const [canShareBarcode, setCanShareBarcode] = useState(false);
+  const [shareBarcode, setShareBarcode] = useState(false);
   const [unit, setUnit] = useState<FoodUnit>("g");
+  const hasBarcode = barcode.length > 0;
+  const basis = hasBarcode && unit !== "g" ? "serving" : unit;
 
   const [submitting, setSubmitting] = useState(false);
   const [aiFillLoading, setAiFillLoading] = useState(false);
@@ -93,6 +105,7 @@ export default function CreateFoodPage() {
     const parsed = parseBarcode(routeBarcode);
     if (parsed.ok && parsed.barcode) {
       setBarcode(parsed.barcode);
+      setUnit("serving");
       return;
     }
 
@@ -116,7 +129,7 @@ export default function CreateFoodPage() {
       return;
     }
 
-    const checked = parseManualFood(name, prot, carbs, fat);
+    const checked = parseManualFood(name, prot, carbs, fat, hasBarcode ? labelCalories : undefined);
     if (!checked.ok) {
       setFeedback({ type: "warning", title: "Check the food values", message: checked.message });
       return;
@@ -149,9 +162,10 @@ export default function CreateFoodPage() {
         protein: checked.value.protein,
         carbs: checked.value.carbs,
         fat: checked.value.fat,
-        default_unit: unit,
+        default_unit: basis,
         barcode: parsedBarcode.barcode,
         ai_estimated: aiEstimated,
+        ...(canShareBarcode && shareBarcode && parsedBarcode.barcode ? { share_barcode: true } : {}),
       },
     ]);
     if (!writer.isActive()) return;
@@ -170,12 +184,15 @@ export default function CreateFoodPage() {
       return;
     }
 
+    emitFoodLibraryChanged("personal_food");
     setFeedback({
       type: "success",
       title: "Saved!",
-      message: "Food added to My Foods.",
+      message: canShareBarcode && shareBarcode && parsedBarcode.barcode
+        ? "Food saved to My Foods and shared for barcode lookup."
+        : "Food saved to your My Foods.",
       autoDismissMs: 1100,
-      onClose: () => router.back(),
+      onClose: () => router.canGoBack() ? router.back() : router.replace("/my-foods"),
     });
   };
 
@@ -217,8 +234,8 @@ export default function CreateFoodPage() {
     onClose?.();
   };
 
-  const isPer100 = unit === "g" || unit === "ml";
-  const unitLabel = `(per ${isPer100 ? "100" : "1"}${unit === "serving" ? " serving" : unit})`;
+  const isPer100 = basis === "g" || basis === "ml";
+  const unitLabel = basis === "serving" ? "(per serving)" : `(per ${isPer100 ? "100" : "1"} ${basis})`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -243,9 +260,9 @@ export default function CreateFoodPage() {
         <View style={styles.infoBanner}>
           <Calculator size={20} color={Colors.accent} weight="fill" />
           <Text style={styles.infoText}>
-            Calories are{" "}
-            <Text style={{ fontWeight: "bold" }}>auto-calculated</Text> as you
-            type macros and cannot be edited directly.
+            {hasBarcode
+              ? "Copy the calories and macros from the same column on the package label."
+              : "Calories are calculated from the macros you enter."}
           </Text>
         </View>
 
@@ -266,19 +283,28 @@ export default function CreateFoodPage() {
           accessibilityLabel="Barcode number"
           accessibilityHint="Optional. Used to recognize this food on future scans."
           inputMode="numeric"
+          editable={!aiFillLoading && !submitting}
           keyboardType="numeric"
           maxLength={32}
-          onChangeText={(value) => setBarcode(sanitizeBarcodeInput(value))}
+          onChangeText={(value) => {
+            const next = sanitizeBarcodeInput(value);
+            if (!barcode && next) {
+              setUnit("serving");
+              setAiFillSource(null);
+            }
+            setBarcode(next);
+            setShareBarcode(false);
+          }}
           placeholder="e.g. 4800016123456"
           placeholderTextColor={Colors.textSecondary}
           style={styles.input}
           value={barcode}
         />
         <Text style={styles.inputHelper}>
-          Optional. Lets TrackBing recognize this food on future scans.
+          Saved to your account for future scans.
         </Text>
 
-        <BeeGuide
+        {!hasBarcode ? <BeeGuide
           compact
           interactive={!aiFillLoading}
           situation={
@@ -309,9 +335,9 @@ export default function CreateFoodPage() {
               )}
             </TouchableOpacity>
           }
-        />
+        /> : null}
 
-        <Text style={styles.label}>Default Unit</Text>
+        <Text style={styles.label}>{hasBarcode ? "Nutrition on the label" : "Default Unit"}</Text>
         <View
           style={{
             flexDirection: "row",
@@ -320,14 +346,15 @@ export default function CreateFoodPage() {
             flexWrap: "wrap",
           }}
         >
-          {FOOD_UNITS.map((u) => (
+          {(hasBarcode ? BARCODE_UNITS : FOOD_UNITS).map((u) => (
             <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityState={{ selected: unit === u }}
+              accessibilityRole={hasBarcode ? "radio" : "button"}
+              aria-checked={hasBarcode ? basis === u : undefined}
+              accessibilityState={hasBarcode ? { checked: basis === u } : { selected: basis === u }}
               key={u}
               onPress={() => { setUnit(u); setAiFillSource(null); }}
               style={{
-                backgroundColor: unit === u ? Colors.accent : "#333",
+                backgroundColor: basis === u ? Colors.accent : "#333",
                 paddingHorizontal: 20,
                 paddingVertical: 10,
                 borderRadius: 15,
@@ -337,11 +364,11 @@ export default function CreateFoodPage() {
             >
               <Text
                 style={{
-                  color: unit === u ? "black" : "white",
+                  color: basis === u ? "black" : "white",
                   fontWeight: "bold",
                 }}
               >
-                {u}
+                {hasBarcode ? (u === "serving" ? "Per serving" : "Per 100 g") : u}
               </Text>
             </TouchableOpacity>
           ))}
@@ -393,19 +420,43 @@ export default function CreateFoodPage() {
 
           <View style={styles.gridItem}>
             <Text style={{ ...styles.label, color: Colors.accent }}>
-              Calories
+              {hasBarcode ? `Calories ${unitLabel}` : "Calories"}
             </Text>
-            <View
+            {hasBarcode ? (
+              <TextInput
+                style={styles.input}
+                placeholder="kcal from label"
+                placeholderTextColor={Colors.textMuted}
+                keyboardType="decimal-pad"
+                accessibilityLabel="Calories from label"
+                maxLength={16}
+                value={labelCalories}
+                onChangeText={setLabelCalories}
+              />
+            ) : <View
               accessible
               accessibilityLabel={`${calculatedCalories} calories, calculated from macros`}
               style={styles.calorieReadout}
             >
               <Text style={styles.calorieValue}>{calculatedCalories}</Text>
               <Text style={styles.calorieHelper}>Calculated from macros</Text>
-            </View>
+            </View>}
           </View>
         </View>
 
+        {hasBarcode && canShareBarcode ? (
+          <TouchableOpacity
+            accessibilityRole="checkbox"
+            aria-checked={shareBarcode}
+            accessibilityState={{ checked: shareBarcode }}
+            onPress={() => setShareBarcode((current) => !current)}
+            disabled={submitting}
+            style={styles.shareOption}
+          >
+            <CheckCircle size={22} color={shareBarcode ? Colors.accent : Colors.textSecondary} weight={shareBarcode ? "fill" : "regular"} />
+            <Text style={styles.infoText}>Share this label with TrackBing users who scan this barcode</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           accessibilityRole="button"
           style={[styles.saveBtn, submitting && { opacity: 0.5 }]}
@@ -497,6 +548,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: -12,
     marginBottom: 20,
+  },
+  shareOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
   },
   aiFillCard: {
     marginTop: -8,

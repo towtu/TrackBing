@@ -44,7 +44,7 @@ export default function ScanPage() {
     setManualModalVisible(false);
 
     const result = await resolveBarcode(rawCode);
-    if (result.ok) {
+    if (result.ok && result.hasNutrition) {
       const food = result.food;
       const nutriments = food.nutriments || {};
       const initialUnit = food.default_unit || "g";
@@ -64,29 +64,36 @@ export default function ScanPage() {
           brand: food.brands || "Packaged Item",
           initialWeight: String(initialWeight),
           initialUnit,
+          initialAiEstimated: food.ai_estimated ? "true" : "false",
         },
       });
       return;
     }
 
     const barcode = sanitizeBarcodeInput(rawCode);
-    setNotFoundBarcode(result.reason === "not-found" ? barcode : null);
-    setCanCreateMissingFood(result.reason === "not-found");
+    const reason = result.ok ? "incomplete" : result.reason;
+    const canRegister = reason === "not-found" || reason === "incomplete";
+    setNotFoundBarcode(canRegister ? barcode : null);
+    setCanCreateMissingFood(canRegister);
     setNotFoundTitle(
-      result.reason === "not-found"
+      reason === "incomplete"
+        ? "Nutrition label needed"
+        : reason === "not-found"
         ? "Product not found"
-        : result.reason === "invalid"
+        : reason === "invalid"
           ? "Check barcode"
-          : result.reason === "auth-required"
+          : reason === "auth-required"
             ? "Sign in required"
             : "Lookup unavailable",
     );
     setNotFoundMessage(
-      result.reason === "not-found"
-        ? "This barcode is not in Open Food Facts or your My Foods yet."
-        : result.reason === "invalid"
+      reason === "incomplete"
+        ? "The product was found, but its nutrition is incomplete. Enter the values from its package label."
+        : reason === "not-found"
+        ? "No matching food was found. Create it using the nutrition on the package."
+        : reason === "invalid"
           ? "Use a barcode containing 4 to 32 digits."
-          : result.reason === "auth-required"
+          : reason === "auth-required"
             ? "Sign in again before looking up personal foods."
             : "Could not reach the food database. Check your connection and retry.",
     );
@@ -115,12 +122,16 @@ export default function ScanPage() {
       <View style={styles.overlay}>
         <View style={styles.header}>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Close scanner"
             onPress={() => router.back()}
             style={styles.iconBtn}
           >
             <X size={24} color="white" />
           </TouchableOpacity>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Type barcode"
             onPress={() => setManualModalVisible(true)}
             style={styles.iconBtn}
           >

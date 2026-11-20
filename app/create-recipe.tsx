@@ -30,7 +30,7 @@ import {
   SweetFeedback,
   type SweetFeedbackType,
 } from "@/src/components/feedback/SweetFeedback";
-import { lookupBarcode, searchAllFoods } from "@/src/lib/foodSearch";
+import { resolveBarcode, searchAllFoods } from "@/src/lib/foodSearch";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
 import ManualEntrySheet from "@/src/components/scan/ManualEntrySheet";
@@ -201,7 +201,7 @@ export default function CreateRecipePage() {
     async (code: string) => {
       if (scanBusy) return;
       setScanBusy(true);
-      const result = await lookupBarcode(code);
+      const result = await resolveBarcode(code);
       setScanOpen(false);
       setScanBusy(false);
       if (result.ok) {
@@ -217,13 +217,19 @@ export default function CreateRecipePage() {
       } else if (result.reason === "unreachable") {
         notify(
           "Food database unavailable",
-          "OpenFoodFacts didn't respond. Check your connection and try again in a moment.",
+          "Check your connection and try again.",
           "error"
+        );
+      } else if (result.reason === "auth-required" || result.reason === "invalid") {
+        notify(
+          result.reason === "invalid" ? "Check barcode" : "Sign in required",
+          result.reason === "invalid" ? "Use a barcode containing 4 to 32 digits." : "Sign in again to look up a barcode.",
+          "warning",
         );
       } else {
         notify(
-          "Not in OpenFoodFacts",
-          "OpenFoodFacts doesn't have this barcode yet. Search by name, or add it under My Foods.",
+          "Barcode not found",
+          "Search by name, or create this food in My Foods using its package label.",
           "warning"
         );
       }

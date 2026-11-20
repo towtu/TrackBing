@@ -86,6 +86,9 @@ async function exercise(browser, base, width) {
   });
   await dashboardChat.press('Enter');
   await page.getByRole('dialog', { name: 'Bee conversation', exact: true }).waitFor();
+  const dashboardMascot = page.getByTestId('bee-dashboard-companion').locator('[data-testid^="bee-mascot-"]');
+  assert.equal(await dashboardMascot.count(), 1, 'opening chat keeps the dashboard mascot mounted');
+  assert.equal(await mascot(page).count(), 1, 'dashboard chat does not add another mascot');
   await dashboardChat.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Close Bee quick log', exact: true }).click();
   await page.getByRole('dialog', { name: 'Bee conversation', exact: true }).waitFor({ state: 'hidden' });
@@ -93,10 +96,7 @@ async function exercise(browser, base, width) {
   await page.getByRole('button', { name: 'Pause Bee motion', exact: true }).click();
   await page.getByRole('button', { name: 'Animate Bee', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close Bee quick log', exact: true }).click();
-  // Closing the sheet remounts the dashboard mascot in a React effect. The
-  // launcher is already visible behind the sheet, so it cannot signal readiness.
   await page.getByRole('dialog', { name: 'Bee conversation', exact: true }).waitFor({ state: 'hidden' });
-  const dashboardMascot = page.getByTestId('bee-dashboard-companion').locator('[data-testid^="bee-mascot-"]');
   await dashboardMascot.waitFor();
   await launcher.waitFor();
   assert.equal((await sample(dashboardMascot)).size, 1, 'pause stops transforms');

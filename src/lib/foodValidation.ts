@@ -16,6 +16,11 @@ export function parseRecipePortion(text: string): number | null {
   return value !== null && value > 0 ? value : null;
 }
 
+export function parseServingGrams(text: string): number | null {
+  const grams = number(text, 10_000);
+  return grams !== null && grams > 0 ? grams : null;
+}
+
 export function parseManualFood(name:string, protein:string, carbs:string, fat:string, labelCalories?: string) {
   const error=nameError(name);
   if(error) return {ok:false as const,message:error};

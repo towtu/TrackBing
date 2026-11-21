@@ -60,6 +60,16 @@ describe('independent source nutrition',()=>{
   const d=deps();d.personal=vi.fn().mockResolvedValue([{id:'owned',name:'Boiled whole egg',calories:80,protein:6.5,carbs:1,fat:5.5,default_unit:'serving',ai_estimated:false}]);
   expect(await searchNutrition(q({portion:{amount:2,unit:'serving'}}),d)).toMatchObject({kind:'found',food:{source:'my_food',grams:null,calories:160}});expect(d.fetch).not.toHaveBeenCalled();
  });
+ it('scales an owned serving label by its actual grams and keeps that basis for edits', async () => {
+  const d=deps([]);
+  d.personal=vi.fn().mockResolvedValue([{id:'owned',name:'Test snack',calories:125,protein:4,carbs:20,fat:3,default_unit:'serving',serving_grams:35}]);
+  const query=q({name:'Test snack',preparation:null,portion:{amount:209,unit:'g'}});
+  const result=await searchNutrition(query,d,'preferred');
+  expect(result).toMatchObject({kind:'found',food:{source:'my_food',grams:209,calories:746,protein:23.9,carbs:119.4,fat:17.9,evidence:{basis:{unit:'serving',count:1,grams:35}}}});
+  if(result.kind!=='found')throw Error('Missing TEST DATA label');
+  expect(scaleEvidence({...query,portion:{amount:41,unit:'g'}},result.food.evidence,'my_food')).toMatchObject({kind:'found',food:{calories:146,grams:41}});
+  expect(d.fetch).not.toHaveBeenCalled();
+ });
  it('a saved estimate is never promoted into verified nutrition',async()=>{
   const d=deps();d.personal=vi.fn().mockResolvedValue([{id:'own',name:egg.description,calories:100,protein:1,carbs:1,fat:1,default_unit:'g',ai_estimated:true}]);expect(await searchNutrition(q(),d)).toMatchObject({kind:'found',food:{source:'usda'}});
  });

@@ -50,12 +50,14 @@ import {
 } from "@/src/lib/foodSearch";
 import {
   calcMacros,
+  changeFoodPortionUnit,
+  defaultFoodPortion,
   getUnitsToDisplay,
   type FoodItem,
   type Macros,
   type Unit,
 } from "@/src/lib/macros";
-import { validateLoggedPortion } from "@/src/lib/foodValidation";
+import { parseServingGrams, validateLoggedPortion } from "@/src/lib/foodValidation";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -115,7 +117,6 @@ const createRecentBarcodeFood = (
   brands: `Recent serving - ${servingSize}${servingUnit}`,
   default_unit: "serving",
   serving_quantity: 1,
-  serving_weight: 100,
   nutriments: {
     "energy-kcal_100g": macros.c,
     proteins_100g: macros.p,
@@ -190,11 +191,14 @@ export default function AddFoodPage() {
       const initialUnit = isFoodUnit(params.initialUnit)
         ? params.initialUnit
         : "g";
+      const servingGrams = initialUnit === "serving" && typeof params.initialServingGrams === "string"
+        ? parseServingGrams(params.initialServingGrams) : null;
       setSelectedFood({
         code: (params.code as string) || "scanned",
         product_name: params.initialName as string,
         brands: (params.brand as string) || "Scanned",
         default_unit: initialUnit,
+        serving_weight: servingGrams ?? undefined,
         ai_estimated: params.initialAiEstimated === "true",
         nutriments: {
           "energy-kcal_100g": parseFloat(params.initialCal as string) || 0,
@@ -204,8 +208,8 @@ export default function AddFoodPage() {
         },
       });
 
-      setInputWeight((params.initialWeight as string) || "100");
-      setSelectedUnit(initialUnit);
+      setInputWeight(servingGrams !== null ? String(servingGrams) : (params.initialWeight as string) || "100");
+      setSelectedUnit(servingGrams !== null ? "g" : initialUnit);
 
       router.setParams({
         code: "",
@@ -217,6 +221,7 @@ export default function AddFoodPage() {
         initialFat: "",
         brand: "",
         initialUnit: "",
+        initialServingGrams: "",
         initialAiEstimated: "",
       });
     }
@@ -276,14 +281,9 @@ export default function AddFoodPage() {
     setSelectedFood(item);
     setRevealedBarcodeCode(null);
 
-    const nextUnit = isFoodUnit(item.default_unit) ? item.default_unit : "g";
-    setSelectedUnit(nextUnit);
-
-    if (item.serving_quantity) {
-      setInputWeight(item.serving_quantity.toString());
-    } else {
-      setInputWeight(nextUnit === "g" || nextUnit === "ml" ? "100" : "1");
-    }
+    const portion = defaultFoodPortion(item);
+    setSelectedUnit(portion.unit);
+    setInputWeight(portion.amount);
   };
 
   const handleSearch = async () => {
@@ -359,6 +359,11 @@ export default function AddFoodPage() {
     const step = isWeight ? amount : Math.sign(amount) * 1;
     const next = Math.max(0, current + step);
     setInputWeight(next.toString());
+  };
+
+  const changeUnit = (unit: Unit) => {
+    if (selectedFood) setInputWeight(changeFoodPortionUnit(selectedFood, inputWeight, selectedUnit, unit));
+    setSelectedUnit(unit);
   };
 
   const confirmAdd = async () => {
@@ -932,7 +937,7 @@ export default function AddFoodPage() {
                         {unitsToDisplay.map((u) => (
                           <TouchableOpacity
                             key={u}
-                            onPress={() => setSelectedUnit(u)}
+                            onPress={() => changeUnit(u)}
                             accessibilityRole="button"
                             accessibilityLabel={`Portion unit ${u}${selectedUnit === u ? ", selected" : ""}`}
                             accessibilityState={{ selected: selectedUnit === u }}
@@ -1071,7 +1076,7 @@ export default function AddFoodPage() {
                     {unitsToDisplay.map((u) => (
                       <TouchableOpacity
                         key={u}
-                        onPress={() => setSelectedUnit(u)}
+                        onPress={() => changeUnit(u)}
                         accessibilityRole="button"
                         accessibilityLabel={`Portion unit ${u}${selectedUnit === u ? ", selected" : ""}`}
                         accessibilityState={{ selected: selectedUnit === u }}

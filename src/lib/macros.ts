@@ -62,10 +62,14 @@ type MacroSource = {
   cup_weight?: number;
 };
 
-/** Convert an input amount in the given unit into a "per 100g" ratio. */
+/** Convert the requested portion to a multiple of the stored nutrition basis. */
 function unitRatio(food: MacroSource, amount: number, unit: Unit): number {
+  if (food.default_unit === "serving") {
+    if (unit === "serving") return amount;
+    const grams = servingWeight(food);
+    return grams !== undefined && unit === "g" ? amount / grams : NaN;
+  }
   if (unit === "serving") {
-    if(food.default_unit === "serving")return amount;
     const sw = food.serving_weight || food.serving_quantity;
     return sw ? (amount * sw) / 100 : NaN;
   }
@@ -149,7 +153,7 @@ export function getUnitsToDisplay(food?: {
   serving_quantity?: number;
   cup_weight?: number;
 }): Unit[] {
-  if (food?.default_unit === "serving") return ["serving"];
+  if (food?.default_unit === "serving") return servingWeight(food) !== undefined ? ["g", "serving"] : ["serving"];
   const isLiquid = food?.default_unit === "ml";
   const hasServing = !!(food?.serving_weight || food?.serving_quantity);
   const baseUnits: Unit[] = isLiquid
@@ -159,6 +163,30 @@ export function getUnitsToDisplay(food?: {
 }
 
 /** Sensible default weight for a unit (100 for weight/volume, else 1). */
-export function defaultWeightForUnit(unit: string): string {
+function defaultWeightForUnit(unit: string): string {
   return unit === "g" || unit === "ml" ? "100" : "1";
+}
+
+function servingWeight(food: MacroSource): number | undefined {
+  const value = food.serving_weight;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 10_000 ? value : undefined;
+}
+
+const portionUnits: readonly string[] = ["g", "ml", "oz", "tsp", "tbsp", "cup", "serving"];
+
+export function defaultFoodPortion(food: MacroSource): { unit: Unit; amount: string } {
+  const grams = food.default_unit === "serving" ? servingWeight(food) : undefined;
+  if (grams !== undefined) return { unit: "g", amount: String(grams) };
+  const unit = portionUnits.includes(food.default_unit ?? "") ? food.default_unit as Unit : "g";
+  return { unit, amount: food.serving_quantity ? String(food.serving_quantity) : defaultWeightForUnit(unit) };
+}
+
+export function changeFoodPortionUnit(food: MacroSource, amount: string, from: Unit, to: Unit): string {
+  const grams = food.default_unit === "serving" ? servingWeight(food) : undefined;
+  if (grams === undefined || from === to) return amount;
+  const quantity = Number(amount);
+  if (!Number.isFinite(quantity) || quantity <= 0) return amount;
+  if (from === "g" && to === "serving") return String(Number((quantity / grams).toPrecision(10)));
+  if (from === "serving" && to === "g") return String(Number((quantity * grams).toPrecision(10)));
+  return amount;
 }

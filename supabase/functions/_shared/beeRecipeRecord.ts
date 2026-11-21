@@ -12,8 +12,15 @@ export function savedRecipeRecord(recipe:OwnedRecipe):PersonalRecord {
   const total={calories:0,protein:0,carbs:0,fat:0};
   for(const input of recipe.ingredients){
     const i=object(input),n=object(i?.nutriments);
-    if(!i||!n||typeof i.weight!=="number"||!Number.isFinite(i.weight)||i.weight<=0||i.weight>100000||!["g","ml","serving"].includes(String(i.unit))||i.unit!==i.default_unit)return record;
-    const factor=i.weight/(i.unit==="serving"?1:100)/recipe.servings;
+    if(!i||!n||typeof i.weight!=="number"||!Number.isFinite(i.weight)||i.weight<=0||i.weight>100000||!["g","ml","serving"].includes(String(i.unit)))return record;
+    let basis = i.unit === "serving" ? 1 : 100;
+    if (i.unit !== i.default_unit) {
+      const grams = i.serving_weight;
+      if (i.default_unit !== "serving" || i.unit !== "g" || typeof grams !== "number" ||
+        !Number.isFinite(grams) || grams <= 0 || grams > 10000) return record;
+      basis = grams;
+    }
+    const factor = i.weight / basis / recipe.servings;
     const keys={calories:"energy-kcal_100g",protein:"proteins_100g",carbs:"carbohydrates_100g",fat:"fat_100g"} as const;
     for(const key of Object.keys(keys) as (keyof typeof keys)[]){const value=n[keys[key]];if(typeof value!=="number"||!Number.isFinite(value)||value<0||value>100000)return record;total[key]+=value*factor;}
   }

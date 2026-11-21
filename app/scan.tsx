@@ -64,6 +64,7 @@ export default function ScanPage() {
           brand: food.brands || "Packaged Item",
           initialWeight: String(initialWeight),
           initialUnit,
+          initialServingGrams: food.default_unit === "serving" ? String(food.serving_weight ?? "") : "",
           initialAiEstimated: food.ai_estimated ? "true" : "false",
         },
       });

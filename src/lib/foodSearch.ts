@@ -47,7 +47,7 @@ export async function loadGistFoods(): Promise<FoodItem[]> {
       product_name: f.name,
       brands: "Generic",
       default_unit: f.unit || "g",
-      serving_weight: f.serving_weight,
+      serving_weight: f.unit === "serving" ? undefined : f.serving_weight,
       cup_weight: f.cup_weight,
       nutriments: {
         "energy-kcal_100g": f.c,
@@ -69,20 +69,7 @@ export async function searchPersonalFoods(query: string): Promise<FoodItem[]> {
     .from("personal_foods")
     .select("*")
     .ilike("name", `%${query}%`);
-  return (data || []).map((f: any) => ({
-    code: "personal-" + f.id,
-    product_name: f.name,
-    brands: "My Food",
-    default_unit: f.default_unit || "g",
-    nutriments: {
-      "energy-kcal_100g": f.calories,
-      proteins_100g: f.protein,
-      carbohydrates_100g: f.carbs,
-      fat_100g: f.fat,
-    },
-    original_id: f.id,
-    ai_estimated: !!f.ai_estimated,
-  }));
+  return (data || []).map(toPersonalFoodItem);
 }
 
 /**
@@ -133,7 +120,6 @@ export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
           : "Recent serving",
         default_unit: "serving",
         serving_quantity: 1,
-        serving_weight: 100,
         nutriments: {
           "energy-kcal_100g": numberOrZero(row.calories),
           proteins_100g: numberOrZero(row.protein),
@@ -329,6 +315,7 @@ type BarcodeNutritionRow = {
   carbs: number | null;
   fat: number | null;
   default_unit: string | null;
+  serving_grams?: number | null;
 };
 
 type PersonalBarcodeRow = BarcodeNutritionRow & { id: string; ai_estimated: boolean | null };
@@ -337,7 +324,7 @@ type BarcodeReader = { client: SupabaseClient; userId: string };
 async function findPersonalFoodByBarcode(account: BarcodeReader, barcode: string): Promise<PersonalBarcodeResult> {
   const { data, error } = await account.client
     .from("personal_foods")
-    .select("id,name,calories,protein,carbs,fat,default_unit,ai_estimated")
+    .select("id,name,calories,protein,carbs,fat,default_unit,serving_grams,ai_estimated")
     .eq("user_id", account.userId)
     .eq("barcode", barcode)
     .maybeSingle();
@@ -363,6 +350,7 @@ function barcodeFood(
     brands: source,
     default_unit: defaultUnit,
     serving_quantity: defaultUnit === "g" || defaultUnit === "ml" ? 100 : 1,
+    serving_weight: defaultUnit === "serving" ? row.serving_grams ?? undefined : undefined,
     nutriments: {
       "energy-kcal_100g": numberOrZero(row.calories),
       proteins_100g: numberOrZero(row.protein),
@@ -372,6 +360,10 @@ function barcodeFood(
     original_id: row.id,
     ai_estimated: !!row.ai_estimated,
   };
+}
+
+export function toPersonalFoodItem(row: PersonalBarcodeRow): FoodItem {
+  return barcodeFood(row, `personal-${row.id}`, "My Food");
 }
 
 export async function resolveBarcode(code: string): Promise<ResolvedBarcode> {

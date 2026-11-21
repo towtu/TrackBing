@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
         personal: async (food) => {
           const escaped = food.name.replace(/[\\%_]/g, " ");
           const { data, error } = await admin.from("personal_foods").select(
-            "id,name,calories,protein,carbs,fat,default_unit,ai_estimated,bee_provenance",
+            "id,name,calories,protein,carbs,fat,default_unit,serving_grams,ai_estimated,bee_provenance",
           ).eq("user_id", userId).ilike("name", `%${escaped}%`).limit(5);
           if (error) throw new Error("personal_food_unavailable");
           return data ?? [];

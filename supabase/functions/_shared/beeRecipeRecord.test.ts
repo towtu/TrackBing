@@ -18,6 +18,13 @@ describe("owned recipe reuse",()=>{
     expect(result.kind).toBe("clarification");
   });
   it("retains every ingredient and scales the complete recipe only once",()=>expect(savedRecipeRecord({...recipe,ingredients:[ingredient,ingredient]}).calories).toBe(108));
+  it("scales a weighed per-serving ingredient without inventing a cooked recipe weight", () => {
+    const weighed = { ...ingredient, weight: 70, default_unit: "serving", serving_weight: 35 };
+    const result = savedRecipeRecord({ ...recipe, ingredients: [weighed] });
+    expect(result).toMatchObject({ calories: 150, protein: 12, carbs: 2, fat: 10 });
+    expect(result.serving_grams).toBeUndefined();
+    expect(savedRecipeRecord({ ...recipe, ingredients: [{ ...weighed, serving_weight: 0 }] }).calories).toBeNaN();
+  });
   it("unknown density, missing macros and an invalid yield stay unusable",()=>{
     for(const value of [{...recipe,servings:0},{...recipe,ingredients:[{...ingredient,unit:"cup"}]},{...recipe,ingredients:[{...ingredient,nutriments:{...ingredient.nutriments,fat_100g:null}}]}])expect(Number.isFinite(savedRecipeRecord(value).calories)).toBe(false);
   });

@@ -35,12 +35,21 @@ async function verifyBarcodeRegistration(page, width, output) {
  const code = '00480123';
  const json = (route, body) => route.fulfill({contentType:'application/json',body:JSON.stringify(body)});
  let personal = null;
+ let catalog = null;
  let publisher = false;
  let publicLookups = 0;
  const saveBodies = [];
+ const diaryBodies = [];
  await page.route('**/auth/v1/user', route => json(route, {id:'11111111-1111-4111-8111-111111111111'}));
  await page.route('**/rest/v1/rpc/can_share_barcodes', route => json(route, publisher));
- await page.route('**/rest/v1/rpc/lookup_shared_barcode', route => json(route, null));
+ await page.route('**/rest/v1/rpc/lookup_shared_barcode', route =>
+  json(route, route.request().postDataJSON().p_barcode === catalog?.barcode ? catalog.label : null));
+ await page.route('**/rest/v1/food_logs**', route => {
+  const request = route.request();
+  if(request.method()!=='POST' || request.postDataJSON()?.[0]?.name!=='TEST DATA barcode snack') return route.fallback();
+  diaryBodies.push(request.postDataJSON()[0]);
+  return route.fulfill({status:201});
+ });
  await page.route('**/rest/v1/personal_foods**', route => {
   const request = route.request();
   if (request.method() === 'POST') {
@@ -49,8 +58,8 @@ async function verifyBarcodeRegistration(page, width, output) {
    personal = {...body, id:'test-food'};
    return route.fulfill({status:201});
   }
-  const filtered = new URL(request.url()).searchParams.get('barcode') === 'eq.' + code;
-  return json(route, filtered ? personal : personal ? [personal] : []);
+  const filter = new URL(request.url()).searchParams.get('barcode');
+  return json(route, filter ? filter === 'eq.' + personal?.barcode ? personal : null : personal ? [personal] : []);
  });
  await page.route('https://world.openfoodfacts.org/api/v0/product/**', route => {
   publicLookups++;
@@ -58,18 +67,19 @@ async function verifyBarcodeRegistration(page, width, output) {
  });
  const button = name => page.getByRole('button',{name,exact:true});
  const textbox = name => page.getByRole('textbox',{name,exact:true});
- const scan = async () => {
+ const scan = async (barcode=code) => {
   await page.goto(base + '/scan');
   await button('Type barcode').click();
-  await textbox('Barcode number').fill(code);
+  await textbox('Barcode number').fill(barcode);
   await button('Search barcode').click();
  };
- const fillLabel = async () => {
+ const fillLabel = async (grams) => {
   await textbox('Food name').fill('TEST DATA barcode snack');
   await textbox('Calories from label').fill('125');
   await textbox('Protein in grams').fill('4');
   await textbox('Carbohydrate in grams').fill('20');
   await textbox('Fat in grams').fill('3');
+  await textbox('Serving weight in grams').fill(String(grams));
  };
  await scan();
  await page.getByText('Create this food',{exact:true}).click();
@@ -82,25 +92,38 @@ async function verifyBarcodeRegistration(page, width, output) {
  await page.getByRole('radio',{name:'Per 100 g',exact:true}).click();
  await page.getByText('Protein (per 100 g)',{exact:true}).waitFor();
  await perServing.click();
- await fillLabel();
+ await fillLabel(35);
  await page.screenshot({path:`${output}/barcode-label-${width}.png`,fullPage:true});
  await button('Save Food').click();
  await page.getByText('Food saved to your My Foods.',{exact:true}).waitFor();
  assert.equal(saveBodies.length,1);
  assert.equal(saveBodies[0].default_unit,'serving');
  assert.equal(saveBodies[0].calories,125);
+ assert.equal(saveBodies[0].serving_grams,35);
  assert.equal(saveBodies[0].barcode,code);
  assert.equal(saveBodies[0].share_barcode,undefined);
  await scan();
  await textbox('Food portion').waitFor();
- assert.equal(await textbox('Food portion').inputValue(),'1');
- assert.equal(await button('Portion unit serving, selected').count(),1);
+ assert.equal(await textbox('Food portion').inputValue(),'35');
+ assert.equal(await button('Portion unit g, selected').count(),1);
  assert.equal(publicLookups,1,'re-scanning the saved label skips the public source');
+ await button('Portion unit serving').click();
+ assert.equal(await textbox('Food portion').inputValue(),'1');
+ await button('Portion unit g').click();
+ assert.equal(await textbox('Food portion').inputValue(),'35');
+ await textbox('Food portion').fill('209');
+ await page.getByText('746',{exact:true}).waitFor();
  await page.screenshot({path:`${output}/barcode-review-${width}.png`,fullPage:true});
+ await button('Log this meal').click();
+ await page.waitForFunction(() => !document.querySelector('[aria-label="Food portion"]'));
+ assert.equal(diaryBodies.length,1);
+ assert.equal(diaryBodies[0].serving_size,'209');
+ assert.equal(diaryBodies[0].serving_unit,'g');
+ assert.equal(diaryBodies[0].calories,746);
 
  publisher = true;
  await page.goto(base + '/create-food?barcode=00480124');
- await fillLabel();
+ await fillLabel(41);
  const checkbox = page.getByRole('checkbox',{name:/Share this label/});
  await checkbox.waitFor();
  assert.equal(await checkbox.getAttribute('aria-checked'),'false');
@@ -108,6 +131,17 @@ async function verifyBarcodeRegistration(page, width, output) {
  await button('Save Food').click();
  await page.getByText('Food saved to My Foods and shared for barcode lookup.',{exact:true}).waitFor();
  assert.equal(saveBodies[1].share_barcode,true);
+ assert.equal(saveBodies[1].serving_grams,41);
+ const {name,calories,protein,carbs,fat,default_unit,serving_grams,barcode}=saveBodies[1];
+ catalog={barcode,label:{name,calories,protein,carbs,fat,default_unit,serving_grams}};
+ personal=null;
+ publisher=false;
+ await scan(barcode);
+ await textbox('Food portion').waitFor();
+ assert.equal(await textbox('Food portion').inputValue(),'41');
+ assert.equal(await button('Portion unit g, selected').count(),1);
+ assert.equal(await page.getByText('TrackBing catalog',{exact:true}).count(),1);
+ assert.equal(publicLookups,1,'a shared label carries its grams without a public lookup');
 }
 async function verifyBeeCorrections(page,width,fixture,output) {
  const input=page.getByRole('textbox',{name:/Message to Bee/i});

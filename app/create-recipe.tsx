@@ -36,7 +36,8 @@ import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
 import ManualEntrySheet from "@/src/components/scan/ManualEntrySheet";
 import {
   calcMacros,
-  defaultWeightForUnit,
+  changeFoodPortionUnit,
+  defaultFoodPortion,
   getUnitsToDisplay,
   recipeTotal,
   type FoodItem,
@@ -182,16 +183,12 @@ export default function CreateRecipePage() {
 
   // Open the editor for a freshly picked search result.
   const pickResult = (item: FoodItem) => {
-    const u = (item.default_unit as Unit) || "g";
+    const portion = defaultFoodPortion(item);
     setEditingFood(item);
     setEditorOpen(true);
     setEditIndex(null);
-    setEditUnit(u);
-    setEditWeight(
-      item.serving_quantity
-        ? item.serving_quantity.toString()
-        : defaultWeightForUnit(u)
-    );
+    setEditUnit(portion.unit);
+    setEditWeight(portion.amount);
     setSearchOpen(false);
   };
 
@@ -743,7 +740,10 @@ export default function CreateRecipePage() {
                       accessibilityLabel={`Ingredient unit ${u}`}
                       accessibilityState={{ selected: editUnit === u }}
                       key={u}
-                      onPress={() => setEditUnit(u)}
+                      onPress={() => {
+                        if (editingFood) setEditWeight(changeFoodPortionUnit(editingFood, editWeight, editUnit, u));
+                        setEditUnit(u);
+                      }}
                       style={{
                         minHeight: 44,
                         justifyContent: "center",

@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
       usdaApiKey: Deno.env.get("USDA_API_KEY") ?? "", signal,
       personal: async food => {
         const escaped = food.name.replace(/[\\%_]/g, " ");
-        const { data, error } = await admin.from("personal_foods").select("id,name,calories,protein,carbs,fat,default_unit,ai_estimated").eq("user_id", userId).ilike("name", `%${escaped}%`).limit(5);
+        const { data, error } = await admin.from("personal_foods").select("id,name,calories,protein,carbs,fat,default_unit,serving_grams,ai_estimated").eq("user_id", userId).ilike("name", `%${escaped}%`).limit(5);
         if (error) throw new Error("personal_food_unavailable");
         return data ?? [];
       },

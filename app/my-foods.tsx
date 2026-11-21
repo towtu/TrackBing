@@ -33,11 +33,13 @@ import {
 import { upsertDailySummary } from "@/src/lib/dailySummary";
 import {
   calcMacros,
-  defaultWeightForUnit,
+  changeFoodPortionUnit,
+  defaultFoodPortion,
   getUnitsToDisplay,
   type FoodItem,
   type Unit,
 } from "@/src/lib/macros";
+import { toPersonalFoodItem } from "@/src/lib/foodSearch";
 import { validateLoggedPortion } from "@/src/lib/foodValidation";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
@@ -92,22 +94,7 @@ export default function MyFoodsPage() {
       .order("created_at", { ascending: false });
     if (!writer.isActive()) return;
     if (error) { setLoadError(true); setLoading(false); return; }
-    const formatted: FoodItem[] =
-      data?.map((f) => ({
-        code: "personal-" + f.id,
-        product_name: f.name,
-        brands: "My Food",
-        default_unit: f.default_unit || "g",
-        nutriments: {
-          "energy-kcal_100g": f.calories,
-          proteins_100g: f.protein,
-          carbohydrates_100g: f.carbs,
-          fat_100g: f.fat,
-        },
-        original_id: f.id,
-        ai_estimated: !!f.ai_estimated,
-      })) || [];
-    setPersonalFoods(formatted);
+    setPersonalFoods((data ?? []).map(toPersonalFoodItem));
     setLoading(false);
   };
 
@@ -328,9 +315,9 @@ export default function MyFoodsPage() {
                   onPress={() => {
                     Keyboard.dismiss();
                     setSelectedFood(item);
-                    const u = (item.default_unit as Unit) || "g";
-                    setSelectedUnit(u);
-                    setInputWeight(defaultWeightForUnit(u));
+                    const portion = defaultFoodPortion(item);
+                    setSelectedUnit(portion.unit);
+                    setInputWeight(portion.amount);
                   }}
                 >
                   <View style={localStyles.iconCircle}>
@@ -354,7 +341,9 @@ export default function MyFoodsPage() {
                   </View>
                   <View style={localStyles.unitBadge}>
                     <Text style={localStyles.unitBadgeText}>
-                      {item.default_unit}
+                      {item.default_unit === "serving" && item.serving_weight
+                        ? `${item.serving_weight} g / serving`
+                        : item.default_unit}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -471,7 +460,10 @@ export default function MyFoodsPage() {
                         accessibilityState={{ selected: selectedUnit === u, disabled: submitting }}
                         disabled={submitting}
                         key={u}
-                        onPress={() => setSelectedUnit(u)}
+                        onPress={() => {
+                          if (selectedFood) setInputWeight(changeFoodPortionUnit(selectedFood, inputWeight, selectedUnit, u));
+                          setSelectedUnit(u);
+                        }}
                         style={{
                           paddingHorizontal: 16,
                           paddingVertical: 10,

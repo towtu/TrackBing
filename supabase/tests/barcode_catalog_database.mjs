@@ -15,6 +15,14 @@ export function runBarcodeCatalogTests({ assert, query }) {
   as(publisher, insert(publisher, "TEST DATA one serving", "00480123", true));
   as(publisher, insert(publisher, "Not published", "00480124", false));
   as(member, insert(member, "Account only", "00480123", false));
+  assert.equal(as(member, "select serving_grams is null from public.personal_foods where barcode='00480123';"), "t", "existing counts keep an unknown mass");
+  for (const grams of ["0", "-35", "10001", "'NaN'", "'Infinity'"]) {
+    assert.throws(() => as(publisher, `update public.personal_foods set serving_grams=${grams};`), /personal_food_serving_grams/);
+  }
+  assert.throws(() => as(publisher, "update public.personal_foods set default_unit='g', serving_grams=35;"), /personal_food_serving_grams/);
+  as(publisher, "update public.personal_foods set serving_grams=35.5 where barcode='00480123';");
+  as(publisher, "update public.personal_foods set serving_grams=41 where barcode='00480124';");
+  assert.equal(as(member, "select serving_grams is null from public.personal_foods where barcode='00480123';"), "t", "a publisher update does not modify another account's same barcode");
   assert.throws(() => as(member, "update public.personal_foods set share_barcode=true"), /publisher/i);
   assert.equal(as(member, "select count(*) from public.personal_foods where share_barcode;"), "0");
   assert.equal(as(member, "select count(*) from public.lookup_shared_barcode('00480124');"), "0");
@@ -22,7 +30,7 @@ export function runBarcodeCatalogTests({ assert, query }) {
   assert.throws(() => query("select * from public.lookup_shared_barcode('00480123');", "anon"), /permission denied/);
   assert.throws(() => as(member, "select user_id from public.barcode_catalog_publisher;"), /permission denied/);
   const result = JSON.parse(as(member, "select row_to_json(f) from public.lookup_shared_barcode('00480123') f;"));
-  assert.deepEqual(result, { name: "TEST DATA one serving", calories: 125, protein: 4, carbs: 20, fat: 3, default_unit: "serving" });
+  assert.deepEqual(result, { name: "TEST DATA one serving", calories: 125, protein: 4, carbs: 20, fat: 3, default_unit: "serving", serving_grams: 35.5 });
   as(publisher, "update public.personal_foods set share_barcode = false where barcode = '00480123';");
   assert.equal(as(member, "select count(*) from public.lookup_shared_barcode('00480123');"), "0");
   as(publisher, "update public.personal_foods set share_barcode = true where barcode = '00480123';");

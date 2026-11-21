@@ -29,7 +29,7 @@ import {
   sanitizeBarcodeInput,
 } from "@/src/lib/barcodes";
 import { calculateCaloriesFromMacros } from "@/src/lib/macros";
-import { parseManualFood } from "@/src/lib/foodValidation";
+import { parseManualFood, parseServingGrams } from "@/src/lib/foodValidation";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { emitFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
 import { Colors } from "@/src/styles/colors";
@@ -77,11 +77,14 @@ export default function CreateFoodPage() {
   const [fat, setFat] = useState("");
   const [barcode, setBarcode] = useState("");
   const [labelCalories, setLabelCalories] = useState("");
+  const [servingWeight, setServingWeight] = useState("");
   const [canShareBarcode, setCanShareBarcode] = useState(false);
   const [shareBarcode, setShareBarcode] = useState(false);
-  const [unit, setUnit] = useState<FoodUnit>("g");
+  const [unit, setUnit] = useState<FoodUnit>("serving");
   const hasBarcode = barcode.length > 0;
   const basis = hasBarcode && unit !== "g" ? "serving" : unit;
+  const servingGrams = basis === "serving" ? parseServingGrams(servingWeight) : null;
+  const labelEnergy = hasBarcode ? labelCalories : basis === "serving" ? labelCalories.trim() || undefined : undefined;
 
   const [submitting, setSubmitting] = useState(false);
   const [aiFillLoading, setAiFillLoading] = useState(false);
@@ -129,7 +132,12 @@ export default function CreateFoodPage() {
       return;
     }
 
-    const checked = parseManualFood(name, prot, carbs, fat, hasBarcode ? labelCalories : undefined);
+    if (basis === "serving" && servingWeight.trim() && servingGrams === null) {
+      setFeedback({ type: "warning", title: "Check the serving weight", message: "Enter a serving weight above 0 and up to 10,000 g." });
+      return;
+    }
+
+    const checked = parseManualFood(name, prot, carbs, fat, labelEnergy);
     if (!checked.ok) {
       setFeedback({ type: "warning", title: "Check the food values", message: checked.message });
       return;
@@ -163,6 +171,7 @@ export default function CreateFoodPage() {
         carbs: checked.value.carbs,
         fat: checked.value.fat,
         default_unit: basis,
+        serving_grams: servingGrams,
         barcode: parsedBarcode.barcode,
         ai_estimated: aiEstimated,
         ...(canShareBarcode && shareBarcode && parsedBarcode.barcode ? { share_barcode: true } : {}),
@@ -222,6 +231,8 @@ export default function CreateFoodPage() {
     }
 
     setUnit("serving");
+    setServingWeight("");
+    setLabelCalories("");
     setProt(formatMacroInput(result.food.protein));
     setCarbs(formatMacroInput(result.food.carbs));
     setFat(formatMacroInput(result.food.fat));
@@ -235,7 +246,9 @@ export default function CreateFoodPage() {
   };
 
   const isPer100 = basis === "g" || basis === "ml";
-  const unitLabel = basis === "serving" ? "(per serving)" : `(per ${isPer100 ? "100" : "1"} ${basis})`;
+  const unitLabel = basis === "serving"
+    ? servingGrams === null ? "(per serving)" : `(per ${servingGrams} g serving)`
+    : `(per ${isPer100 ? "100" : "1"} ${basis})`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -262,7 +275,7 @@ export default function CreateFoodPage() {
           <Text style={styles.infoText}>
             {hasBarcode
               ? "Copy the calories and macros from the same column on the package label."
-              : "Calories are calculated from the macros you enter."}
+              : "Enter the nutrition for the selected basis. TrackBing can calculate calories from macros if you leave label calories blank."}
           </Text>
         </View>
 
@@ -337,7 +350,7 @@ export default function CreateFoodPage() {
           }
         /> : null}
 
-        <Text style={styles.label}>{hasBarcode ? "Nutrition on the label" : "Default Unit"}</Text>
+        <Text style={styles.label}>{hasBarcode ? "Nutrition on the label" : "Nutrition basis"}</Text>
         <View
           style={{
             flexDirection: "row",
@@ -368,11 +381,32 @@ export default function CreateFoodPage() {
                   fontWeight: "bold",
                 }}
               >
-                {hasBarcode ? (u === "serving" ? "Per serving" : "Per 100 g") : u}
+                {u === "serving" ? "Per serving" : u === "g" ? "Per 100 g" : u}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
+
+        {basis === "serving" ? (
+          <>
+            <Text style={styles.label}>Serving weight (g)</Text>
+            <TextInput
+              style={styles.input}
+              accessibilityLabel="Serving weight in grams"
+              placeholder="e.g. 35"
+              placeholderTextColor={Colors.textMuted}
+              inputMode="decimal"
+              keyboardType="decimal-pad"
+              maxLength={16}
+              editable={!submitting && !aiFillLoading}
+              value={servingWeight}
+              onChangeText={setServingWeight}
+            />
+            <Text style={styles.inputHelper}>
+              Enter the weight of one serving to log this food in grams. Leave blank if you only know the serving count.
+            </Text>
+          </>
+        ) : null}
 
         <View style={[styles.grid, compactForm && styles.gridCompact]}>
           <View style={styles.gridItem}>
@@ -420,12 +454,12 @@ export default function CreateFoodPage() {
 
           <View style={styles.gridItem}>
             <Text style={{ ...styles.label, color: Colors.accent }}>
-              {hasBarcode ? `Calories ${unitLabel}` : "Calories"}
+              {hasBarcode || basis === "serving" ? `Calories ${unitLabel}` : "Calories"}
             </Text>
-            {hasBarcode ? (
+            {hasBarcode || basis === "serving" ? (
               <TextInput
                 style={styles.input}
-                placeholder="kcal from label"
+                placeholder={hasBarcode ? "kcal from label" : `${calculatedCalories} kcal from macros`}
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="decimal-pad"
                 accessibilityLabel="Calories from label"

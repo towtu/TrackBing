@@ -17,6 +17,7 @@ export type PersonalRecord = {
   carbs: number;
   fat: number;
   default_unit: string;
+  serving_grams?: number | null;
   ai_estimated?: boolean;
   recipe_calculated?: boolean;
   recipe_sources?: {source:string;url:string;sourceId?:string;retrievedAt:string;license?:string;attribution?:string;userEdited:boolean}[];
@@ -442,8 +443,10 @@ function personalEvidence(p: PersonalRecord, now: string): NutritionEvidence | n
         ? p.default_unit
         : null) as NutritionBasis["unit"] | null;
     if (!unit) return null;
+    const servingGrams = unit === "serving" && positive(p.serving_grams) && p.serving_grams <= 10000
+      ? p.serving_grams : null;
     const basis: NutritionBasis = {
-      grams: unit === "g" ? 100 : null,
+      grams: unit === "g" ? 100 : servingGrams,
       unit,
       count: unit === "g" || unit === "ml" ? null : 1,
       milliliters: unit === "ml" ? 100 : null,
@@ -457,7 +460,7 @@ function personalEvidence(p: PersonalRecord, now: string): NutritionEvidence | n
     const original=p.bee_provenance?.creation?.food;
     // Preserve a compact origin reference, not recursive copies of old chat
     // snapshots. Edited records remain user-owned values, not verified labels.
-    const data={id:p.id,name:p.name,calories:p.calories,protein:p.protein,carbs:p.carbs,fat:p.fat,default_unit:p.default_unit,
+    const data={id:p.id,name:p.name,calories:p.calories,protein:p.protein,carbs:p.carbs,fat:p.fat,default_unit:p.default_unit,serving_grams:servingGrams,
       ...(original ? {originalSource:{source:original.source,url:original.evidence.url,sourceId:original.evidence.sourceId,retrievedAt:original.evidence.retrievedAt,license:original.evidence.license,userEdited:p.bee_provenance?.user_edited===true}} : {})};
     const result=evidence(p.name, basis, p.id, "", null, {...data,...(p.recipe_calculated?{recipeCalculated:true,ingredientSources:p.recipe_sources??[]}:{})}, "my_food", now);
     if(p.recipe_calculated){result.title="Your saved recipe (calculated)";result.attribution="Recipe nutrition calculated from your ingredient records; no cooked gram yield assumed.";}

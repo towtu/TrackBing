@@ -27,6 +27,7 @@ import {
   isValidImperialHeight,
   kgToLb,
   lbToKg,
+  parseDecimalInput,
   type ActivityLevel,
   type NutritionTargetResult,
   type UnitSystem,
@@ -112,18 +113,18 @@ const SIGNUP_GOAL_OPTIONS = [
     emoji: "💪",
   },
   {
-    label: "Gain Faster",
-    sub: "+0.50% / wk",
+    label: "Gain 0.5%",
+    sub: "of body weight / wk",
     value: GOAL_RATE_PRESETS.gain_faster,
     emoji: "🔥",
   },
+  {
+    label: "Gain 1%",
+    sub: "of body weight / wk",
+    value: GOAL_RATE_PRESETS.gain_max,
+    emoji: "📈",
+  },
 ] as const;
-
-const parseDisplay = (value: string): number | null => {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 const roundDisplay = (value: number | null) =>
   value === null ? "" : String(Math.round(value * 10) / 10);
@@ -197,7 +198,7 @@ export function AuthScreen() {
     setAge(value);
     setTargetResult(null);
 
-    const parsedAge = parseDisplay(value);
+    const parsedAge = parseDecimalInput(value);
     if (parsedAge !== null && parsedAge >= 13 && parsedAge < 18) {
       setGoalRate(GOAL_RATE_PRESETS.maintain);
     }
@@ -206,14 +207,14 @@ export function AuthScreen() {
   const handleWeightKgChange = (value: string) => {
     setWeightKg(value);
     setTargetResult(null);
-    const parsed = parseDisplay(value);
+    const parsed = parseDecimalInput(value);
     setWeightLb(roundDisplay(parsed === null ? null : kgToLb(parsed)));
   };
 
   const handleWeightLbChange = (value: string) => {
     setWeightLb(value);
     setTargetResult(null);
-    const parsed = parseDisplay(value);
+    const parsed = parseDecimalInput(value);
     setWeightKg(roundDisplay(parsed === null ? null : lbToKg(parsed)));
   };
 
@@ -223,8 +224,8 @@ export function AuthScreen() {
   };
 
   const updateImperialHeight = (feetText: string, inchesText: string) => {
-    const feet = parseDisplay(feetText);
-    const inches = parseDisplay(inchesText);
+    const feet = parseDecimalInput(feetText);
+    const inches = parseDecimalInput(inchesText);
 
     if (
       feet !== null &&
@@ -251,13 +252,13 @@ export function AuthScreen() {
 
   const switchSignupUnitSystem = (next: UnitSystem) => {
     if (next === "imperial") {
-      const parsedHeight = parseDisplay(heightCm);
+      const parsedHeight = parseDecimalInput(heightCm);
       const convertedHeight =
         parsedHeight === null ? null : cmToFtIn(parsedHeight);
       setHeightFt(convertedHeight ? String(convertedHeight.feet) : "");
       setHeightIn(convertedHeight ? String(convertedHeight.inches) : "");
 
-      const parsedWeight = parseDisplay(weightKg);
+      const parsedWeight = parseDecimalInput(weightKg);
       setWeightLb(
         roundDisplay(parsedWeight === null ? null : kgToLb(parsedWeight)),
       );
@@ -268,11 +269,11 @@ export function AuthScreen() {
 
   // --- LOGIC: CALCULATE WITH LIMITS ---
   const handleCalculate = () => {
-    const parsedAge = parseDisplay(age);
-    const canonicalWeight = parseDisplay(weightKg);
-    const canonicalHeight = parseDisplay(heightCm);
-    const parsedFeet = parseDisplay(heightFt);
-    const parsedInches = parseDisplay(heightIn);
+    const parsedAge = parseDecimalInput(age);
+    const canonicalWeight = parseDecimalInput(weightKg);
+    const canonicalHeight = parseDecimalInput(heightCm);
+    const parsedFeet = parseDecimalInput(heightFt);
+    const parsedInches = parseDecimalInput(heightIn);
 
     if (
       unitSystem === "imperial" &&
@@ -413,7 +414,7 @@ export function AuthScreen() {
         targetResult.finalCalories,
         DEFAULT_MACRO_PERCENTAGES,
       );
-      const numericAge = Number(age);
+      const numericAge = parseDecimalInput(age) ?? NaN;
       const minor = numericAge < 18;
       const savedMode = minor
         ? "minor_maintenance"
@@ -437,8 +438,8 @@ export function AuthScreen() {
           {
             user_id: signupSession.user.id,
             calorie_target: targetResult.finalCalories,
-            current_weight: Number(weightKg),
-            height: Number(heightCm),
+            current_weight: parseDecimalInput(weightKg) ?? NaN,
+            height: parseDecimalInput(heightCm) ?? NaN,
             age: numericAge,
             gender,
             activity_level: activityLevelToStoredValue(activityLevel),
@@ -487,7 +488,7 @@ export function AuthScreen() {
     }
   }
 
-  const parsedAge = parseDisplay(age);
+  const parsedAge = parseDecimalInput(age);
   const isMinor =
     parsedAge !== null && parsedAge >= 13 && parsedAge < 18;
 
@@ -598,7 +599,8 @@ export function AuthScreen() {
                   : "Weight in pounds"
               }
               placeholder={unitSystem === "metric" ? "70" : "154"}
-              keyboardType="numeric"
+              inputMode="decimal"
+              keyboardType="decimal-pad"
               value={unitSystem === "metric" ? weightKg : weightLb}
               onChangeText={
                 unitSystem === "metric"
@@ -631,7 +633,8 @@ export function AuthScreen() {
               onFocus={() => setFocusedField("height")}
               onBlur={() => setFocusedField(null)}
               placeholder="175"
-              keyboardType="numeric"
+              inputMode="decimal"
+              keyboardType="decimal-pad"
               value={heightCm}
               onChangeText={handleHeightCmChange}
               placeholderTextColor={Colors.textMuted}
@@ -665,7 +668,8 @@ export function AuthScreen() {
                 accessibilityHint="Enter a value from 0 through 11."
                 accessibilityLabel="Height in inches"
                 placeholder="9"
-                keyboardType="numeric"
+                inputMode="decimal"
+                keyboardType="decimal-pad"
                 value={heightIn}
                 onChangeText={handleHeightInChange}
                 placeholderTextColor={Colors.textMuted}
@@ -853,7 +857,7 @@ export function AuthScreen() {
         <View style={styles.targetBreakdownSection}>
           <TargetBreakdown
             result={targetResult}
-            weightKg={Number(weightKg)}
+            weightKg={parseDecimalInput(weightKg) ?? NaN}
             unitSystem={unitSystem}
           />
         </View>

@@ -13,6 +13,10 @@ export function runWeeklyGainDatabaseTests({ assert, query, literal: q, json }) 
   // Onboarding writes directly to its own profile. Profile edits use the RPC.
   asUser(`insert into public.user_goals(user_id,calorie_target,current_weight,age,gender,height,activity_level,goal_mode,goal_rate)
     values(${q(owner)},2500,72.4,30,'male',175,'1.375','estimated_rate',0.01);`);
+  for (const age of [17, null]) {
+    assert.throws(() => asUser(`insert into public.user_goals(user_id,calorie_target,age,goal_mode,goal_rate)
+      values(${q(stranger)},2500,${age ?? 'null'},'estimated_rate',0.01);`, stranger), /user_goals_goal_rate_check/);
+  }
   for (const goal_rate of [0.005, 0.01]) {
     const saved = saveProfile({ goal_rate });
     assert.equal(saved.ok, true);

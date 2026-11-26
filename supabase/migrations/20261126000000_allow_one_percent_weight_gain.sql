@@ -1,9 +1,13 @@
 -- Widen the persisted weekly gain goal without changing calorie safeguards.
+-- Require an adult profile for newly available rates above 0.5%.
 alter table public.user_goals
   drop constraint user_goals_goal_rate_check,
   drop constraint launch_goal_metadata,
   add constraint user_goals_goal_rate_check
-    check (goal_rate is null or goal_rate between -0.01 and 0.01),
+    check (goal_rate is null or (
+      goal_rate between -0.01 and 0.01 and
+      (goal_rate <= 0.005 or (age is not null and age >= 18))
+    )),
   add constraint launch_goal_metadata check (
     (goal_mode is null or goal_mode in ('estimated_rate','maintenance','custom_calories','minor_maintenance','legacy_custom')) and
     (goal_rate is null or goal_rate between -0.01 and 0.01) and

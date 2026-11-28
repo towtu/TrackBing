@@ -645,7 +645,7 @@ export default function AddFoodPage() {
               <CaretLeft size={24} color={Colors.accent} weight="bold" />
             </TouchableOpacity>
           )}
-          <Text style={localStyles.headerTitle}>Find Food</Text>
+          <Text style={localStyles.headerTitle}>Log food</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {!isDesktop && (
               <TouchableOpacity

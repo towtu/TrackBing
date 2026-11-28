@@ -1,6 +1,6 @@
 // Illustrative TEST DATA, not live nutrition facts. Controlled browser fixture: intercepts every Supabase request; writes never reach a server.
-module.exports = async function installBeeUiMock(page) {
-  const user = { id: "11111111-1111-4111-8111-111111111111", aud: "authenticated", role: "authenticated", email: "bee-demo@example.test", app_metadata: {}, user_metadata: { full_name: "Demo" }, identities: [], created_at: "2026-09-26T00:00:00Z" };
+module.exports = async function installBeeUiMock(page, { createdAt = "2026-09-26T00:00:00Z" } = {}) {
+  const user = { id: "11111111-1111-4111-8111-111111111111", aud: "authenticated", role: "authenticated", email: "bee-demo@example.test", app_metadata: {}, user_metadata: { full_name: "Demo" }, identities: [], created_at: createdAt };
   await page.addInitScript(({ user }) => {
     const expiry = Math.floor(Date.now() / 1000) + 86400;
     const encode = (value) => btoa(JSON.stringify(value)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");

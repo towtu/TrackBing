@@ -172,6 +172,52 @@ async function verifyBeeCorrections(page,width,fixture,output) {
  assert.equal(fixture.getSnapshot().pending,null);assert.equal(fixture.getSearchCount(),searchBefore);
  assert.equal(await page.getByRole('button',{name:'Add to today',exact:true}).count(),0);
 }
+async function verifyGettingStarted(page, base, width, output) {
+ await require('./fixtures/bee-browser.cjs')(page, {createdAt:new Date(Date.now()-60000).toISOString()});
+ const button = name => page.getByRole('button',{name,exact:true});
+ const aligned = async target => {
+  await page.waitForFunction(name => {
+   const anchor = document.querySelector(`[data-testid="getting-started-target-${name}"]`)?.getBoundingClientRect();
+   const outline = document.querySelector('[data-testid="getting-started-spotlight"]')?.getBoundingClientRect();
+   return anchor && outline && Math.abs(anchor.left-outline.left) <= 6 && Math.abs(anchor.top-outline.top) <= 6 && outline.height >= anchor.height;
+  },target);
+ };
+ await page.goto(base);
+ await page.getByRole('heading',{name:'Getting started',exact:true}).waitFor();
+ await page.getByText('Your daily calories',{exact:true}).waitFor();
+ await aligned('calories');
+ await page.screenshot({path:`${output}/getting-started-calories-${width}.png`,animations:'disabled'});
+ if(width===375){
+  await page.setViewportSize({width:700,height:400});
+  await aligned('calories');
+  const outline=await page.getByTestId('getting-started-spotlight').boundingBox();
+  const panel=await page.getByTestId('getting-started-card').boundingBox();
+  assert.ok(panel.x+panel.width<=outline.x || outline.x+outline.width<=panel.x || panel.y>=outline.y+outline.height, 'tour copy must leave the ring visible');
+  await page.screenshot({path:`${output}/getting-started-landscape.png`,animations:'disabled'});
+  await page.setViewportSize({width,height:900});
+  await aligned('calories');
+ }
+ await button('Next').click();
+ await page.getByText('Step 2 of 3',{exact:true}).waitFor();
+ await aligned('log');
+ await button('Back').click();
+ await aligned('calories');
+ await button('Next').click();
+ await button('Next').click();
+ await page.getByText('Step 3 of 3',{exact:true}).waitFor();
+ await aligned('scan');
+ await page.screenshot({path:`${output}/getting-started-scan-${width}.png`,animations:'disabled'});
+ if(width===375) await button('Skip tour').click();
+ else {
+  await button('Log food').click();
+  await page.getByRole('textbox',{name:'Search foods',exact:true}).waitFor();
+ }
+ await page.waitForFunction(()=>localStorage.getItem('trackbing:getting-started:v1:11111111-1111-4111-8111-111111111111')==='seen');
+ await page.goto(base);
+ await page.getByRole('progressbar',{name:'Calories logged',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'Getting started',exact:true}).waitFor({state:'hidden'});
+}
+
 // A synthetic camera keeps the scanner check independent of runner hardware and permissions.
 (async()=>{const browser=await chromium.launch({executablePath:process.env.CHROME_BIN || 'google-chrome',headless:true,args:['--no-sandbox','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});const output='output/playwright/adaptive-launch';fs.mkdirSync(output,{recursive:true});const evidence=[];
  for(const width of [375,768,1440]){
@@ -213,6 +259,12 @@ async function verifyBeeCorrections(page,width,fixture,output) {
  await page.screenshot({path:`${output}/dashboard-confirmed-food-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();
  await input.fill('Fudgee Barr Chocolate 38 g nutrition');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Live answer',{exact:true}).waitFor();assert.equal(fixture.getSnapshot().pending,null);assert.equal(await page.locator('[data-testid^="bee-mascot-"]').count(),1);assert.equal(await page.locator('[aria-label="Google Search suggestions"]').count(),1);await page.screenshot({path:`${output}/search-answer-${width}.png`});await page.getByRole('button',{name:'Saved preferences',exact:true}).click();await page.getByRole('heading',{name:'Saved preferences',exact:true}).waitFor();await page.screenshot({path:`${output}/memories-${width}.png`});
+ const tourPage=await context.newPage();
+ tourPage.on('pageerror',e=>errors.push(String(e)));
+ tourPage.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+ tourPage.on('requestfailed',r=>{if(!r.failure()?.errorText?.includes('ERR_ABORTED'))failedRequests.push({url:r.url(),error:r.failure()?.errorText});});
+ await verifyGettingStarted(tourPage,process.env.UI_BASE_URL || 'http://127.0.0.1:8091',width,output);
+ await tourPage.close();
  assert.deepEqual(errors.filter(e=>!e.includes('404')),[]);assert.deepEqual(failedRequests,[]);
- evidence.push({failedRequests,width,publicRoutes:4,accountRoutes:6,cameraPreviewStarted:true,singleActiveCompanion:true,readableMacros:true,rawTypoClarification:true,retainedPortion:true,staleAddHidden:true,noCancelsWithoutSearch:true,manualFoodReviewAdjustCancel:true,weightReviewConfirm:true,foodReviewCancel:true,calorieProgressAfterConfirmation:true,memories:true,errors:errors.filter(e=>!e.includes('404'))});await context.close();}
+ evidence.push({failedRequests,width,publicRoutes:4,accountRoutes:6,cameraPreviewStarted:true,singleActiveCompanion:true,readableMacros:true,rawTypoClarification:true,retainedPortion:true,staleAddHidden:true,noCancelsWithoutSearch:true,manualFoodReviewAdjustCancel:true,weightReviewConfirm:true,foodReviewCancel:true,calorieProgressAfterConfirmation:true,memories:true,gettingStartedSpotlight:true,errors:errors.filter(e=>!e.includes('404'))});await context.close();}
  await browser.close();fs.writeFileSync(output+'/results.json',JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));})().catch(e=>{console.error(e);process.exit(1)});

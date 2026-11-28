@@ -21,6 +21,10 @@ target. Success means users can record food with minimal friction, trust where
 an estimate came from, and continue consistently without shame-based coaching
 or misleading health promises.
 
+Getting started guides new accounts through daily calories, Log food, and barcode
+scanning on the dashboard. Finishing or skipping it saves a preference on that
+device for the signed-in account.
+
 ## Brand Personality
 
 Supportive, grounded, and quietly capable. The product should feel warm enough

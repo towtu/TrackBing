@@ -21,7 +21,8 @@ type Props = {
 export function GettingStartedTour({ step, onScreen, anchor, onBack, onNext, onSkip }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [highlight, setHighlight] = useState<{ step: number; frame: SpotlightFrame | null } | null>(null);
+  const [highlight, setHighlight] = useState<{ step: number; anchor: TourAnchor; frame: SpotlightFrame | null } | null>(null);
+  const [slowStep, setSlowStep] = useState<number | null>(null);
 
   useEffect(() => {
     if (!onScreen || !anchor) return;
@@ -40,7 +41,7 @@ export function GettingStartedTour({ step, onScreen, anchor, onBack, onNext, onS
           });
           return;
         }
-        setHighlight({ step, frame: clipSpotlight({ x, y, width: targetWidth, height: targetHeight }, width, height) });
+        setHighlight({ step, anchor, frame: clipSpotlight({ x, y, width: targetWidth, height: targetHeight }, width, height) });
       });
     };
     animation = requestAnimationFrame(() => measure(true));
@@ -48,7 +49,14 @@ export function GettingStartedTour({ step, onScreen, anchor, onBack, onNext, onS
   }, [anchor, height, onScreen, step, width]);
 
   const current = gettingStartedSteps[step];
-  const frame = onScreen && anchor && highlight?.step === step ? highlight.frame : null;
+  const frame = onScreen && highlight?.step === step && highlight.anchor === anchor ? highlight.frame : null;
+  const loading = onScreen && !frame && slowStep !== step;
+  useEffect(() => {
+    if (!loading) return;
+    const timeout = setTimeout(() => setSlowStep(step), 5000);
+    return () => clearTimeout(timeout);
+  }, [loading, step]);
+
   const lastStep = step === gettingStartedSteps.length - 1;
   const leftSpace = frame?.x ?? 0;
   const rightSpace = frame ? width - frame.x - frame.width : 0;
@@ -91,8 +99,14 @@ export function GettingStartedTour({ step, onScreen, anchor, onBack, onNext, onS
             {step > 0 && <TouchableOpacity accessibilityRole="button" onPress={onBack} style={styles.action}>
               <Text style={styles.link}>Back</Text>
             </TouchableOpacity>}
-            <TouchableOpacity accessibilityRole="button" style={[styles.action, styles.primary]} onPress={onNext}>
-              <Text style={styles.primaryText}>{!onScreen ? "Open screen" : lastStep ? "Done" : "Next"}</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ busy: loading, disabled: loading }}
+              disabled={loading}
+              style={[styles.action, styles.primary, loading && styles.loading]}
+              onPress={onNext}
+            >
+              <Text style={styles.primaryText}>{loading ? "Loading screen…" : !onScreen ? "Open screen" : lastStep ? "Done" : "Next"}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -117,5 +131,6 @@ const styles = StyleSheet.create({
   action: { minHeight: 44, paddingHorizontal: 14, justifyContent: "center", borderRadius: 10 },
   link: { color: Colors.text, fontWeight: "700" },
   primary: { backgroundColor: Colors.accent },
+  loading: { opacity: 0.65 },
   primaryText: { color: Colors.textOnAccent, fontWeight: "800" },
 });

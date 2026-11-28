@@ -436,13 +436,14 @@ export function DashboardScreen() {
   );
 
   const renderBeeCompanion = () => (
-    <View ref={beeAnchor} testID="bee-dashboard-companion">
+    <View testID="bee-dashboard-companion">
       <BeeGuide
         compact={!isDesktop}
         interactive={!companion.chatOpen}
+        chatButtonRef={beeAnchor}
         showMascot={isFocused}
         mascotSize="large"
-        nutritionDetail={companion.nutritionCue?.detail}
+        nutritionDetail={suspendInsight ? undefined : companion.nutritionCue?.detail}
         title={beeMessage.title}
         message={beeMessage.message}
         style={styles.beeCompanionCard}

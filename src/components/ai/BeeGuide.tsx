@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -40,6 +40,7 @@ type BeeGuideProps = {
   nutritionDetail?: string;
   situation?: BeeSituation;
   interactive?: boolean;
+  chatButtonRef?: Ref<View>;
   variant?: BeeGuideVariant;
   style?: StyleProp<ViewStyle>;
 };
@@ -86,6 +87,7 @@ export function BeeGuide({
   nutritionDetail,
   situation,
   interactive = true,
+  chatButtonRef,
   variant = compact ? "compact" : "dashboard",
   style,
 }: BeeGuideProps) {
@@ -115,7 +117,18 @@ export function BeeGuide({
           ]}
         >
           {showMascot && variant !== "chat" ? <View style={styles.bubbleTail} /> : null}
-          {interactive ? <Pressable accessibilityRole="button" accessibilityLabel="Open Bee chat" onPress={openBee} style={styles.openChat}><Text style={styles.speaker}>Ask Bee</Text></Pressable> : <Text style={styles.speaker}>Bee</Text>}
+          {interactive ? (
+            <Pressable
+              ref={chatButtonRef}
+              testID={chatButtonRef ? "getting-started-target-bee" : undefined}
+              accessibilityRole="button"
+              accessibilityLabel="Open Bee chat"
+              onPress={openBee}
+              style={styles.openChat}
+            >
+              <Text style={styles.speaker}>Ask Bee</Text>
+            </Pressable>
+          ) : <Text style={styles.speaker}>Bee</Text>}
           <Text
             style={[
               styles.title,

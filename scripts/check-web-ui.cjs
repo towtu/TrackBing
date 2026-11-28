@@ -177,7 +177,7 @@ async function verifyGettingStarted(page, base, width, output) {
  const card = page.getByTestId('getting-started-card');
  const button = name => card.getByRole('button',{name,exact:true});
  const aligned = async target => {
-  const testId = target === 'bee' ? 'bee-dashboard-companion' : `getting-started-target-${target}`;
+  const testId = `getting-started-target-${target}`;
   await page.waitForFunction(id => {
    const anchor = [...document.querySelectorAll(`[data-testid="${id}"]`)]
     .map(element=>element.getBoundingClientRect())
@@ -201,12 +201,13 @@ async function verifyGettingStarted(page, base, width, output) {
  await checkStep(1,'/','calories');
  await page.screenshot({path:`${output}/getting-started-calories-${width}.png`,animations:'disabled'});
  if(width===375){
+  const viewportBeforeResize = page.viewportSize();
   for(const viewport of [{width:700,height:400},{width:320,height:568}]){
    await page.setViewportSize(viewport);
    await aligned('calories');
    await page.screenshot({path:`${output}/getting-started-${viewport.width}x${viewport.height}.png`,animations:'disabled'});
   }
-  await page.setViewportSize({width,height:900});
+  await page.setViewportSize(viewportBeforeResize);
   await aligned('calories');
  }
  const itinerary = [
@@ -215,7 +216,23 @@ async function verifyGettingStarted(page, base, width, output) {
   [10,'/','bee'],[11,'/plans','plans'],[12,'/data','export'],
  ];
  for(const [step,path,target] of itinerary){
-  await button('Next').click();
+  if(step===7 && width===375){
+   await page.evaluate(()=>localStorage.removeItem('cache:stats:week:11111111-1111-4111-8111-111111111111'));
+   const loading = require('./fixtures/bee-browser.cjs').fixtureEvent('Weekly stats');
+   const slowQuery = '**/rest/v1/rpc/get_weekly_stats';
+   let release;
+   const pending = new Promise(resolve=>{release=resolve;});
+   await page.route(slowQuery,async route=>{
+    loading.signal();
+    await pending;
+    await route.fallback();
+   },{times:1});
+   await button('Next').click();
+   try {
+    await loading.wait();
+    assert.ok(await button('Loading screen…').isDisabled(),'a loading screen cannot be advanced before measuring its spotlight');
+   } finally { release(); }
+  }else await button('Next').click();
   await checkStep(step,path,target);
   if(step===4){
    await button('Back').click();
@@ -290,6 +307,7 @@ async function verifyGettingStarted(page, base, width, output) {
  await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();
  await input.fill('Fudgee Barr Chocolate 38 g nutrition');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Live answer',{exact:true}).waitFor();assert.equal(fixture.getSnapshot().pending,null);assert.equal(await page.locator('[data-testid^="bee-mascot-"]').count(),1);assert.equal(await page.locator('[aria-label="Google Search suggestions"]').count(),1);await page.screenshot({path:`${output}/search-answer-${width}.png`});await page.getByRole('button',{name:'Saved preferences',exact:true}).click();await page.getByRole('heading',{name:'Saved preferences',exact:true}).waitFor();await page.screenshot({path:`${output}/memories-${width}.png`});
  const tourPage=await context.newPage();
+ if(width===375) await tourPage.setViewportSize({width,height:667});
  tourPage.on('pageerror',e=>errors.push(String(e)));
  tourPage.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
  tourPage.on('requestfailed',r=>{if(!r.failure()?.errorText?.includes('ERR_ABORTED'))failedRequests.push({url:r.url(),error:r.failure()?.errorText});});

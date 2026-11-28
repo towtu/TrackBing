@@ -1,4 +1,3 @@
-import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { Link } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TextInput, View } from 'react-native';
@@ -10,7 +9,6 @@ import { shiftDay } from '../../supabase/functions/_shared/beeDates';
 import { Colors } from '@/src/styles/colors';
 
 export function DiaryScreen() {
-  const diaryAnchor = useTourAnchor("diary");
   const {day,error:accountError,authorize,reload} = useTrackingAccount();
   const [date,setDate] = useState('');
   const [editing,setEditing] = useState('');
@@ -53,12 +51,12 @@ export function DiaryScreen() {
       setDate(value);setEditing(value);
     } catch (failure) {setError(failure instanceof Error ? failure.message : 'Choose a real date.');}
   }
-  return <TrackingPage title="Food diary" description="Browse your saved food, one day at a time. These totals come from your recorded entries.">
+  return <TrackingPage tourTarget="diary" title="Food diary" description="Browse your saved food, one day at a time. These totals come from your recorded entries.">
     {accountError && <><Text accessibilityRole="alert" style={styles.error}>{accountError}</Text><TrackingAction label="Reload account date" onPress={()=>void reload()} /></>}
     {!day && !accountError && <ActivityIndicator accessibilityLabel="Loading your account date" color={Colors.accent} />}
     {day && <>
       <Text style={styles.copy}>Dates use {day.timeZone}. Historical nutrition targets are not stored here.</Text>
-      <View ref={diaryAnchor} testID="getting-started-target-diary" style={styles.row}>
+      <View style={styles.row}>
         <View style={styles.field}><Text style={styles.label}>Day (YYYY-MM-DD)</Text><TextInput accessibilityLabel="Diary date" value={editing} onChangeText={setEditing} maxLength={10} autoCapitalize="none" autoCorrect={false} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.textSecondary} style={styles.input} onSubmitEditing={()=>choose(editing)} returnKeyType="go" /></View>
         <TrackingAction label="Show day" onPress={()=>choose(editing)} />
       </View>

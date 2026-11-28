@@ -369,8 +369,8 @@ export default function StatsPage() {
         </View>
 
         {/* ── STREAK + SUMMARY ROW ── */}
-        <View ref={statsAnchor} testID="getting-started-target-stats" style={styles.summaryRow}>
-          <View style={styles.streakCard}>
+        <View style={styles.summaryRow}>
+          <View ref={statsAnchor} testID="getting-started-target-stats" style={styles.streakCard}>
             <View style={styles.streakIconWrap}>
               <Fire size={24} color={Colors.accent} weight="fill" />
             </View>

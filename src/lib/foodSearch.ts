@@ -1,8 +1,3 @@
-// Combined food search across every source the app knows about:
-// the user's own My Foods (personal_foods), the generic gist DB, USDA/FDC
-// data, and OpenFoodFacts. Both the Find Food screen and the Recipe builder
-// use this so the two stay in lockstep.
-
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {completeOffNutrition,labeledServingWeight} from "./independentNutrition";
 import { supabase } from "./supabase";
@@ -138,35 +133,6 @@ export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
   }
 }
 
-async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
-  try {
-    const res = await fetch(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
-        query
-      )}&search_simple=1&action=process&json=1&page_size=10&lc=en`
-    );
-    const offData = await res.json();
-    return (
-      offData.products?.filter((item: {nutriments?:unknown})=>completeOffNutrition(item.nutriments)!==null).map((item: any, index: number) => ({
-        code: item.code || `off-${index}`,
-        product_name: item.product_name || "Unknown Food",
-        brands: item.brands || "Packaged",
-        default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
-        serving_weight: labeledServingWeight(item.serving_size,item.product_quantity_unit === "ml" ? "ml" : "g"),
-        nutriments: {
-          "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
-          proteins_100g: item.nutriments?.proteins_100g || 0,
-          carbohydrates_100g: item.nutriments?.carbohydrates_100g || 0,
-          fat_100g: item.nutriments?.fat_100g || 0,
-        },
-      })) || []
-    );
-  } catch (e) {
-    console.warn("OpenFoodFacts search failed", e);
-    return [];
-  }
-}
-
 /**
  * Outcome of a barcode lookup. We distinguish "couldn't reach the database"
  * from "that code isn't in the database" so the UI can react sensibly, and
@@ -184,7 +150,7 @@ export type BarcodeSourceLookup = {
   findPersonal: (barcode: string) => Promise<PersonalBarcodeResult>;
   findShared?: (barcode: string) => Promise<PersonalBarcodeResult>;
   findPublic: (barcode: string) => Promise<BarcodeResult>;
-  findFallback?: (barcode: string) => Promise<BarcodeResult>;
+  findUSDA?: (barcode: string) => Promise<BarcodeResult>;
 };
 
 export type ResolvedBarcode =
@@ -303,11 +269,10 @@ export async function resolveBarcodeWithSources(
       if (shared.food) return { ok: true, source: "trackbing-catalog", food: shared.food, hasNutrition: true };
     }
 
+    const usda = await sources.findUSDA?.(parsed.barcode);
+    if (usda?.ok && usda.hasNutrition) return { ...usda, source: "usda" };
+
     const publicResult = await sources.findPublic(parsed.barcode);
-    if ((!publicResult.ok || !publicResult.hasNutrition) && sources.findFallback) {
-      const fallback = await sources.findFallback(parsed.barcode);
-      if (fallback.ok && fallback.hasNutrition) return { ...fallback, source: "usda" };
-    }
     if (!publicResult.ok) return publicResult;
     return {
       ok: true,
@@ -393,7 +358,7 @@ export async function resolveBarcode(code: string): Promise<ResolvedBarcode> {
         return { ok: true, food: data ? barcodeFood(data as BarcodeNutritionRow, barcode, "TrackBing catalog") : null };
       },
       findPublic: lookupBarcode,
-      findFallback: (barcode) => lookupUSDABarcode(barcode, account.client),
+      findUSDA: (barcode) => lookupUSDABarcode(barcode, account.client),
     });
     return account.isActive() ? result : { ok: false, reason: "auth-required" };
   } finally {
@@ -401,22 +366,15 @@ export async function resolveBarcode(code: string): Promise<ResolvedBarcode> {
   }
 }
 
-/**
- * Search every source at once. Results are ordered with the user's own foods
- * first (My Foods, then generic gist matches), followed by USDA and packaged
- * OpenFoodFacts entries.
- */
+/** Find Food and the recipe builder share this name search. */
 export async function searchAllFoods(query: string): Promise<FoodItem[]> {
-  const gist = await loadGistFoods();
-  const gistMatches = gist.filter((f) =>
-    f.product_name?.toLowerCase().includes(query.toLowerCase())
-  );
-
-  const [personal, usdaResults, offResults] = await Promise.all([
+  const [personal, gist, usdaResults] = await Promise.all([
     searchPersonalFoods(query),
+    loadGistFoods(),
     searchUSDA(query),
-    searchOpenFoodFacts(query),
   ]);
-
-  return [...personal, ...gistMatches, ...usdaResults, ...offResults];
+  const gistMatches = gist.filter(food =>
+    food.product_name?.toLowerCase().includes(query.toLowerCase())
+  );
+  return [...personal, ...gistMatches, ...usdaResults];
 }

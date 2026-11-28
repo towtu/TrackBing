@@ -95,7 +95,8 @@ const isUsdaFood = (food: FoodItem) =>
   food.brands === "USDA" || /^usda-/.test(food.code ?? "");
 
 const isPackagedFood = (food: FoodItem) =>
-  !isPersonalFood(food) && !isUsdaFood(food) && food.brands !== "Generic";
+  /^USDA - Branded(?: -|$)/.test(food.brands ?? "") ||
+  (!isPersonalFood(food) && !isUsdaFood(food) && food.brands !== "Generic");
 
 const barcodeFromFood = (food: FoodItem | null) => {
   const code = food?.code?.trim();

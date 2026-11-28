@@ -116,31 +116,31 @@ describe("resolveBarcodeWithSources", () => {
     ).resolves.toEqual({ ok: false, reason: "not-found" });
   });
 
-  it.each([
-    { ok: false as const, reason: "not-found" as const },
-    { ok: true as const, food: publicFood, hasNutrition: false },
-  ])("tries USDA when Open Food Facts has no usable nutrition", async (off) => {
-    const findFallback = vi.fn(async () => ({ ok: true as const, food: publicFood, hasNutrition: true }));
-    await expect(resolveBarcodeWithSources("01234567", {
+  it("uses an exact USDA match before calling Open Food Facts", async () => {
+    const findUSDA = vi.fn(async () => ({ ok: true as const, food: publicFood, hasNutrition: true }));
+    const findPublic = vi.fn();
+    await expect(resolveBarcodeWithSources("012345678905", {
       findPersonal: async () => ({ ok: true, food: null }),
-      findPublic: async () => off,
-      findFallback,
+      findUSDA,
+      findPublic,
     })).resolves.toMatchObject({ source: "usda", hasNutrition: true });
-    expect(findFallback).toHaveBeenCalledWith("01234567");
+    expect(findUSDA).toHaveBeenCalledWith("012345678905");
+    expect(findPublic).not.toHaveBeenCalled();
   });
 
-  it("keeps a complete Open Food Facts match first and preserves manual entry after a fallback failure", async () => {
-    const incomplete = { ok: true as const, food: publicFood, hasNutrition: false };
-    const findFallback = vi.fn(async () => ({ ok: false as const, reason: "unreachable" as const }));
-    const sources: BarcodeSourceLookup = {
-      findPersonal: async () => ({ ok: true, food: null }),
-      findPublic: async () => ({ ...incomplete, hasNutrition: true }),
-      findFallback,
-    };
-    await expect(resolveBarcodeWithSources("01234567", sources)).resolves.toMatchObject({ source: "open-food-facts", hasNutrition: true });
-    expect(findFallback).not.toHaveBeenCalled();
-    await expect(resolveBarcodeWithSources("01234567", { ...sources, findPublic: async () => incomplete })).resolves.toMatchObject({ source: "open-food-facts", hasNutrition: false });
-  });
+  it.each(["not-found", "unreachable"] as const)(
+    "tries Open Food Facts on USDA %s and keeps incomplete matches reviewable",
+    async (reason) => {
+      const findUSDA = vi.fn(async () => ({ ok: false as const, reason }));
+      const findPublic = vi.fn(async () => ({ ok: true as const, food: publicFood, hasNutrition: false }));
+      await expect(resolveBarcodeWithSources("012345678905", {
+        findPersonal: async () => ({ ok: true, food: null }),
+        findUSDA,
+        findPublic,
+      })).resolves.toMatchObject({ source: "open-food-facts", hasNutrition: false });
+      expect(findUSDA).toHaveBeenCalledBefore(findPublic);
+    },
+  );
 
   it("does not call the public service after a personal lookup failure", async () => {
     const findPublic = vi.fn();

@@ -174,6 +174,7 @@ export async function lookupUSDABarcode(
   try {
     const { data, error } = await client.functions.invoke<{ foods?: unknown }>("usda-search", {
       body: { query: gtin, dataType: ["Branded"], pageSize: 10 },
+      timeout: 3000,
     });
     if (error || !Array.isArray(data?.foods)) return { ok: false, reason: "unreachable" };
     const matches = data.foods.filter(isSearchResult).flatMap((food): USDAFood[] => {

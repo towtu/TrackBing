@@ -217,7 +217,7 @@ async function verify(page, base, width) {
     await submitBarcode(true);
     await firstLookup.wait();
     await page.getByText('Searching product…', { exact: true }).waitFor();
-    const staleLookup = page.waitForResponse('**/functions/v1/usda-search');
+    const staleLookup = page.waitForResponse(`**/api/v0/product/${barcode}.json`);
     await page.getByRole('button', { name: 'Close barcode entry', exact: true }).click();
     await page.getByRole('button', { name: 'Close ingredient scanner', exact: true }).click();
     releaseFirstLookup();

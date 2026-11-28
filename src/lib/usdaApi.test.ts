@@ -19,7 +19,7 @@ describe('USDA barcode nutrition', () => {
   it('uses an exact GTIN with zero padding and preserves its label basis', async () => {
     invoke.mockResolvedValue({data:{foods:[{...fixture,gtinUpc:'012345678912'},fixture]}});
     await expect(lookupUSDABarcode(barcode)).resolves.toMatchObject({ok:true,hasNutrition:true,food:{code:barcode,product_name:fixture.description,default_unit:'g',serving_weight:35,nutriments:{'energy-kcal_100g':100,proteins_100g:0}}});
-    expect(invoke).toHaveBeenCalledWith('usda-search',{body:{query:'00012345678905',dataType:['Branded'],pageSize:10}});
+    expect(invoke).toHaveBeenCalledWith('usda-search',{body:{query:'00012345678905',dataType:['Branded'],pageSize:10},timeout:3000});
   });
 
   it('keeps a 100 mL basis separate from weight', async () => {

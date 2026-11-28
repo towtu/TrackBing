@@ -20,7 +20,8 @@ import {
 import type { BeeRequest, BeeTier, FoodQuery } from "./beeTypes.ts";
 import type { NutritionResult } from "./beeNutrition.ts";
 import { foodFromUserLabel, makePersonalFoodDraft, resolveRecipe } from "./beeCreation.ts";
-import { readyTypicalRice, riceRequestConflict, RICE_CLARIFICATION } from "./beeFoodRetrieval.ts";
+import { needsTenderWeight, readyNutritionReference, readyTypicalRice, riceRequestConflict, RICE_CLARIFICATION, TENDERS_WEIGHT_QUESTION } from "./beeFoodRetrieval.ts";
+import { packagedNutritionQuestion } from "./beePackagedFoods.ts";
 import {FOOD_CONTEXT_PROMPT,isFoodClarification,parseFoodContext,mergeFoodClarification} from './beeFoodContext.ts';
 export type ProgressContext = {
   localDate: string;
@@ -69,6 +70,12 @@ export async function adaptiveTurn(
   const text = command.kind === "message" || command.kind === "food_assist"
     ? command.text
     : "";
+  const packageQuery = packagedNutritionQuestion(text);
+  if (packageQuery) {
+    const result = await search(packageQuery);
+    const outcome = await resolveNutritionIntent({ kind: "nutrition", query: packageQuery }, context, async () => result);
+    return { ...outcome, ...(result.kind === "unavailable" ? { needsWeb: packageQuery } : {}) };
+  }
   if (tier === "plus") {
     let parsed = parseIntent(await model(INTENT_PROMPT, modelContext(text, {...context,memories:[],profile:{}})));
     if(parsed.kind==='clarify' || parsed.kind==='nutrition'){
@@ -85,15 +92,21 @@ export async function adaptiveTurn(
     if ((parsed.kind === "clarify" || parsed.kind === "nutrition") && riceRequestConflict(parsed.query, text)) {
       parsed = { kind: "clarify", question: RICE_CLARIFICATION, query: parsed.query };
     }
+    if ((parsed.kind === "clarify" || parsed.kind === "nutrition") && needsTenderWeight(parsed.query, text)) {
+      parsed = { kind: "clarify", question: TENDERS_WEIGHT_QUESTION, query: parsed.query ? { ...parsed.query, portion: null } : null };
+    }
     const ready = parsed.kind === "clarify" || parsed.kind === "nutrition"
       ? readyTypicalRice(parsed.query, context.state.query, text) : null;
-    const intent = retainFoodList(ready ? { kind: "nutrition", query: ready } : parsed, text);
+    const reference = parsed.kind === "clarify" || parsed.kind === "nutrition"
+      ? readyNutritionReference(parsed.query, text) : null;
+    const lookup = ready ?? reference;
+    const intent = retainFoodList(lookup ? { kind: "nutrition", query: lookup } : parsed, text);
     let missed = false;
     const outcome = await resolveNutritionIntent(intent, context, async (q) => {
       const result = await search(q);
       missed = result.kind === "unavailable";
       return result;
-    });
+    }, !!reference);
     return {
       ...outcome,
       ...(intent.kind === "nutrition" && missed
@@ -142,7 +155,13 @@ export async function adaptiveTurn(
   if (riceRequestConflict(decision.query, text) && ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
     decision = { ...decision, nextStep: "ask_one_question", reply: RICE_CLARIFICATION, followUpQuestion: RICE_CLARIFICATION };
   }
-  const ready = readyTypicalRice(decision.query, context.state.query, text);
+  if (decision.query && needsTenderWeight(decision.query, text) &&
+    ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
+    decision = { ...decision, query: { ...decision.query, portion: null }, nextStep: "ask_one_question",
+      reply: TENDERS_WEIGHT_QUESTION, followUpQuestion: TENDERS_WEIGHT_QUESTION };
+  }
+  const reference = readyNutritionReference(decision.query, text);
+  const ready = readyTypicalRice(decision.query, context.state.query, text) ?? reference;
   if (ready && ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
     decision = { ...decision, query: ready, nextStep: decision.nextStep === "ask_one_question" ? "lookup_food" : decision.nextStep };
   }
@@ -292,7 +311,7 @@ export async function adaptiveTurn(
       const result = await search(q);
       missed = result.kind === "unavailable";
       return result;
-    });
+    }, !!reference);
     if (result.draft) {
       // Exact nutrition and the Add question already come from trusted code.
       // A second paid paraphrase adds latency and can rewrite verified values.

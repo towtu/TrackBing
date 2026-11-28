@@ -23,6 +23,7 @@ import {
   type TurnOutcome,
 } from "./beeConversation.ts";
 import { adaptiveTurn, type ProgressContext } from "./beeAdaptiveTurn.ts";
+import { isNutritionReferenceQuestion } from "./beeFoodRetrieval.ts";
 import { explicitMemory, portionCorrection } from "./beeIntent.ts";
 import { foodFromUserLabel } from "./beeCreation.ts";
 import { scaleEvidence } from "./beeNutrition.ts";
@@ -242,7 +243,12 @@ export async function handleBeeRequest(
     } else outcome.text="Live search is unavailable right now. Try a barcode, a more specific food, or enter the package label in Add Food.";
     if (!answerOnly && deps.fallbackSearch && !signal.aborted) {
       const result=await deps.fallbackSearch(query,signal,user!.id);
-      if (result.kind==="found") {Object.assign(outcome,review(result.food));return outcome;}
+      if (result.kind==="found") {
+        const command = request.command;
+        const reference = "text" in command && isNutritionReferenceQuestion(command.text) &&
+          query.portion?.unit === "g" && query.portion.amount === 100;
+        Object.assign(outcome,review(result.food,reference));return outcome;
+      }
       if (result.kind==="clarification") {
         outcome.text=result.message;outcome.state={awaiting:"clarification",query};outcome.invalidate_pending=true;return outcome;
       }

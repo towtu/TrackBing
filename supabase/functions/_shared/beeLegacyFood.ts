@@ -1,4 +1,6 @@
 import { parseIntent, record, retainFoodList } from "./beeIntent.ts";
+import { packagedNutritionQuestion } from "./beePackagedFoods.ts";
+import { readyNutritionReference } from "./beeFoodRetrieval.ts";
 import { requestFingerprint } from "./beeService.ts";
 import { readBoundedRequestJson } from "./beeRequest.ts";
 import { isSafeGroundingUrl, validateSuggestionsHtml } from "./beeGrounding.ts";
@@ -95,12 +97,20 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
     const finish = async (result: LegacyFoodPayload, success: boolean, persisted: LegacyFoodPayload | null = null): Promise<Response> => {
       await store.release(request, token, success, persisted); reserved = false; return json(result);
     };
-    let interpretationUsage:GeminiUsage|undefined;
-    let interpreted:unknown;
-    const interpretCall = crypto.randomUUID();
-    try { interpreted=await deps.interpret(request.query,signal,value=>{interpretationUsage=value;}); }
-    finally {await store.recordCall?.(request,token,interpretCall,interpretationUsage??{inputTokens:6000,outputTokens:4096,searchQueries:0});}
-    const intent = retainFoodList(parseIntent(interpreted),request.query);
+    const packaged = packagedNutritionQuestion(request.query);
+    let intent;
+    if (packaged) intent = { kind: "nutrition" as const, query: packaged };
+    else {
+      let interpretationUsage:GeminiUsage|undefined;
+      let interpreted:unknown;
+      const interpretCall = crypto.randomUUID();
+      try { interpreted=await deps.interpret(request.query,signal,value=>{interpretationUsage=value;}); }
+      finally {await store.recordCall?.(request,token,interpretCall,interpretationUsage??{inputTokens:6000,outputTokens:4096,searchQueries:0});}
+      const parsed = parseIntent(interpreted);
+      const reference = parsed.kind === "nutrition" || parsed.kind === "clarify"
+        ? readyNutritionReference(parsed.query, request.query) : null;
+      intent = retainFoodList(reference ? { kind: "nutrition", query: reference } : parsed, request.query);
+    }
     if (intent.kind !== "nutrition") return await finish({ error: "needs_input", message: intent.kind === "clarify" ? intent.question : intent.kind === "multiple" ? "Look up each food separately with its portion." : "Enter one food and its portion, such as 72 g boiled egg." }, false);
     const independentResult = async (resolved:NutritionResult):Promise<Response|null> => {
       if (resolved.kind === "found") {

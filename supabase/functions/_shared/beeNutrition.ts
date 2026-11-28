@@ -4,7 +4,8 @@ import type {
   NutritionEvidence,
   ReviewedFood,
 } from "./beeTypes.ts";
-import { isPlainRiceIdentity, rankPlainRice, riceMatchText, typicalRiceQuery } from "./beeFoodRetrieval.ts";
+import { isGenericFriedTenders, isPlainRiceIdentity, rankPlainRice, riceMatchText, TENDERS_REFERENCE, typicalRiceQuery } from "./beeFoodRetrieval.ts";
+import { packagedIdentity } from "./beePackagedFoods.ts";
 export type NutritionResult = { kind: "found"; food: ReviewedFood } | {
   kind: "clarification" | "unavailable";
   message: string;
@@ -163,6 +164,12 @@ export function identityMatches(query: FoodQuery, identity: string): boolean {
   return true;
 }
 
+function evidenceMatches(query: FoodQuery, entry: NutritionEvidence, source: ReviewedFood["source"]): boolean {
+  return identityMatches(query, entry.identity) ||
+    (source === "usda" && isGenericFriedTenders(query) &&
+      entry.sourceId === TENDERS_REFERENCE.id && entry.identity === TENDERS_REFERENCE.name);
+}
+
 function compatiblePackage(
   query: FoodQuery,
   basis: NutritionBasis,
@@ -194,7 +201,7 @@ function scaleRecord(
 ): NutritionResult {
   if (
     !["usda", "openfoodfacts", "my_food", "user_label", "trackbing_gist"].includes(source) ||
-    !identityMatches(query, evidence.identity)
+    !evidenceMatches(query, evidence, source)
   ) return unavailable();
   if (evidence.excerpt.length > 12000 || INJECTION.test(evidence.excerpt)) {
     return unavailable();
@@ -230,6 +237,12 @@ function scaleRecord(
     evidence.url !==
       `https://world.openfoodfacts.org/product/${evidence.sourceId}`
   ) return unavailable();
+  const product = source === "openfoodfacts" ? packagedIdentity(query) : undefined;
+  if (product) {
+    const data = object(snapshot.data);
+    if (evidence.sourceId !== product.barcode || data?.code !== product.barcode ||
+      typeof data.product_name !== "string" || !product.recordName.test(data.product_name.trim())) return unavailable();
+  }
   if (
     source === "my_food" &&
     (evidence.record !== "user_owned" || evidence.url !== "")
@@ -279,7 +292,8 @@ function scaleRecord(
       "That portion is unusually large. What amount and unit did you mean?",
     );
   }
-  const servingLabel = `${portion.amount} ${portion.unit}${
+  const displayUnit = product?.canGrams && portion.unit === "pack" ? "can" : portion.unit;
+  const servingLabel = `${portion.amount} ${displayUnit}${
     portion.amount !== 1 && !["g", "oz", "ml"].includes(portion.unit) ? "s" : ""
   }${
     grams !== null && !["g", "oz"].includes(portion.unit)
@@ -401,7 +415,7 @@ function select(
   entries: NutritionEvidence[],
   source: ReviewedFood["source"],
 ): NutritionResult | null {
-  const compatible = entries.filter((e) => identityMatches(query, e.identity));
+  const compatible = entries.filter((e) => evidenceMatches(query, e, source));
   const matched = source === "my_food" ? compatible : rankPlainRice(query, compatible);
   if (!matched.length) return null;
   if (matched.length > 1) {
@@ -477,9 +491,12 @@ export async function searchNutrition(
   if (early) return early;
   const now = (deps.now?.() ?? new Date()).toISOString();
   if (phase === 'fallback') return searchUsda(typicalRiceQuery(query) ?? query,deps,now);
+  // These product names are bound to exact GTINs. A similarly named recipe,
+  // Gist row, or private entry without a matching barcode cannot verify it.
+  const requestedProduct = packagedIdentity(query);
   // An explicitly named owned recipe defines its own serving. A same-name
   // public ingredient must never replace that private recipe or its yield.
-  if (deps.recipes) {
+  if (!requestedProduct && deps.recipes) {
     const recipes = (await deps.recipes(query)).filter((p) =>
       normalize(p.name) === normalize(query.name) && !p.ai_estimated
     );
@@ -493,7 +510,7 @@ export async function searchNutrition(
   }
   const ownedQuery = query;
   query = typicalRiceQuery(query) ?? query;
-  if (deps.gist) {
+  if (!requestedProduct && deps.gist) {
     let raw:unknown;
     try {raw=await deps.gist();} catch {raw=null;}
     const rows = Array.isArray(raw) ? raw.slice(0,500) : [];
@@ -510,14 +527,18 @@ export async function searchNutrition(
     const result=select(query,entries,'trackbing_gist');
     if(result)return result;
   }
-  const personal = await deps.personal(ownedQuery);
-  const own = personal.filter((p) => !p.ai_estimated && identityMatches(ownedQuery, p.name))
-    .map((p) => personalEvidence(p, now)).filter((e): e is NutritionEvidence => e !== null);
-  const ownResult = select(ownedQuery, own, "my_food");
-  if (ownResult) return ownResult;
-  // Public name lookup follows Gist -> web -> USDA. Explicit barcodes still
-  // use the independent product endpoint, as do the existing manual callers.
-  if (phase === "preferred" && !query.barcode) return unavailable();
+  if (!requestedProduct) {
+    const personal = await deps.personal(ownedQuery);
+    const own = personal.filter((p) => !p.ai_estimated && identityMatches(ownedQuery, p.name))
+      .map((p) => personalEvidence(p, now)).filter((e): e is NutritionEvidence => e !== null);
+    const ownResult = select(ownedQuery, own, "my_food");
+    if (ownResult) return ownResult;
+  }
+  // A pinned, representative USDA record can be fetched directly after the
+  // Gist/owned lookups. Open-ended public names still use web before USDA.
+  if (phase === "preferred" && !query.barcode) {
+    return isGenericFriedTenders(query) ? searchUsda(query, deps, now) : unavailable();
+  }
   const fields =
     "code,product_name,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,serving_quantity_unit,nutriments,countries_tags,nutrition_data_per";
   const term = [query.name, query.brand, query.variant].filter(Boolean).join(
@@ -570,7 +591,9 @@ export async function searchNutrition(
       !p || typeof p.product_name !== "string" || typeof p.code !== "string" ||
       !/^\d{8,14}$/.test(p.code)
     ) return [];
-    const identity = [p.product_name, p.brands].filter((v) =>
+    if (requestedProduct && (p.code !== requestedProduct.barcode ||
+      !requestedProduct.recordName.test(p.product_name.trim()))) return [];
+    const identity = requestedProduct?.name ?? [p.product_name, p.brands].filter((v) =>
       typeof v === "string"
     ).join(" ");
     if (!identityMatches(query, identity)) return [];
@@ -581,6 +604,8 @@ export async function searchNutrition(
     const packageGrams = p.product_quantity_unit === "g"
       ? nutrient(p.product_quantity)
       : null;
+    if (requestedProduct?.manufacturerBarGrams &&
+      Math.max(packageGrams ?? 0, nutrient(p.serving_quantity) ?? 0) >= requestedProduct.manufacturerBarGrams * 2) return [];
 
     const n = object(p.nutriments);
     if (!n) return [];
@@ -609,19 +634,23 @@ export async function searchNutrition(
     const serving = label.match(
       /^(\d+(?:\.\d+)?)\s*(bars?|pieces?|servings?|packs?)\s*\(\s*(\d+(?:\.\d+)?)\s*g\s*\)$/i,
     );
+    const labeledGrams = requestedProduct ? /(?:^|\(\s*)(\d+(?:\.\d+)?)\s*g\s*\)?$/i.exec(label.trim()) : null;
+    const labeledServing = labeledGrams && !/\d\s*(?:bars?|packs?|pieces?)\b/i.test(label) &&
+      Number(labeledGrams[1]) === p.serving_quantity && positive(p.serving_quantity) &&
+      (packageGrams === null || p.serving_quantity <= packageGrams);
     if (
-      serving && Number(serving[3]) === p.serving_quantity &&
+      (labeledServing || (serving && Number(serving[3]) === p.serving_quantity)) &&
       p.serving_quantity_unit === "g"
     ) {
-      const grams = Number(serving[3]), factor = grams / 100;
+      const grams = Number(p.serving_quantity), factor = grams / 100;
       basis = {
         ...basis,
         grams,
-        unit: serving[2].toLowerCase().replace(
+        unit: labeledServing ? "serving" : serving![2].toLowerCase().replace(
           /s$/,
           "",
         ) as NutritionBasis["unit"],
-        count: Number(serving[1]),
+        count: labeledServing ? 1 : Number(serving![1]),
         nutrients: {
           calories: kcal * factor,
           protein: basis.nutrients.protein === null
@@ -682,12 +711,16 @@ async function searchUsda(query:FoodQuery,deps:NutritionDependencies,now:string)
     !query.brand && !query.variant && !/fudgee/i.test(query.name) &&
     deps.usdaApiKey
   ) {
+    const genericTenders = isGenericFriedTenders(query);
+    const key = encodeURIComponent(deps.usdaApiKey);
     let data: unknown;
     try {
-      data = await apiJson(
-        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${
-          encodeURIComponent(deps.usdaApiKey)
-        }`,
+      data = genericTenders ? await apiJson(
+        `https://api.nal.usda.gov/fdc/v1/food/${TENDERS_REFERENCE.id}?api_key=${key}`,
+        {},
+        deps,
+      ) : await apiJson(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -702,20 +735,28 @@ async function searchUsda(query:FoodQuery,deps:NutritionDependencies,now:string)
     } catch {
       data = null;
     }
-    const raw = object(data)?.foods;
+    const raw = genericTenders ? [data] : object(data)?.foods;
     const records = (Array.isArray(raw) ? raw : []).slice(0, 8).flatMap(
       (value): NutritionEvidence[] => {
         const food = object(value);
         if (
           !food || typeof food.description !== "string" ||
           !Number.isSafeInteger(food.fdcId) ||
-          !identityMatches(query, food.description)
+          !(genericTenders
+            ? String(food.fdcId) === TENDERS_REFERENCE.id && food.description === TENDERS_REFERENCE.name
+            : identityMatches(query, food.description))
         ) return [];
-        const ns = Array.isArray(food.foodNutrients)
+        const rawNutrients = Array.isArray(food.foodNutrients)
           ? food.foodNutrients.map(object).filter((
             n,
           ): n is Record<string, unknown> => n !== null)
           : [];
+        const ns = genericTenders ? rawNutrients.flatMap(n => {
+          const info = object(n.nutrient);
+          const unit = info?.id === 1008 ? "KCAL" : info?.id === 1062 ? "KJ" : "G";
+          return typeof info?.unitName === "string" && info.unitName.toUpperCase() === unit
+            ? [{ nutrientId: info.id, value: n.amount, unitName: unit }] : [];
+        }) : rawNutrients;
         const get = (id: number) =>
           nutrient(ns.find((n) => n.nutrientId === id)?.value);
         const calories = get(1008) ??

@@ -72,3 +72,26 @@ export function readyTypicalRice(query: FoodQuery | null | undefined, previous: 
       Number.isFinite(result.portion.amount) && result.portion.amount > 0 && result.portion.amount <= 10000
     ? result : null;
 }
+
+export function nutritionQuestionSubject(text: string): string | undefined {
+  return /^(?:(?:how (?:many|much)|what(?:'s| is| are)|show me)\s+)?(?:the\s+)?(?:calories?|nutrition|macros?|protein|carbs?|carbohydrates?|fat)\s+(?:in|for|of)\s+(.+)$/i.exec(text.trim())?.[1];
+}
+
+export function isNutritionReferenceQuestion(text: string): boolean {
+  const subject = nutritionQuestionSubject(text);
+  return !!subject && !/\d|\b(?:i (?:ate|had|eaten|finished|ordered)|i've (?:eaten|had)|my|this|that|it|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozen|couple|few|half|whole|per|servings?|pieces?|cups?|cans?|bars?|packs?|multipacks?)\b/i.test(subject);
+}
+
+export function readyNutritionReference(query: FoodQuery | null | undefined, text: string): FoodQuery | null {
+  if (!query || query.portion || query.barcode || query.brand || query.variant || query.packageGrams !== null ||
+    !isNutritionReferenceQuestion(text) || riceRequestConflict(query, text)) return null;
+  return { ...query, portion: { amount: 100, unit: "g" } };
+}
+
+export const TENDERS_REFERENCE = { id: "2706098", name: "Chicken tenders or strips, NFS" };
+
+export function isGenericFriedTenders(query: FoodQuery): boolean {
+  if (query.brand || query.variant || query.barcode || query.packageGrams !== null) return false;
+  const terms = [...new Set(words(`${query.name} ${query.preparation ?? ""}`))].sort().join(" ");
+  return terms === "chicken fried tenders" || terms === "breaded chicken fried tenders";
+}

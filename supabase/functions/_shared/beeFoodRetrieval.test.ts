@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { adaptiveTurn } from "./beeAdaptiveTurn.ts";
-import { review, type BeeContext } from "./beeConversation.ts";
+import { deterministicTurn, review, type BeeContext } from "./beeConversation.ts";
 import { parseFoodQuery } from "./beeIntent.ts";
 import { identityMatches, searchNutrition, type NutritionDependencies } from "./beeNutrition.ts";
 import type { BeeRequest, FoodQuery } from "./beeTypes.ts";
@@ -139,5 +139,101 @@ describe("retrieve before optional common-food questions", () => {
     model.mockResolvedValue({ reply: "Which rice?", nextStep: "ask_one_question", suggestedPose: "thinking", query: query() });
     const multiple = await adaptiveTurn(request("600g rice and an egg"), context, progress, "pro", model, search, new Date());
     expect(multiple.text).toMatch(/individually/); expect(search).not.toHaveBeenCalled();
+  });
+});
+
+describe("source-backed nutrition overviews", () => {
+  function productLookup(code: string, productName: string, servingGrams: number, packageGrams: number) {
+    const d = deps([]);
+    // Illustrative TEST DATA. The barcode identifies the product, not these test numbers.
+    d.fetch = vi.fn(async () => Response.json({ product: {
+      code, product_name: productName, product_quantity: packageGrams, product_quantity_unit: "g",
+      serving_quantity: servingGrams, serving_quantity_unit: "g", serving_size: `${servingGrams} g`,
+      countries_tags: ["en:philippines"],
+      nutriments: { "energy-kcal_100g": 200, proteins_100g: 10, carbohydrates_100g: 15, fat_100g: 10 },
+    } }));
+    return d;
+  }
+
+  it.each(["Fudgee bar chocolate", "Fudgee Barr Dark Chocolate"] as const)("uses the exact single-bar record for %s even without a user-supplied weight", async (name) => {
+    const dark = name.includes("Dark"), code = dark ? "4800092553226" : "4800092550904";
+    const grams = dark ? 38 : 42;
+    const d = productLookup(code, dark ? "" : "Fudgee bar", grams, grams);
+    d.personal = vi.fn().mockResolvedValue([{ id: "TEST", name, calories: 63, protein: 2, carbs: 12, fat: 1,
+      default_unit: "serving", serving_grams: 25 }]);
+    const model = vi.fn().mockResolvedValue({ nextStep: "ask_one_question", reply: "How many grams?", suggestedPose: "thinking", query: { ...query(name), portion: null } });
+    const result = await adaptiveTurn(request(`How many calories in ${name}?`), context, progress, "pro", model, q => searchNutrition(q, d, "preferred"), new Date());
+    expect(vi.mocked(d.fetch!).mock.calls[0]?.[0]).toContain(`/product/${code}?`);
+    expect(model).not.toHaveBeenCalled();
+    expect(d.personal).not.toHaveBeenCalled();
+    expect(result.draft).toMatchObject({ source: "openfoodfacts", grams, calories: grams * 2, query: { barcode: code }, evidence: { license: "ODbL-1.0", sourceId: code } });
+    expect(result.text).toContain("Open Food Facts");
+    expect(result.text).toContain(`Fat ${grams / 10} g`);
+    expect(result.text).toContain("package");
+    expect(result.confirm).toBeUndefined();
+  });
+
+  it.each(["555 tuna bicol express", "555 Bicol Express", "555 Tuna Spicy Bicol Express"])("shows separate serving and full-can values for %s", async (name) => {
+    const d = productLookup("0748485700090", "555 Tuna Spicy Bicol Express 155g", 85, 155);
+    const model = vi.fn().mockResolvedValue({ nextStep: "lookup_food", reply: "Checking", suggestedPose: "thinking", query: { ...query(name), portion: null } });
+    const result = await adaptiveTurn(request(`How many calories in ${name}?`), context, progress, "pro", model, q => searchNutrition(q, d, "preferred"), new Date());
+    expect(result.draft?.grams).toBe(85);
+    expect(result.text).toContain("100 g: 200 kcal");
+    expect(result.text).toContain("155 g can: 310 kcal");
+    expect(result.text).toMatch(/Add this 85 g/i);
+    if (!result.draft) throw Error("Expected canned product review");
+    const previous = { ...context, state: result.state! };
+    const correction = deterministicTurn(request("the whole can"), previous);
+    expect(correction?.lookup_query?.portion).toEqual({ amount: 1, unit: "pack" });
+    if (!correction?.lookup_query) throw Error("Expected exact can correction");
+    expect(await searchNutrition(correction.lookup_query, d, "preferred")).toMatchObject({
+      kind: "found", food: { servingLabel: "1 can (155 g)", calories: 310 },
+    });
+  });
+
+  it("rejects wrong barcode evidence and leaves an explicit multipack unresolved", async () => {
+    const d = productLookup("4800092550911", "Fudgee Barr Chocolate 10 pack", 42, 420);
+    const q = { ...query("Fudgee Barr Chocolate"), barcode: "4800092550904", portion: { amount: 1, unit: "serving" as const } };
+    expect((await searchNutrition(q, d, "preferred")).kind).not.toBe("found");
+    const pack = "How many calories in a multipack of Fudgee Barr Chocolate?";
+    const model = vi.fn().mockResolvedValue({ nextStep: "ask_one_question", reply: "Which package size?", suggestedPose: "thinking", query: { ...query("Fudgee Barr"), variant: "chocolate", portion: null } });
+    const search = vi.fn();
+    expect((await adaptiveTurn(request(pack), context, progress, "pro", model, search, new Date())).draft).toBeUndefined();
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it.each(["plus", "pro"] as const)("answers an unportioned generic nutrition question with a per-100-g reference on %s", async tier => {
+    const name = "fried chicken tenders";
+    const q = { ...query(name), portion: null };
+    const model = vi.fn().mockResolvedValue(tier === "plus"
+      ? { kind: "clarify", question: "How many grams?", query: q }
+      : { nextStep: "ask_one_question", reply: "How many grams?", suggestedPose: "thinking", query: q });
+    const d = deps([{ name: "Fried Chicken Tenders (Breaded)", c: 210, p: 18, cb: 14, f: 9 }]);
+    const result = await adaptiveTurn(request(`How many calories in ${name}?`), context, progress, tier, model, q => searchNutrition(q, d, "preferred"), new Date());
+    expect(result.draft).toMatchObject({ grams: 100, calories: 210, protein: 18 });
+    expect(result.text).toMatch(/How much did you eat/i);
+    expect(result.confirm).toBeUndefined();
+  });
+
+  it.each(["I ate fried chicken tenders", "How many calories in the fried chicken tenders I ate?", "How many calories in 4 fried chicken tenders?"])("keeps an intake or count clarification for %s", async (text) => {
+    const model = vi.fn().mockResolvedValue({ nextStep: "ask_one_question", reply: "How much did you eat?", suggestedPose: "thinking", query: { ...query("fried chicken tenders"), portion: null } });
+    const search = vi.fn();
+    expect((await adaptiveTurn(request(text), context, progress, "pro", model, search, new Date())).draft).toBeUndefined();
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it("looks up the named USDA tender reference as an independent match before paid search", async () => {
+    const d = deps([]);
+    d.fetch = vi.fn(async () => Response.json({ fdcId: 2706098, description: "Chicken tenders or strips, NFS",
+      foodNutrients: [
+        {nutrient:{id:1008,unitName:"kcal"},amount:215},{nutrient:{id:1003,unitName:"g"},amount:15},
+        {nutrient:{id:1005,unitName:"g"},amount:10},{nutrient:{id:1004,unitName:"g"},amount:12},
+      ],
+    }));
+    const requested = { ...query("fried chicken tenders", "fried"), portion: { amount: 100, unit: "g" as const } };
+    expect(await searchNutrition(requested, d, "preferred")).toMatchObject({
+      kind: "found", food: { source: "usda", grams: 100, calories: 215, evidence: { sourceId: "2706098" } },
+    });
+    expect(d.fetch).toHaveBeenCalledWith(expect.stringContaining("/fdc/v1/food/2706098?"), expect.any(Object));
   });
 });

@@ -1,4 +1,46 @@
 import { randomUUID } from 'node:crypto';
+
+export function runWeeklyGainDatabaseTests({ assert, query, literal: q, json }) {
+  const owner = randomUUID();
+  const stranger = randomUUID();
+  query(`insert into auth.users(id) values(${q(owner)}),(${q(stranger)});`);
+  const asUser = (sql, user = owner) =>
+    query(`set request.jwt.claim.sub=${q(user)}; ${sql}`, 'authenticated');
+  const saveProfile = (patch) => JSON.parse(asUser(
+    `select public.save_profile(${q(randomUUID())},${json(patch)});`,
+  ));
+
+  // Onboarding writes directly to its own profile. Profile edits use the RPC.
+  asUser(`insert into public.user_goals(user_id,calorie_target,current_weight,age,gender,height,activity_level,goal_mode,goal_rate)
+    values(${q(owner)},2500,72.4,30,'male',175,'1.375','estimated_rate',0.01);`);
+  for (const age of [17, null]) {
+    assert.throws(() => asUser(`insert into public.user_goals(user_id,calorie_target,age,goal_mode,goal_rate)
+      values(${q(stranger)},2500,${age ?? 'null'},'estimated_rate',0.01);`, stranger), /user_goals_goal_rate_check/);
+  }
+  for (const goal_rate of [0.005, 0.01]) {
+    const saved = saveProfile({ goal_rate });
+    assert.equal(saved.ok, true);
+    assert.equal(saved.profile.goal_rate, goal_rate);
+  }
+  assert.equal(saveProfile({ goal_rate: 0.0101 }).error, 'bad_request');
+  assert.equal(saveProfile({ age: 17 }).error, 'minor_maintenance_required');
+  assert.equal(asUser(`select count(*) from public.user_goals where user_id=${q(owner)};`, stranger), '0');
+
+  const profile = JSON.parse(asUser(`select to_jsonb(u) from public.user_goals u where user_id=${q(owner)};`));
+  const canReview = (goal_rate) => query(`select public.adaptive_validate_goal(${q(owner)},${json({
+    previous: { goal_rate: 0.01 },
+    profileRevision: profile.profile_revision,
+    next: {
+      calorie_target: 2500, protein_grams: 156, carbs_grams: 281, fat_grams: 83,
+      goal_mode: 'estimated_rate', goal_rate, target_weight: profile.target_weight,
+    },
+  })});`);
+  assert.equal(canReview(0.01), 't');
+  assert.equal(canReview(0.0101), 'f');
+  assert.equal(query("select has_function_privilege('authenticated','public.adaptive_validate_goal(uuid,jsonb)','execute');"), 'f');
+  process.stdout.write('Weekly gain goals save at 0.5% and 1%, with higher rates rejected and owner and age safeguards enforced.\n');
+}
+
 export async function runAdaptiveDatabaseTests({assert,query,queryAsync,literal:q,json,rpc}) {
  const owner=randomUUID(), stranger=randomUUID(); query(`insert into auth.users values(${q(owner)}),(${q(stranger)}); insert into public.user_goals(user_id,calorie_target,current_weight,age,gender,height,activity_level) values(${q(owner)},2000,72.4,30,'male',175,'1.375');`);
  const asUser=(sql,user=owner)=>query(`set request.jwt.claim.sub=${q(user)}; ${sql}`,'authenticated');

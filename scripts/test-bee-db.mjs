@@ -90,6 +90,9 @@ try {
   if (!process.argv.includes("--serving-weight-baseline")) fixture("supabase/migrations/20261121000000_personal_food_serving_grams.sql");
   const { runBarcodeCatalogTests } = await import("../supabase/tests/barcode_catalog_database.mjs");
   runBarcodeCatalogTests(context);
+  fixture("supabase/migrations/20261126000000_allow_one_percent_weight_gain.sql");
+  const { runWeeklyGainDatabaseTests } = await import("../supabase/tests/adaptive_database.mjs");
+  runWeeklyGainDatabaseTests(context);
   const edge = spawnSync(process.env.DENO_BINARY ?? "deno", ["test", "--cached-only", "--config", "supabase/functions/deno.json", "--allow-env", "supabase/tests/usda_proxy_deno.mts", "supabase/tests/billing_deno.mts"], { cwd: root, stdio: "inherit" });
   if (edge.status !== 0) throw new Error(edge.error?.message ?? "USDA Edge Function tests failed");
   process.stdout.write("Bee and launch PostgreSQL invariants and USDA Edge Function checks passed.\n");

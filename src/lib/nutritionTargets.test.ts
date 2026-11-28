@@ -21,6 +21,7 @@ import {
   isValidImperialHeight,
   kgToLb,
   lbToKg,
+  parseDecimalInput,
   resolveStoredGoalMode,
   type BodyStatsInput,
   type NutritionTargetInput,
@@ -126,6 +127,15 @@ describe("calculateNutritionTarget for adults", () => {
     });
   });
 
+  it("accepts a 1% weekly gain goal and still caps the daily surplus", () => {
+    expect(calculateNutritionTarget({ ...adultBase, weightKg: 80, weeklyRate: 0.01 })).toMatchObject({
+      requestedRate: 0.01,
+      requestedAdjustment: 880,
+      appliedAdjustment: 500,
+      adjustmentCapApplied: true,
+    });
+  });
+
   it("applies the male minimum calorie target", () => {
     expect(
       calculateNutritionTarget({
@@ -145,10 +155,10 @@ describe("calculateNutritionTarget for adults", () => {
   it("rejects unsupported adult weekly rates", () => {
     expect(() =>
       calculateNutritionTarget({ ...adultBase, weeklyRate: -0.0101 }),
-    ).toThrow("Weekly rate must be between -1% and 0.5%.");
+    ).toThrow("Weekly rate must be between -1% and 1%.");
     expect(() =>
-      calculateNutritionTarget({ ...adultBase, weeklyRate: 0.0051 }),
-    ).toThrow("Weekly rate must be between -1% and 0.5%.");
+      calculateNutritionTarget({ ...adultBase, weeklyRate: 0.0101 }),
+    ).toThrow("Weekly rate must be between -1% and 1%.");
   });
 
   it("rejects invalid runtime sex values", () => {
@@ -329,10 +339,11 @@ describe("nutrition target constants", () => {
       gain_slow: 0.001,
       gain: 0.0025,
       gain_faster: 0.005,
+      gain_max: 0.01,
     });
     expect(CUSTOM_RATE_LIMITS).toEqual({
       lose: { min: 0.0025, max: 0.01 },
-      gain: { min: 0.001, max: 0.005 },
+      gain: { min: 0.001, max: 0.01 },
     });
   });
 
@@ -351,6 +362,16 @@ describe("nutrition target constants", () => {
     });
     expect(KCAL_PER_KG).toBe(7700);
     expect(LB_PER_KG).toBe(2.2046226218);
+  });
+});
+
+describe("decimal stat and goal input", () => {
+  it.each(["0.5", "0,5", ".5", ",5"])("reads %s as half a percent", (value) => {
+    expect(parseDecimalInput(value)).toBe(0.5);
+  });
+
+  it.each(["", "1,2.3", "0x20", "1e2", "Infinity"])("rejects %j", (value) => {
+    expect(parseDecimalInput(value)).toBeNull();
   });
 });
 

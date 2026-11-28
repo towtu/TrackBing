@@ -24,6 +24,7 @@ import {
   isUnitSystem,
   kgToLb,
   lbToKg,
+  parseDecimalInput,
   resolveStoredGoalMode,
   validateMacroPercentages,
   type ActivityLevel,
@@ -78,7 +79,8 @@ const GOAL_CHIPS: readonly { label: string; rate: number }[] = [
   { label: "Maintain", rate: GOAL_RATE_PRESETS.maintain },
   { label: "Gain 0.10%", rate: GOAL_RATE_PRESETS.gain_slow },
   { label: "Gain 0.25%", rate: GOAL_RATE_PRESETS.gain },
-  { label: "Gain 0.50%", rate: GOAL_RATE_PRESETS.gain_faster },
+  { label: "Gain 0.5%", rate: GOAL_RATE_PRESETS.gain_faster },
+  { label: "Gain 1%", rate: GOAL_RATE_PRESETS.gain_max },
 ];
 
 const isEstimatedMode = (mode: GoalMode) =>
@@ -351,8 +353,8 @@ export function ProfileScreen() {
     const input = {
       age: nextAge,
       sex: overrides.sex ?? gender,
-      weightKg: overrides.weightKg ?? Number(weight),
-      heightCm: overrides.heightCm ?? Number(height),
+      weightKg: overrides.weightKg ?? parseDecimalInput(weight) ?? NaN,
+      heightCm: overrides.heightCm ?? parseDecimalInput(height) ?? NaN,
       activityLevel: overrides.activityLevel ?? activityLevel,
       weeklyRate,
     };
@@ -381,7 +383,7 @@ export function ProfileScreen() {
 
   const handleWeightKg = (value: string) => {
     setWeight(value);
-    recalculateEstimatedTarget({ weightKg: Number(value) });
+    recalculateEstimatedTarget({ weightKg: parseDecimalInput(value) ?? NaN });
   };
 
   const handleTargetWeightKg = (value: string) => {
@@ -390,7 +392,7 @@ export function ProfileScreen() {
 
   const handleHeightCm = (value: string) => {
     setHeight(value);
-    recalculateEstimatedTarget({ heightCm: Number(value) });
+    recalculateEstimatedTarget({ heightCm: parseDecimalInput(value) ?? NaN });
   };
 
   const handleAge = (value: string) => {
@@ -410,9 +412,9 @@ export function ProfileScreen() {
 
   const handleWeightLb = (value: string) => {
     setWeightLb(value);
-    const pounds = Number(value);
+    const pounds = parseDecimalInput(value);
     const nextWeight =
-      value.trim() !== "" && Number.isFinite(pounds)
+      pounds !== null
         ? String(lbToKg(pounds))
         : "";
     setWeight(nextWeight);
@@ -421,9 +423,9 @@ export function ProfileScreen() {
 
   const handleTargetWeightLb = (value: string) => {
     setTargetWeightLb(value);
-    const pounds = Number(value);
+    const pounds = parseDecimalInput(value);
     setTargetWeight(
-      value.trim() !== "" && Number.isFinite(pounds)
+      pounds !== null
         ? String(lbToKg(pounds))
         : "",
     );
@@ -431,7 +433,7 @@ export function ProfileScreen() {
 
   const updateImperialHeight = (feetValue: string, inchesValue: string) => {
     const feet = Number(feetValue);
-    const inches = Number(inchesValue);
+    const inches = parseDecimalInput(inchesValue) ?? NaN;
     const validParts =
       feetValue.trim() !== "" &&
       inchesValue.trim() !== "" &&
@@ -459,9 +461,9 @@ export function ProfileScreen() {
     if (nextUnit === unitSystem) return;
 
     if (nextUnit === "imperial") {
-      const canonicalWeight = Number(weight);
-      const canonicalTarget = Number(targetWeight);
-      const canonicalHeight = Number(height);
+      const canonicalWeight = parseDecimalInput(weight) ?? NaN;
+      const canonicalTarget = parseDecimalInput(targetWeight) ?? NaN;
+      const canonicalHeight = parseDecimalInput(height) ?? NaN;
 
       setWeightLb(
         weight.trim() !== "" && Number.isFinite(canonicalWeight)
@@ -532,15 +534,15 @@ export function ProfileScreen() {
   };
 
   const applyCustomRate = () => {
-    const percent = Number(customPercent);
+    const percent = parseDecimalInput(customPercent);
     const limits =
       customDir === "lose"
         ? CUSTOM_RATE_LIMITS.lose
         : CUSTOM_RATE_LIMITS.gain;
-    const magnitude = percent / 100;
+    const magnitude = (percent ?? NaN) / 100;
 
     if (
-      !Number.isFinite(percent) ||
+      percent === null ||
       magnitude < limits.min ||
       magnitude > limits.max
     ) {
@@ -548,7 +550,7 @@ export function ProfileScreen() {
         "Invalid Rate",
         customDir === "lose"
           ? "Loss rate must be between 0.25% and 1.0% per week."
-          : "Gain rate must be between 0.1% and 0.5% per week.",
+          : "Gain rate must be between 0.1% and 1% per week.",
       );
       return;
     }
@@ -587,7 +589,7 @@ export function ProfileScreen() {
   const handleSave = async () => {
     if (unitSystem === "imperial") {
       const feet = Number(heightFt);
-      const inches = Number(heightIn);
+      const inches = parseDecimalInput(heightIn) ?? NaN;
       if (
         heightFt.trim() === "" ||
         heightIn.trim() === "" ||
@@ -604,8 +606,8 @@ export function ProfileScreen() {
     const bodyInput = {
       age: Number(age),
       sex: gender,
-      weightKg: Number(weight),
-      heightCm: Number(height),
+      weightKg: parseDecimalInput(weight) ?? NaN,
+      heightCm: parseDecimalInput(height) ?? NaN,
       activityLevel,
       weeklyRate: isMinor ? 0 : goalRate,
     };
@@ -615,7 +617,7 @@ export function ProfileScreen() {
       return;
     }
 
-    const savedTargetWeight = Number(targetWeight);
+    const savedTargetWeight = parseDecimalInput(targetWeight) ?? NaN;
     if (
       !Number.isFinite(savedTargetWeight) ||
       savedTargetWeight < 30 ||
@@ -751,7 +753,8 @@ export function ProfileScreen() {
             onChangeText={
               unitSystem === "metric" ? handleWeightKg : handleWeightLb
             }
-            keyboardType="numeric"
+            inputMode="decimal"
+            keyboardType="decimal-pad"
             style={styles.input}
             placeholder="0"
             placeholderTextColor="#A8C0D6"
@@ -769,7 +772,8 @@ export function ProfileScreen() {
                 ? handleTargetWeightKg
                 : handleTargetWeightLb
             }
-            keyboardType="numeric"
+            inputMode="decimal"
+            keyboardType="decimal-pad"
             style={styles.input}
             placeholder="0"
             placeholderTextColor="#A8C0D6"
@@ -785,7 +789,8 @@ export function ProfileScreen() {
               accessibilityLabel="Height in centimeters"
               value={height}
               onChangeText={handleHeightCm}
-              keyboardType="numeric"
+              inputMode="decimal"
+              keyboardType="decimal-pad"
               style={styles.input}
               placeholder="0"
               placeholderTextColor="#A8C0D6"
@@ -824,7 +829,8 @@ export function ProfileScreen() {
               accessibilityLabel="Height inches"
               value={heightIn}
               onChangeText={handleHeightIn}
-              keyboardType="numeric"
+              inputMode="decimal"
+              keyboardType="decimal-pad"
               style={styles.input}
               placeholder="0"
               placeholderTextColor="#A8C0D6"
@@ -938,7 +944,6 @@ export function ProfileScreen() {
           onPress={() => selectGoalRate(item.rate)}
           style={[
             styles.goalPill,
-            !isDesktop && styles.goalPillMobile,
             active ? styles.goalPillActive : styles.goalPillIdle,
           ]}
         >
@@ -1010,24 +1015,14 @@ export function ProfileScreen() {
 
         {!isMinor && (
           <>
-            {isDesktop ? (
-              <View
-                accessibilityRole="radiogroup"
-                style={styles.goalPillGrid}
-              >
-                {goalChipControls}
-              </View>
-            ) : (
-              <ScrollView
-                accessibilityRole="radiogroup"
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.goalScroller}
-                contentContainerStyle={styles.goalScrollerContent}
-              >
-                {goalChipControls}
-              </ScrollView>
-            )}
+            <Text style={styles.customHint}>Weekly change as a percentage of body weight</Text>
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Weekly weight change"
+              style={styles.goalPillGrid}
+            >
+              {goalChipControls}
+            </View>
 
             <TouchableOpacity
               accessibilityRole="button"
@@ -1093,7 +1088,8 @@ export function ProfileScreen() {
                       accessibilityLabel="Custom weekly percentage"
                       value={customPercent}
                       onChangeText={setCustomPercent}
-                      keyboardType="numeric"
+                      inputMode="decimal"
+                      keyboardType="decimal-pad"
                       style={styles.customPctInput}
                       placeholder="0.50"
                       placeholderTextColor="#A8C0D6"
@@ -1120,10 +1116,10 @@ export function ProfileScreen() {
           </>
         )}
 
-        {targetResult && Number.isFinite(Number(weight)) ? (
+        {targetResult && parseDecimalInput(weight) !== null ? (
           <TargetBreakdown
             result={targetResult}
-            weightKg={Number(weight)}
+            weightKg={parseDecimalInput(weight) ?? NaN}
             unitSystem={unitSystem}
           />
         ) : (
@@ -1524,12 +1520,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
   },
-  goalScroller: {
-    marginBottom: 16,
-  },
-  goalScrollerContent: {
-    paddingRight: 8,
-  },
   goalPillGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1546,9 +1536,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: Colors.border,
-  },
-  goalPillMobile: {
-    marginRight: 8,
   },
   goalPillActive: {
     backgroundColor: Colors.accent,

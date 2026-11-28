@@ -56,11 +56,12 @@ export const GOAL_RATE_PRESETS = {
   gain_slow: 0.001,
   gain: 0.0025,
   gain_faster: 0.005,
+  gain_max: 0.01,
 } as const;
 
 export const CUSTOM_RATE_LIMITS = {
   lose: { min: 0.0025, max: 0.01 },
-  gain: { min: 0.001, max: 0.005 },
+  gain: { min: 0.001, max: GOAL_RATE_PRESETS.gain_max },
 } as const;
 
 export const CALORIE_FLOORS: Record<BiologicalSex, number> = {
@@ -241,8 +242,12 @@ function assertNutritionInput(input: NutritionTargetInput): void {
   if (!Number.isFinite(input.weeklyRate)) {
     throw new RangeError("Weekly rate must be finite.");
   }
-  if (input.age >= 18 && (input.weeklyRate < -0.01 || input.weeklyRate > 0.005)) {
-    throw new RangeError("Weekly rate must be between -1% and 0.5%.");
+  if (
+    input.age >= 18 &&
+    (input.weeklyRate < -CUSTOM_RATE_LIMITS.lose.max ||
+      input.weeklyRate > CUSTOM_RATE_LIMITS.gain.max)
+  ) {
+    throw new RangeError("Weekly rate must be between -1% and 1%.");
   }
 }
 

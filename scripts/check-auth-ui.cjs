@@ -109,11 +109,16 @@ async function verify(page, base, width) {
   await signup.click();
   await page.getByText('Step 1 of 3 · Your daily targets', { exact: true }).waitFor();
   await page.getByRole('textbox', { name: 'Age in years', exact: true }).fill('30');
-  await page.getByRole('textbox', { name: 'Weight in kilograms', exact: true }).fill('72.4');
+  const weight = page.getByRole('textbox', { name: 'Weight in kilograms', exact: true });
+  assert.equal(await weight.getAttribute('inputmode'), 'decimal');
+  await weight.fill('72,4');
   await page.getByRole('textbox', { name: 'Height in centimeters', exact: true }).fill('170');
+  await page.getByRole('button', { name: /Gain 0\.5%/ }).waitFor();
+  await page.getByRole('button', { name: /Gain 1%/ }).click();
   await page.screenshot({ path: `${output}/targets-${width}.png`, fullPage: true });
   await page.getByRole('button', { name: 'Calculate & Continue', exact: true }).click();
   await page.getByText('Step 2 of 3 · Your account', { exact: true }).waitFor();
+  await page.getByText(/\+1\.00% \/ week/).waitFor();
   await email.fill('test@example.test');
   const signupPassword = page.getByLabel('Password, at least 8 characters', { exact: true });
   await signupPassword.fill('short');
@@ -129,6 +134,45 @@ async function verify(page, base, width) {
   assert.equal(calls.filter(call => call.path.endsWith('/signup')).length, 1);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
   return { width, flatButton: true, inlineValidationAndFocus: true, passwordVisibility: true, keyboardFlow: true, stableLoadingAndDuplicateGuard: true, retryAndQuotaError: true, recoveryCodeFailureSafe: true, signupAndVerification: true, passwordNotPersisted: true };
+}
+
+async function verifyProfileGoals(page, base, width) {
+  await page.route('**/rest/v1/rpc/save_profile', async route => {
+    const request = route.request();
+    assert.equal(request.method(), 'POST');
+    const { p_profile, p_expected_revision } = request.postDataJSON();
+    assert.equal(p_expected_revision, 0);
+    assert.equal(p_profile.goal_mode, 'estimated_rate');
+    assert.equal(p_profile.goal_rate, 0.01);
+    assert.equal(p_profile.current_weight, 72.4);
+    assert.equal(p_profile.target_weight, 75.5);
+    await route.fulfill({ json: { ok: true, profile: { ...p_profile, profile_revision: 1 } } });
+  });
+  await page.goto(`${base}/profile`);
+  const weight = page.getByRole('textbox', { name: 'Current weight', exact: true });
+  await weight.waitFor();
+  assert.equal(await weight.getAttribute('inputmode'), 'decimal');
+  await weight.fill('72,4');
+  await page.getByRole('textbox', { name: 'Target weight', exact: true }).fill('75.5');
+
+  const half = page.getByRole('radio', { name: 'Gain 0.5%', exact: true });
+  const one = page.getByRole('radio', { name: 'Gain 1%', exact: true });
+  await half.click();
+  await page.getByText(/\+0\.50% \/ week/).waitFor();
+  await one.click();
+  await page.getByRole('button', { name: 'Advanced: custom rate', exact: true }).click();
+  const percent = page.getByRole('textbox', { name: 'Custom weekly percentage', exact: true });
+  assert.equal(await percent.getAttribute('inputmode'), 'decimal');
+  await percent.fill('0,5');
+  await page.getByRole('button', { name: 'Apply custom rate', exact: true }).click();
+  await page.getByText(/\+0\.50% \/ week/).waitFor();
+  await page.screenshot({ path: `${output}/profile-custom-rate-${width}.png`, fullPage: true });
+  await one.click();
+  await page.getByText(/\+1\.00% \/ week/).waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+  await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+  await page.getByText('Profile saved', { exact: true }).waitFor();
+  return { weeklyGainPresetsAndDecimalEntry: true };
 }
 
 async function verifyMyFoods(page, base, width) {
@@ -224,11 +268,13 @@ async function verifyMyFoods(page, base, width) {
       try {
         const result = await verify(page, process.env.UI_BASE_URL || local.base, width);
         const foods = await verifyMyFoods(page, process.env.UI_BASE_URL || local.base, width);
+        await page.unroute('**/auth/v1/user*');
+        const goals = await verifyProfileGoals(page, process.env.UI_BASE_URL || local.base, width);
         // Chrome reports HTTP errors for the intentionally rejected fixture requests.
         const unexpected = errors.filter(error => !/^Failed to load resource: the server responded with a status of (400|401|403|429|503) /.test(error));
         assert.deepEqual(unexpected, []);
         assert.deepEqual(failedRequests, []);
-        results.push({ ...result, ...foods, unexpectedConsoleErrors: 0, failedRequests: 0 });
+        results.push({ ...result, ...foods, ...goals, unexpectedConsoleErrors: 0, failedRequests: 0 });
       } catch (error) {
         await page.screenshot({ path: `${output}/failure-${width}.png`, fullPage: true });
         throw error;

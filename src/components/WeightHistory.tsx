@@ -17,7 +17,7 @@ import {
 import { BeeAction } from "@/src/components/ai/BeeMemories";
 import { Colors, Radii } from "@/src/styles/colors";
 import { dayBounds, localDay } from "../../supabase/functions/_shared/beeDates";
-import { lbToKg, STAT_LIMITS } from "@/src/lib/nutritionTargets";
+import { lbToKg, parseDecimalInput, STAT_LIMITS } from "@/src/lib/nutritionTargets";
 type WeightRow = {
   id: string;
   weight_kg: number;
@@ -100,7 +100,7 @@ export function WeightHistory() {
     };
   }, [load]);
   const propose = () => {
-    const value = /^\d+(?:\.\d+)?$/.test(amount.trim()) ? Number(amount) : NaN;
+    const value = parseDecimalInput(amount) ?? NaN;
     const kg = unit === "lb" ? lbToKg(value) : value;
     try {
       dayBounds(day, timeZone);
@@ -183,6 +183,7 @@ export function WeightHistory() {
       <View style={styles.row}>
         <TextInput
           accessibilityLabel="Check-in weight"
+          inputMode="decimal"
           keyboardType="decimal-pad"
           value={amount}
           onChangeText={(value) => {

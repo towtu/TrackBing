@@ -6,7 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {completeOffNutrition,labeledServingWeight} from "./independentNutrition";
 import { supabase } from "./supabase";
-import { searchUSDA } from "./usda";
+import { lookupUSDABarcode, searchUSDA } from "./usda";
 import { parseBarcode } from "./barcodes";
 import { createFoodAccountGuard } from "./foodAccountGuard";
 import type { FoodItem } from "./macros";
@@ -184,12 +184,13 @@ export type BarcodeSourceLookup = {
   findPersonal: (barcode: string) => Promise<PersonalBarcodeResult>;
   findShared?: (barcode: string) => Promise<PersonalBarcodeResult>;
   findPublic: (barcode: string) => Promise<BarcodeResult>;
+  findFallback?: (barcode: string) => Promise<BarcodeResult>;
 };
 
 export type ResolvedBarcode =
   | {
       ok: true;
-      source: "personal" | "trackbing-catalog" | "open-food-facts";
+      source: "personal" | "trackbing-catalog" | "open-food-facts" | "usda";
       food: FoodItem;
       hasNutrition: boolean;
     }
@@ -210,59 +211,67 @@ export async function lookupBarcode(code: string): Promise<BarcodeResult> {
     code
   )}.json`;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url);
-      // 5xx is the transient flakiness we want to retry past.
-      if (res.status >= 500) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    for (let attempt = 0; attempt < 3 && !controller.signal.aborted; attempt++) {
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        // 5xx is the transient flakiness we want to retry past.
+        if (res.status >= 500) {
+          if (attempt < 2) {
+            await sleep(500 * (attempt + 1));
+            continue;
+          }
+          return { ok: false, reason: "unreachable" };
+        }
+        if (res.status === 404) return { ok: false, reason: "not-found" };
+        if (!res.ok) return { ok: false, reason: "unreachable" };
+
+        const json = await res.json();
+        if (json.status !== 1 || !json.product) {
+          return { ok: false, reason: "not-found" };
+        }
+
+        const p = json.product;
+        const n = p.nutriments || {};
+        const complete=completeOffNutrition(n);
+        const kcal=complete?.["energy-kcal_100g"]??NaN,protein=complete?.proteins_100g??NaN,carbs=complete?.carbohydrates_100g??NaN,fat=complete?.fat_100g??NaN;
+        const isLiquid =
+          p.product_quantity_unit === "ml" ||
+          p.product_quantity_unit === "cl" ||
+          p.product_quantity_unit === "l";
+
+        return {
+          ok: true,
+          hasNutrition: complete!==null,
+          food: {
+            code,
+            product_name: p.product_name || "Unknown Product",
+            brands: p.brands || "Packaged Item",
+            default_unit: isLiquid ? "ml" : "g",
+            serving_weight: labeledServingWeight(p.serving_size,isLiquid ? "ml" : "g"),
+            nutriments: {
+              "energy-kcal_100g": kcal,
+              proteins_100g: protein,
+              carbohydrates_100g: carbs,
+              fat_100g: fat,
+            },
+          },
+        };
+      } catch {
+        if (controller.signal.aborted) break;
+        // Network error or HTML body that failed to parse as JSON — retry.
         if (attempt < 2) {
           await sleep(500 * (attempt + 1));
           continue;
         }
+        console.warn("Open Food Facts barcode lookup failed");
         return { ok: false, reason: "unreachable" };
       }
-      if (!res.ok) return { ok: false, reason: "unreachable" };
-
-      const json = await res.json();
-      if (json.status !== 1 || !json.product) {
-        return { ok: false, reason: "not-found" };
-      }
-
-      const p = json.product;
-      const n = p.nutriments || {};
-      const complete=completeOffNutrition(n);
-      const kcal=complete?.["energy-kcal_100g"]??NaN,protein=complete?.proteins_100g??NaN,carbs=complete?.carbohydrates_100g??NaN,fat=complete?.fat_100g??NaN;
-      const isLiquid =
-        p.product_quantity_unit === "ml" ||
-        p.product_quantity_unit === "cl" ||
-        p.product_quantity_unit === "l";
-
-      return {
-        ok: true,
-        hasNutrition: complete!==null,
-        food: {
-          code,
-          product_name: p.product_name || "Unknown Product",
-          brands: p.brands || "Packaged Item",
-          default_unit: isLiquid ? "ml" : "g",
-          serving_weight: labeledServingWeight(p.serving_size,isLiquid ? "ml" : "g"),
-          nutriments: {
-            "energy-kcal_100g": kcal,
-            proteins_100g: protein,
-            carbohydrates_100g: carbs,
-            fat_100g: fat,
-          },
-        },
-      };
-    } catch (e) {
-      // Network error or HTML body that failed to parse as JSON — retry.
-      if (attempt < 2) {
-        await sleep(500 * (attempt + 1));
-        continue;
-      }
-      console.warn("Barcode lookup failed", e);
-      return { ok: false, reason: "unreachable" };
     }
+  } finally {
+    clearTimeout(timeout);
   }
   return { ok: false, reason: "unreachable" };
 }
@@ -295,6 +304,10 @@ export async function resolveBarcodeWithSources(
     }
 
     const publicResult = await sources.findPublic(parsed.barcode);
+    if ((!publicResult.ok || !publicResult.hasNutrition) && sources.findFallback) {
+      const fallback = await sources.findFallback(parsed.barcode);
+      if (fallback.ok && fallback.hasNutrition) return { ...fallback, source: "usda" };
+    }
     if (!publicResult.ok) return publicResult;
     return {
       ok: true,
@@ -380,6 +393,7 @@ export async function resolveBarcode(code: string): Promise<ResolvedBarcode> {
         return { ok: true, food: data ? barcodeFood(data as BarcodeNutritionRow, barcode, "TrackBing catalog") : null };
       },
       findPublic: lookupBarcode,
+      findFallback: (barcode) => lookupUSDABarcode(barcode, account.client),
     });
     return account.isActive() ? result : { ok: false, reason: "auth-required" };
   } finally {

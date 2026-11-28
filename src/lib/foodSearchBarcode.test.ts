@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  lookupBarcode,
   resolveBarcodeWithSources,
   type BarcodeSourceLookup,
 } from "./foodSearch";
@@ -26,6 +27,26 @@ const publicFood: FoodItem = {
   product_name: "Public Cereal",
   brands: "Packaged",
 };
+
+it("bounds an unresponsive Open Food Facts request", async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn((_url: string, init?: RequestInit): Promise<Response> => {
+    if (!init?.signal) return Promise.resolve(new Response(null, { status: 404 }));
+    return new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    const result = lookupBarcode("012345678905");
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(result).resolves.toEqual({ ok: false, reason: "unreachable" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
 
 describe("resolveBarcodeWithSources", () => {
   it("uses a shared exact barcode after a private miss, without querying Open Food Facts", async () => {
@@ -93,6 +114,32 @@ describe("resolveBarcodeWithSources", () => {
         findPublic: async () => ({ ok: false, reason: "not-found" }),
       }),
     ).resolves.toEqual({ ok: false, reason: "not-found" });
+  });
+
+  it.each([
+    { ok: false as const, reason: "not-found" as const },
+    { ok: true as const, food: publicFood, hasNutrition: false },
+  ])("tries USDA when Open Food Facts has no usable nutrition", async (off) => {
+    const findFallback = vi.fn(async () => ({ ok: true as const, food: publicFood, hasNutrition: true }));
+    await expect(resolveBarcodeWithSources("01234567", {
+      findPersonal: async () => ({ ok: true, food: null }),
+      findPublic: async () => off,
+      findFallback,
+    })).resolves.toMatchObject({ source: "usda", hasNutrition: true });
+    expect(findFallback).toHaveBeenCalledWith("01234567");
+  });
+
+  it("keeps a complete Open Food Facts match first and preserves manual entry after a fallback failure", async () => {
+    const incomplete = { ok: true as const, food: publicFood, hasNutrition: false };
+    const findFallback = vi.fn(async () => ({ ok: false as const, reason: "unreachable" as const }));
+    const sources: BarcodeSourceLookup = {
+      findPersonal: async () => ({ ok: true, food: null }),
+      findPublic: async () => ({ ...incomplete, hasNutrition: true }),
+      findFallback,
+    };
+    await expect(resolveBarcodeWithSources("01234567", sources)).resolves.toMatchObject({ source: "open-food-facts", hasNutrition: true });
+    expect(findFallback).not.toHaveBeenCalled();
+    await expect(resolveBarcodeWithSources("01234567", { ...sources, findPublic: async () => incomplete })).resolves.toMatchObject({ source: "open-food-facts", hasNutrition: false });
   });
 
   it("does not call the public service after a personal lookup failure", async () => {

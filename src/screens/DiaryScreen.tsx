@@ -1,3 +1,4 @@
+import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { Link } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TextInput, View } from 'react-native';
@@ -9,6 +10,7 @@ import { shiftDay } from '../../supabase/functions/_shared/beeDates';
 import { Colors } from '@/src/styles/colors';
 
 export function DiaryScreen() {
+  const diaryAnchor = useTourAnchor("diary");
   const {day,error:accountError,authorize,reload} = useTrackingAccount();
   const [date,setDate] = useState('');
   const [editing,setEditing] = useState('');
@@ -56,7 +58,7 @@ export function DiaryScreen() {
     {!day && !accountError && <ActivityIndicator accessibilityLabel="Loading your account date" color={Colors.accent} />}
     {day && <>
       <Text style={styles.copy}>Dates use {day.timeZone}. Historical nutrition targets are not stored here.</Text>
-      <View style={styles.row}>
+      <View ref={diaryAnchor} testID="getting-started-target-diary" style={styles.row}>
         <View style={styles.field}><Text style={styles.label}>Day (YYYY-MM-DD)</Text><TextInput accessibilityLabel="Diary date" value={editing} onChangeText={setEditing} maxLength={10} autoCapitalize="none" autoCorrect={false} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.textSecondary} style={styles.input} onSubmitEditing={()=>choose(editing)} returnKeyType="go" /></View>
         <TrackingAction label="Show day" onPress={()=>choose(editing)} />
       </View>

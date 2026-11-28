@@ -32,8 +32,7 @@ import { AiEstimateBadge } from "@/src/components/ai/AiEstimateBadge";
 import { BeeGuide } from "@/src/components/ai/BeeGuide";
 import { useBeeCompanion } from "@/src/components/ai/BeeCompanionProvider";
 import { useBeeInsight } from "@/src/lib/useBeeInsight";
-import { isNewTrackBingAccount } from "@/src/lib/gettingStarted";
-import { GettingStartedTour, type TourAnchor, type TourTarget } from "@/src/components/GettingStartedTour";
+import { useGettingStarted, useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { emitFoodLogChanged, subscribeFoodLogChanged } from "@/src/lib/foodLogEvents";
 import { supabase } from "@/src/lib/supabase";
 import { accountDay } from "@/src/lib/accountDay";
@@ -70,10 +69,7 @@ export function DashboardScreen() {
   const [calorieGoal, setCalorieGoal] = useState(2000);
   const [goals, setGoals] = useState({ p: 150, c: 200, f: 70 });
   const [loading, setLoading] = useState(true);
-  const [tourAccountId, setTourAccountId] = useState<string | null>(null);
-  const [finishedTourAccount, setFinishedTourAccount] = useState<string | null>(null);
-  const tourAnchors = useRef<Record<TourTarget, TourAnchor | null>>({ calories: null, log: null, scan: null });
-  const tourRing = useRef<View>(null);
+  const { start: startTour, suspendInsight } = useGettingStarted();
   const desktopScroll = useRef<ScrollView>(null);
   const mobileScroll = useRef<FlatList<FoodLog>>(null);
   const scrollY = useRef(0);
@@ -94,14 +90,14 @@ export function DashboardScreen() {
     message: string;
   } | null>(null);
   const router = useRouter();
-  const getTourAnchor = useCallback((target: TourTarget) =>
-    target === "calories" && compactSpotlight ? tourRing.current : tourAnchors.current[target],
-  [compactSpotlight]);
   const scrollTourTarget = useCallback((distance: number) => {
     const offset = Math.max(0, scrollY.current + distance);
     if (isDesktop) desktopScroll.current?.scrollTo({ y: offset, animated: false });
     else mobileScroll.current?.scrollToOffset({ offset, animated: false });
   }, [isDesktop]);
+  const caloriesAnchor = useTourAnchor("calories", scrollTourTarget);
+  const beeAnchor = useTourAnchor("bee", scrollTourTarget);
+  const tourReady = !loading && isFocused && !companion.chatOpen;
 
   // ── FAB ANIMATIONS ──
   const fabScale   = useRef(new Animated.Value(1)).current;
@@ -202,7 +198,6 @@ export function DashboardScreen() {
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    setTourAccountId(isNewTrackBingAccount(user.created_at) ? user.id : null);
 
     const { data: userGoal, error: goalError } = await supabase
       .from("user_goals")
@@ -366,8 +361,7 @@ export function DashboardScreen() {
 
   const dateStr = new Date(`${diaryDay}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
   // Request only after persisted data finishes loading, never for optimistic edits.
-  const awaitingTour = tourAccountId !== null && finishedTourAccount !== tourAccountId;
-  const insight = useBeeInsight(loading || awaitingTour ? null : String(beeContextRevision));
+  const insight = useBeeInsight(loading || suspendInsight ? null : String(beeContextRevision));
   const beeMessage = {title:"Your next step",message:insight?.text ?? "Review your diary, log a food, or record a weigh-in. Tap Bee to ask for help."};
   
   // Format time for logs
@@ -394,14 +388,12 @@ export function DashboardScreen() {
       helper: "Find or enter",
       icon: <MagnifyingGlass size={20} weight="bold" color={Colors.accent} />,
       route: "/(tabs)/add",
-      tour: "log" as const,
     },
     {
       label: "Scan",
       helper: "Use barcode",
       icon: <Barcode size={20} weight="bold" color={Colors.accent} />,
       route: "/scan",
-      tour: "scan" as const,
     },
     {
       label: "Recent",
@@ -422,8 +414,6 @@ export function DashboardScreen() {
       {quickActions.map((action) => (
         <TouchableOpacity
           key={action.label}
-          ref={action.tour ? (element) => { if (action.tour) tourAnchors.current[action.tour] = element; } : undefined}
-          testID={action.tour ? `getting-started-target-${action.tour}` : undefined}
           activeOpacity={0.84}
           accessibilityRole="button"
           accessibilityLabel={`${action.label}: ${action.helper}`}
@@ -446,7 +436,7 @@ export function DashboardScreen() {
   );
 
   const renderBeeCompanion = () => (
-    <View testID="bee-dashboard-companion">
+    <View ref={beeAnchor} testID="bee-dashboard-companion">
       <BeeGuide
         compact={!isDesktop}
         interactive={!companion.chatOpen}
@@ -480,11 +470,16 @@ export function DashboardScreen() {
               <Text style={styles.headerTitle}>Ready to fuel up?</Text>
             </View>
           </View>
-          {streak > 0 && (
-            <Text style={styles.streakText}>
-              <Text style={styles.streakCount}>{streak}-day</Text> streak
-            </Text>
-          )}
+          <View style={styles.headerActions}>
+            <TouchableOpacity accessibilityRole="button" onPress={startTour} style={styles.tourButton}>
+              <Text style={styles.tourButtonLabel}>Getting started</Text>
+            </TouchableOpacity>
+            {streak > 0 && (
+              <Text style={styles.streakText}>
+                <Text style={styles.streakCount}>{streak}-day</Text> streak
+              </Text>
+            )}
+          </View>
         </View>
 
         {isDesktop ? (
@@ -501,7 +496,7 @@ export function DashboardScreen() {
               {/* Left Column: Stats & Goals */}
               <View style={{ flex: 3 }}>
                 {/* ── PREMIUM HERO CARD ── */}
-                <View ref={(element) => { tourAnchors.current.calories = element; }} testID={compactSpotlight ? undefined : "getting-started-target-calories"} style={styles.heroCard}>
+                <View ref={tourReady && !compactSpotlight ? caloriesAnchor : undefined} testID={compactSpotlight ? undefined : "getting-started-target-calories"} style={styles.heroCard}>
                   <Text style={styles.dateText}>
                     <Text style={styles.dateTextDim}>Today, </Text>{dateStr}
                   </Text>
@@ -539,7 +534,7 @@ export function DashboardScreen() {
                     </View>
 
                     <View style={styles.heroRight}>
-                      <View ref={tourRing} testID={compactSpotlight ? "getting-started-target-calories" : undefined} style={styles.progressRingWrapper}>
+                      <View ref={tourReady && compactSpotlight ? caloriesAnchor : undefined} testID={compactSpotlight ? "getting-started-target-calories" : undefined} style={styles.progressRingWrapper}>
                         <CalorieProgress
                           calories={totals.calories}
                           goal={calorieGoal}
@@ -653,7 +648,7 @@ export function DashboardScreen() {
                 {renderBeeCompanion()}
 
                 {/* ── PREMIUM HERO CARD ── */}
-                <View ref={(element) => { tourAnchors.current.calories = element; }} testID={compactSpotlight ? undefined : "getting-started-target-calories"} style={styles.heroCard}>
+                <View ref={tourReady && !compactSpotlight ? caloriesAnchor : undefined} testID={compactSpotlight ? undefined : "getting-started-target-calories"} style={styles.heroCard}>
                   <Text style={styles.dateText}>
                     <Text style={styles.dateTextDim}>Today, </Text>{dateStr}
                   </Text>
@@ -691,7 +686,7 @@ export function DashboardScreen() {
                     </View>
 
                     <View style={styles.heroRight}>
-                      <View ref={tourRing} testID={compactSpotlight ? "getting-started-target-calories" : undefined} style={styles.progressRingWrapper}>
+                      <View ref={tourReady && compactSpotlight ? caloriesAnchor : undefined} testID={compactSpotlight ? "getting-started-target-calories" : undefined} style={styles.progressRingWrapper}>
                         <CalorieProgress
                           calories={totals.calories}
                           goal={calorieGoal}
@@ -926,15 +921,6 @@ export function DashboardScreen() {
           </View>
         </Modal>
 
-        {tourAccountId && <GettingStartedTour
-          key={tourAccountId}
-          accountId={tourAccountId}
-          ready={!loading && isFocused && !companion.chatOpen}
-          getAnchor={getTourAnchor}
-          scrollBy={scrollTourTarget}
-          onFinished={setFinishedTourAccount}
-          onLogFood={() => router.push("/(tabs)/add")}
-        />}
         <SweetFeedback
           visible={feedback !== null}
           type={feedback?.type}
@@ -969,7 +955,10 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     zIndex: 10,
   },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
+  headerLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 14 },
+  headerActions: { alignItems: "flex-end", marginLeft: 8 },
+  tourButton: { minHeight: 44, paddingHorizontal: 4, justifyContent: "center" },
+  tourButtonLabel: { color: Colors.accent, fontSize: 12, fontWeight: "700" },
   avatarWrapper: {
     width: 48, height: 48,
     borderRadius: 24,

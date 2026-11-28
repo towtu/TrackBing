@@ -1,3 +1,4 @@
+import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,6 +32,7 @@ const copy = {
     "Everything in Plus, with 250 Bee interactions, 50 live web Search queries and 30 dashboard insights each month. Adaptive chat, preferences, weight guidance and reviewed goal suggestions.",
 };
 export default function Plans() {
+  const plansAnchor = useTourAnchor("plans");
   const router = useRouter();
   const [status, setStatus] = useState<BillingStatus | null>(null),
     [catalog, setCatalog] = useState<BillingCatalog | null>(null),
@@ -210,9 +212,9 @@ export default function Plans() {
         keyboardShouldPersistTaps="handled"
       >
         <BeeAction label="Back" onPress={() => router.back()} />
-        <Text accessibilityRole="header" style={styles.title}>
-          Choose your plan
-        </Text>
+        <View ref={plansAnchor} testID="getting-started-target-plans">
+          <Text accessibilityRole="header" style={styles.title}>Choose your plan</Text>
+        </View>
         <Text style={styles.copy}>
           Manual tracking stays free. Paid plans unlock limited AI help on your
           one account across web, iOS and Android.

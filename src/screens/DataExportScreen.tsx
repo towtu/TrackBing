@@ -1,3 +1,4 @@
+import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Text, TextInput, View } from 'react-native';
 import { TrackingAction, TrackingPage, trackingStyles as styles } from '@/src/components/tracking/TrackingPage';
@@ -7,6 +8,7 @@ import { saveTrackingFile } from '@/src/lib/saveTrackingFile';
 import { shiftDay } from '../../supabase/functions/_shared/beeDates';
 
 export function DataExportScreen() {
+  const exportAnchor = useTourAnchor("export");
   const {day,error:accountError,authorize,reload} = useTrackingAccount();
   const [from,setFrom] = useState(''); const [to,setTo] = useState('');
   const [initialized,setInitialized] = useState(false);
@@ -43,7 +45,7 @@ export function DataExportScreen() {
     <View style={styles.section}>
       <Text style={styles.text}>Choose a date range</Text>
       <Text style={styles.copy}>Up to 366 days. Dates use {day?.timeZone ?? 'your account timezone'}.</Text>
-      <View style={styles.row}>
+      <View ref={exportAnchor} testID="getting-started-target-export" style={styles.row}>
         <View style={styles.field}><Text style={styles.label}>From (YYYY-MM-DD)</Text><TextInput accessibilityLabel="Export start date" value={from} onChangeText={setFrom} editable={!busy && !!day && initialized} maxLength={10} autoCapitalize="none" autoCorrect={false} style={styles.input} /></View>
         <View style={styles.field}><Text style={styles.label}>To (YYYY-MM-DD)</Text><TextInput accessibilityLabel="Export end date" value={to} onChangeText={setTo} editable={!busy && !!day && initialized} maxLength={10} autoCapitalize="none" autoCorrect={false} style={styles.input} /></View>
       </View>

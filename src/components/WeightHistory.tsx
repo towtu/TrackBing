@@ -36,7 +36,7 @@ type Review = {
   measuredAt: string | null;
   timezone: string;
 };
-export function WeightHistory() {
+export function WeightHistory({ headingRef }: { headingRef?: React.Ref<View> } = {}) {
   const [rows, setRows] = useState<WeightRow[]>([]),
     [amount, setAmount] = useState(""),
     [unit, setUnit] = useState<"kg" | "lb">("kg"),
@@ -173,9 +173,9 @@ export function WeightHistory() {
   };
   return (
     <View style={styles.card}>
-      <Text accessibilityRole="header" style={styles.title}>
-        Weight history
-      </Text>
+      <View ref={headingRef} testID={headingRef ? "getting-started-target-weight" : undefined}>
+        <Text accessibilityRole="header" style={styles.title}>Weight history</Text>
+      </View>
       <Text style={styles.copy}>
         Dated check-ins update your current weight only when they are the latest
         measurement. Nutrition targets stay unchanged.

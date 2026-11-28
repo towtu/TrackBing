@@ -1,3 +1,4 @@
+import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   Cookie,
@@ -53,6 +54,7 @@ type FeedbackState = {
 };
 
 export default function MyFoodsPage() {
+  const createAnchor = useTourAnchor("foods");
   const router = useRouter();
   const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
   useEffect(() => { const guard=createFoodAccountGuard(); accountRef.current=guard; return ()=>{guard.dispose();accountRef.current=null;}; }, []);
@@ -237,6 +239,8 @@ export default function MyFoodsPage() {
           </TouchableOpacity>
           <Text style={localStyles.headerTitle}>My Foods</Text>
           <TouchableOpacity
+            ref={createAnchor}
+            testID="getting-started-target-foods"
             accessibilityRole="button"
             accessibilityLabel="Create a food"
             onPress={() => router.push("/create-food")}

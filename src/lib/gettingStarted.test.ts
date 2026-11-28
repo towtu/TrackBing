@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { clipSpotlight, isNewTrackBingAccount } from "./gettingStarted";
+import { clipSpotlight, gettingStartedSteps, isNewTrackBingAccount, tourStorageKey } from "./gettingStarted";
 
 describe("Getting Started tour", () => {
+  it("covers the real tracking, settings and help screens in a single walkthrough", () => {
+    expect(gettingStartedSteps.map(({ path, target }) => [path, target])).toEqual([
+      ["/", "calories"], ["/add", "log"], ["/add", "scan"], ["/diary", "diary"],
+      ["/my-foods", "foods"], ["/cookbook", "cookbook"], ["/stats", "stats"],
+      ["/stats", "weight"], ["/profile", "profile"], ["/", "bee"],
+      ["/plans", "plans"], ["/data", "export"],
+    ]);
+  });
+
+  it("stores full-tour completion separately by account and version", () => {
+    expect(tourStorageKey("owner-a")).toBe("trackbing:getting-started:v2:owner-a");
+    expect(tourStorageKey("owner-a")).not.toBe(tourStorageKey("owner-b"));
+  });
+
   const now = Date.parse("2026-11-28T00:00:00Z");
 
   it("automatically starts only for accounts created in the past week", () => {

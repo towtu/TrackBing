@@ -188,12 +188,14 @@ async function verifyGettingStarted(page, base, width, output) {
  await aligned('calories');
  await page.screenshot({path:`${output}/getting-started-calories-${width}.png`,animations:'disabled'});
  if(width===375){
-  await page.setViewportSize({width:700,height:400});
-  await aligned('calories');
-  const outline=await page.getByTestId('getting-started-spotlight').boundingBox();
-  const panel=await page.getByTestId('getting-started-card').boundingBox();
-  assert.ok(panel.x+panel.width<=outline.x || outline.x+outline.width<=panel.x || panel.y>=outline.y+outline.height, 'tour copy must leave the ring visible');
-  await page.screenshot({path:`${output}/getting-started-landscape.png`,animations:'disabled'});
+  for(const viewport of [{width:700,height:400},{width:320,height:568}]){
+   await page.setViewportSize(viewport);
+   await aligned('calories');
+   const outline=await page.getByTestId('getting-started-spotlight').boundingBox();
+   const panel=await page.getByTestId('getting-started-card').boundingBox();
+   assert.ok(panel.x+panel.width<=outline.x || outline.x+outline.width<=panel.x || panel.y>=outline.y+outline.height, 'tour copy must leave the ring visible');
+   await page.screenshot({path:`${output}/getting-started-${viewport.width}x${viewport.height}.png`,animations:'disabled'});
+  }
   await page.setViewportSize({width,height:900});
   await aligned('calories');
  }

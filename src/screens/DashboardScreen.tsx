@@ -64,7 +64,7 @@ export function DashboardScreen() {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsive();
   const { height: windowHeight } = useWindowDimensions();
-  const compactSpotlight = windowHeight < 540;
+  const compactSpotlight = windowHeight < 620;
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [totals, setTotals] = useState<DailyTotals>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
   const [calorieGoal, setCalorieGoal] = useState(2000);

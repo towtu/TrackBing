@@ -99,7 +99,12 @@ export function GettingStartedTour({ accountId, ready, getAnchor, scrollBy, onFi
           </View>
         ) : <View pointerEvents="none" style={[styles.shade, StyleSheet.absoluteFill]} />}
 
-        <View testID="getting-started-card" style={[styles.card, sideCard, { marginBottom: Math.max(insets.bottom, 16) }]}>
+        <View testID="getting-started-card" style={[
+          styles.card,
+          height < 480 && styles.compactCard,
+          sideCard,
+          { marginBottom: Math.max(insets.bottom, height < 480 ? 8 : 16) },
+        ]}>
           <View style={styles.headingRow}>
             <Text accessibilityRole="header" style={styles.heading}>Getting started</Text>
             <Text style={styles.stepCount}>Step {step + 1} of {steps.length}</Text>
@@ -137,6 +142,7 @@ const styles = StyleSheet.create({
   shade: { position: "absolute", backgroundColor: "rgba(8,7,4,0.77)" },
   outline: { position: "absolute", borderRadius: 16, borderWidth: 2, borderColor: Colors.accent },
   card: { width: "100%", maxWidth: 460, gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: Colors.controlBorder, backgroundColor: Colors.surface },
+  compactCard: { gap: 8, padding: 12 },
   headingRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8 },
   heading: { color: Colors.accent, fontSize: 14, fontWeight: "800" },
   stepCount: { color: Colors.textSecondary, fontSize: 12 },

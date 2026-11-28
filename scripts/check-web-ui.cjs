@@ -173,51 +173,96 @@ async function verifyBeeCorrections(page,width,fixture,output) {
  assert.equal(await page.getByRole('button',{name:'Add to today',exact:true}).count(),0);
 }
 async function verifyGettingStarted(page, base, width, output) {
- await require('./fixtures/bee-browser.cjs')(page, {createdAt:new Date(Date.now()-60000).toISOString()});
- const button = name => page.getByRole('button',{name,exact:true});
+ const fixture = await require('./fixtures/bee-browser.cjs')(page, {createdAt:new Date(Date.now()-60000).toISOString()});
+ const card = page.getByTestId('getting-started-card');
+ const button = name => card.getByRole('button',{name,exact:true});
  const aligned = async target => {
-  await page.waitForFunction(name => {
-   const anchor = document.querySelector(`[data-testid="getting-started-target-${name}"]`)?.getBoundingClientRect();
+  const testId = `getting-started-target-${target}`;
+  await page.waitForFunction(id => {
+   const anchor = [...document.querySelectorAll(`[data-testid="${id}"]`)]
+    .map(element=>element.getBoundingClientRect())
+    .find(rect=>rect.height>0 && rect.width>0);
    const outline = document.querySelector('[data-testid="getting-started-spotlight"]')?.getBoundingClientRect();
-   return anchor && outline && Math.abs(anchor.left-outline.left) <= 6 && Math.abs(anchor.top-outline.top) <= 6 && outline.height >= anchor.height;
-  },target);
+   return anchor && outline && anchor.height > 0 && Math.abs(anchor.left-outline.left) <= 6 &&
+    Math.abs(anchor.top-outline.top) <= 6 && outline.height >= anchor.height;
+  },testId);
+  const outline = await page.getByTestId('getting-started-spotlight').boundingBox();
+  const panel = await card.boundingBox();
+  assert.ok(panel.x+panel.width<=outline.x || outline.x+outline.width<=panel.x || panel.y>=outline.y+outline.height,
+   `tour copy must leave the ${target} highlight visible at ${width}px`);
+ };
+ const checkStep = async (step,path,target) => {
+  await page.waitForURL(url=>url.pathname===path);
+  await card.getByText(`Step ${step} of 12`,{exact:true}).waitFor();
+  await aligned(target);
  };
  await page.goto(base);
- await page.getByRole('heading',{name:'Getting started',exact:true}).waitFor();
- await page.getByText('Your daily calories',{exact:true}).waitFor();
- await aligned('calories');
+ await card.getByRole('heading',{name:'Getting started',exact:true}).waitFor();
+ await checkStep(1,'/','calories');
  await page.screenshot({path:`${output}/getting-started-calories-${width}.png`,animations:'disabled'});
  if(width===375){
+  const viewportBeforeResize = page.viewportSize();
   for(const viewport of [{width:700,height:400},{width:320,height:568}]){
    await page.setViewportSize(viewport);
    await aligned('calories');
-   const outline=await page.getByTestId('getting-started-spotlight').boundingBox();
-   const panel=await page.getByTestId('getting-started-card').boundingBox();
-   assert.ok(panel.x+panel.width<=outline.x || outline.x+outline.width<=panel.x || panel.y>=outline.y+outline.height, 'tour copy must leave the ring visible');
    await page.screenshot({path:`${output}/getting-started-${viewport.width}x${viewport.height}.png`,animations:'disabled'});
   }
-  await page.setViewportSize({width,height:900});
+  await page.setViewportSize(viewportBeforeResize);
   await aligned('calories');
  }
- await button('Next').click();
- await page.getByText('Step 2 of 3',{exact:true}).waitFor();
- await aligned('log');
- await button('Back').click();
- await aligned('calories');
- await button('Next').click();
- await button('Next').click();
- await page.getByText('Step 3 of 3',{exact:true}).waitFor();
- await aligned('scan');
- await page.screenshot({path:`${output}/getting-started-scan-${width}.png`,animations:'disabled'});
- if(width===375) await button('Skip tour').click();
- else {
-  await button('Log food').click();
-  await page.getByRole('textbox',{name:'Search foods',exact:true}).waitFor();
+ const itinerary = [
+  [2,'/add','log'],[3,'/add','scan'],[4,'/diary','diary'],[5,'/my-foods','foods'],
+  [6,'/cookbook','cookbook'],[7,'/stats','stats'],[8,'/stats','weight'],[9,'/profile','profile'],
+  [10,'/','bee'],[11,'/plans','plans'],[12,'/data','export'],
+ ];
+ for(const [step,path,target] of itinerary){
+  if(step===7 && width===375){
+   await page.evaluate(()=>localStorage.removeItem('cache:stats:week:11111111-1111-4111-8111-111111111111'));
+   const loading = require('./fixtures/bee-browser.cjs').fixtureEvent('Weekly stats');
+   const slowQuery = '**/rest/v1/rpc/get_weekly_stats';
+   let release;
+   const pending = new Promise(resolve=>{release=resolve;});
+   await page.route(slowQuery,async route=>{
+    loading.signal();
+    await pending;
+    await route.fallback();
+   },{times:1});
+   await button('Next').click();
+   try {
+    await loading.wait();
+    assert.ok(await button('Loading screen…').isDisabled(),'a loading screen cannot be advanced before measuring its spotlight');
+   } finally { release(); }
+  }else await button('Next').click();
+  await checkStep(step,path,target);
+  if(step===4){
+   await button('Back').click();
+   await checkStep(3,'/add','scan');
+   await button('Next').click();
+   await checkStep(4,'/diary','diary');
+  }
+  if(step===3 || step===8 || step===12){
+   await page.screenshot({path:`${output}/getting-started-${target}-${width}.png`,animations:'disabled'});
+  }
  }
- await page.waitForFunction(()=>localStorage.getItem('trackbing:getting-started:v1:11111111-1111-4111-8111-111111111111')==='seen');
+ assert.ok(!fixture.requests.some(({path,method})=>method!=='GET' &&
+  (/\/rest\/v1\/(food_logs|weight_logs|user_goals)$/.test(path) || /\/functions\/v1\/(billing-checkout|ai-food)$/.test(path))),
+ 'following the tour does not create foods, weigh-ins or purchases');
+ if(width===375){
+  await button('Skip tour').click();
+  assert.equal(new URL(page.url()).pathname,'/data');
+ }else{
+  await button('Done').click();
+  await page.waitForURL(url=>url.pathname==='/');
+ }
+ await page.waitForFunction(()=>localStorage.getItem('trackbing:getting-started:v2:11111111-1111-4111-8111-111111111111')==='seen');
  await page.goto(base);
  await page.getByRole('progressbar',{name:'Calories logged',exact:true}).waitFor();
- await page.getByRole('heading',{name:'Getting started',exact:true}).waitFor({state:'hidden'});
+ await card.waitFor({state:'hidden'});
+ if(width===375) await page.goto(base+'/profile');
+ await page.getByRole('button',{name:'Getting started',exact:true}).click();
+ await checkStep(1,'/','calories');
+ await button('Skip tour').click();
+ await card.waitFor({state:'hidden'});
 }
 
 // A synthetic camera keeps the scanner check independent of runner hardware and permissions.
@@ -262,6 +307,7 @@ async function verifyGettingStarted(page, base, width, output) {
  await page.getByRole('button',{name:'Open Bee chat',exact:true}).click();
  await input.fill('Fudgee Barr Chocolate 38 g nutrition');await page.getByRole('button',{name:/Send to Bee/i}).click();await page.getByText('Live answer',{exact:true}).waitFor();assert.equal(fixture.getSnapshot().pending,null);assert.equal(await page.locator('[data-testid^="bee-mascot-"]').count(),1);assert.equal(await page.locator('[aria-label="Google Search suggestions"]').count(),1);await page.screenshot({path:`${output}/search-answer-${width}.png`});await page.getByRole('button',{name:'Saved preferences',exact:true}).click();await page.getByRole('heading',{name:'Saved preferences',exact:true}).waitFor();await page.screenshot({path:`${output}/memories-${width}.png`});
  const tourPage=await context.newPage();
+ if(width===375) await tourPage.setViewportSize({width,height:667});
  tourPage.on('pageerror',e=>errors.push(String(e)));
  tourPage.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
  tourPage.on('requestfailed',r=>{if(!r.failure()?.errorText?.includes('ERR_ABORTED'))failedRequests.push({url:r.url(),error:r.failure()?.errorText});});

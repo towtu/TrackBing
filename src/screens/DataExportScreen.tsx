@@ -38,7 +38,7 @@ export function DataExportScreen() {
       if(active.current){setStatus('');setError(failure instanceof Error ? failure.message : 'Could not prepare your download. Try again.');}
     } finally {clearTimeout(timer);writing.current=false;if(active.current)setBusy(false);}
   }
-  return <TrackingPage title="Your tracking data" description="Save a private copy of your food diary and dated weight history. Downloads go directly to your device.">
+  return <TrackingPage tourTarget="export" title="Your tracking data" description="Save a private copy of your food diary and dated weight history. Downloads go directly to your device.">
     {accountError && <><Text accessibilityRole="alert" style={styles.error}>{accountError}</Text><TrackingAction label="Reload account date" onPress={()=>void reload()} /></>}
     <View style={styles.section}>
       <Text style={styles.text}>Choose a date range</Text>

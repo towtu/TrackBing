@@ -1,3 +1,4 @@
+import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   BookOpen,
@@ -68,6 +69,7 @@ type FeedbackState = {
 };
 
 export default function CookbookPage() {
+  const createAnchor = useTourAnchor("cookbook");
   const router = useRouter();
   const { isDesktop } = useResponsive();
   const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
@@ -314,6 +316,8 @@ export default function CookbookPage() {
           )}
           <Text style={localStyles.headerTitle}>My Cookbook</Text>
           <TouchableOpacity
+            ref={createAnchor}
+            testID="getting-started-target-cookbook"
             accessibilityRole="button"
             accessibilityLabel="Create a recipe"
             onPress={() => router.push("/create-recipe")}

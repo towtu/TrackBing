@@ -1,3 +1,4 @@
+import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -139,6 +140,8 @@ async function refreshWriterSummary(writer: {userId: string; client: SupabaseCli
 }
 
 export default function AddFoodPage() {
+  const logAnchor = useTourAnchor("log");
+  const scanAnchor = useTourAnchor("scan");
   const router = useRouter();
   const params = useLocalSearchParams();
   const { isDesktop } = useResponsive();
@@ -665,22 +668,22 @@ export default function AddFoodPage() {
             >
               <Plus size={24} color={Colors.accent} weight="bold" />
             </TouchableOpacity>
-            {!isDesktop && (
-              <TouchableOpacity
-                onPress={() => router.push("/scan")}
-                style={localStyles.backButton}
-                accessibilityRole="button"
-                accessibilityLabel="Scan a barcode"
-              >
-                <Barcode size={24} color={Colors.accent} />
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              ref={scanAnchor}
+              testID="getting-started-target-scan"
+              onPress={() => router.push("/scan")}
+              style={localStyles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="Scan a barcode"
+            >
+              <Barcode size={24} color={Colors.accent} />
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={isDesktop ? { flexDirection: "row", flex: 1, gap: 24, marginTop: 16 } : { flex: 1 }}>
           <View style={isDesktop ? { flex: 1.2 } : { flex: 1 }}>
-            <View style={localStyles.searchBox}>
+            <View ref={logAnchor} testID="getting-started-target-log" style={localStyles.searchBox}>
               <MagnifyingGlass size={20} color={Colors.textSecondary} style={{ marginLeft: 15 }} />
               <TextInput
                 style={localStyles.input}

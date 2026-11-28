@@ -1,3 +1,4 @@
+import { useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { WeightHistory } from "@/src/components/WeightHistory";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
@@ -8,7 +9,7 @@ import {
   TrendUp,
   Trophy,
 } from "@/src/components/icons";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -214,6 +215,13 @@ async function computeStats(userId: string): Promise<CachedStats> {
 }
 
 export default function StatsPage() {
+  const scroll = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const scrollToWeight = useCallback((distance: number) => {
+    scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + distance), animated: false });
+  }, []);
+  const statsAnchor = useTourAnchor("stats", scrollToWeight);
+  const weightAnchor = useTourAnchor("weight", scrollToWeight);
   const router = useRouter();
   const { isDesktop } = useResponsive();
 
@@ -333,6 +341,9 @@ export default function StatsPage() {
       edges={["top"]}
     >
       <ScrollView
+        ref={scroll}
+        onScroll={event => { scrollY.current = event.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
         style={{ flex: 1 }}
         contentContainerStyle={[
           {
@@ -359,7 +370,7 @@ export default function StatsPage() {
 
         {/* ── STREAK + SUMMARY ROW ── */}
         <View style={styles.summaryRow}>
-          <View style={styles.streakCard}>
+          <View ref={statsAnchor} testID="getting-started-target-stats" style={styles.streakCard}>
             <View style={styles.streakIconWrap}>
               <Fire size={24} color={Colors.accent} weight="fill" />
             </View>
@@ -634,7 +645,7 @@ export default function StatsPage() {
             )}
           </>
         )}
-        <WeightHistory />
+        <WeightHistory headingRef={weightAnchor} />
       </ScrollView>
     </SafeAreaView>
   );

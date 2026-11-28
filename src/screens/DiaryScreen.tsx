@@ -51,7 +51,7 @@ export function DiaryScreen() {
       setDate(value);setEditing(value);
     } catch (failure) {setError(failure instanceof Error ? failure.message : 'Choose a real date.');}
   }
-  return <TrackingPage title="Food diary" description="Browse your saved food, one day at a time. These totals come from your recorded entries.">
+  return <TrackingPage tourTarget="diary" title="Food diary" description="Browse your saved food, one day at a time. These totals come from your recorded entries.">
     {accountError && <><Text accessibilityRole="alert" style={styles.error}>{accountError}</Text><TrackingAction label="Reload account date" onPress={()=>void reload()} /></>}
     {!day && !accountError && <ActivityIndicator accessibilityLabel="Loading your account date" color={Colors.accent} />}
     {day && <>

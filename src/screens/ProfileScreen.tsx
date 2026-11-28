@@ -1,3 +1,4 @@
+import { useGettingStarted, useTourAnchor } from "@/src/components/GettingStartedProvider";
 import { BeeAction } from "@/src/components/ai/BeeMemories";
 import { WeightHistory } from "@/src/components/WeightHistory";
 import { createBeeRequestId, resolveBeeTimeZone } from "@/src/lib/beeChat";
@@ -92,6 +93,8 @@ const isPresetRate = (rate: number) =>
   GOAL_CHIPS.some((preset) => Math.abs(preset.rate - rate) < 0.000001);
 
 export function ProfileScreen() {
+  const { start: startTour } = useGettingStarted();
+  const profileAnchor = useTourAnchor("profile");
   const { isDesktop, width } = useResponsive();
   const isCompactPhone = isCompactPhoneLayout(width);
   const router = useRouter();
@@ -1235,7 +1238,7 @@ export function ProfileScreen() {
           isDesktop ? styles.desktopContent : styles.mobileContent,
         ]}
       >
-        <View style={styles.headerRow}>
+        <View ref={profileAnchor} testID="getting-started-target-profile" style={styles.headerRow}>
           {!isDesktop ? (
             <>
               <TouchableOpacity
@@ -1295,6 +1298,7 @@ export function ProfileScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="Plans and usage" onPress={()=>router.push("/plans")} style={{padding:16}}><Text style={{color:Colors.accent}}>Plans and usage</Text></Pressable>
           <WeightHistory />
           <AnalyticsPrivacyControls />
+          <BeeAction label="Getting started" onPress={startTour} />
           <LegalLinks />
         </View>
       </ScrollView>

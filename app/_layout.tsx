@@ -1,3 +1,4 @@
+import { GettingStartedProvider } from "@/src/components/GettingStartedProvider";
 import { Session } from "@supabase/supabase-js";
 import { Redirect, Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -70,40 +71,42 @@ export default function RootLayout() {
   const content = (
     <ErrorBoundary>
       <SafeAreaProvider>
-        <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
-          <StatusBar style="light" />
-          <PageMetadata privateAccount={!!session && accountPage} />
+        <GettingStartedProvider account={session?.user}>
+          <SafeAreaView style={styles.container} edges={isDesktop ? [] : ["top", "left", "right"]}>
+            <StatusBar style="light" />
+            <PageMetadata privateAccount={!!session && accountPage} />
 
-          <View style={[styles.content, isDesktop && { flexDirection: "row" }]}>
-            {isDesktop && session && accountPage && <DesktopSidebar />}
+            <View style={[styles.content, isDesktop && { flexDirection: "row" }]}>
+              {isDesktop && session && accountPage && <DesktopSidebar />}
             
-            <View style={{ flex: 1, backgroundColor: Colors.primary }}>
-              <Stack
-                key={session?.user.id ?? "public"}
-                screenOptions={{ headerShown: false, title: "TrackBing" }}
-                // Keep the navigator mounted so signed-out legal links work. Wrapping
-                // the screen prevents private components from mounting before auth.
-                // https://reactnavigation.org/docs/navigator/#screen-layout
-                screenLayout={({ children, route }) => {
-                  const requiresSession = route.name === "(tabs)" || routeKind("/" + route.name) === "private";
-                  if (route.name === "auth" && session && !loading) return <Redirect href="/" />;
-                  if (requiresSession && !session) {
-                    if (loading && pathname !== "/") return <View style={styles.loading}>
-                      <ActivityIndicator size="large" color={Colors.accent} />
-                      <Text style={styles.loadingText}>Restoring your sign-in…</Text>
-                    </View>;
-                    return <AuthRoute />;
-                  }
-                  return <>{children}</>;
-                }}
-              >
-                <Stack.Screen name="(tabs)" />
-              </Stack>
+              <View style={{ flex: 1, backgroundColor: Colors.primary }}>
+                <Stack
+                  key={session?.user.id ?? "public"}
+                  screenOptions={{ headerShown: false, title: "TrackBing" }}
+                  // Keep the navigator mounted so signed-out legal links work. Wrapping
+                  // the screen prevents private components from mounting before auth.
+                  // https://reactnavigation.org/docs/navigator/#screen-layout
+                  screenLayout={({ children, route }) => {
+                    const requiresSession = route.name === "(tabs)" || routeKind("/" + route.name) === "private";
+                    if (route.name === "auth" && session && !loading) return <Redirect href="/" />;
+                    if (requiresSession && !session) {
+                      if (loading && pathname !== "/") return <View style={styles.loading}>
+                        <ActivityIndicator size="large" color={Colors.accent} />
+                        <Text style={styles.loadingText}>Restoring your sign-in…</Text>
+                      </View>;
+                      return <AuthRoute />;
+                    }
+                    return <>{children}</>;
+                  }}
+                >
+                  <Stack.Screen name="(tabs)" />
+                </Stack>
+              </View>
+              {session && accountPage && <BeeQuickLog key={session.user.id} userId={session.user.id} />}
             </View>
-            {session && accountPage && <BeeQuickLog key={session.user.id} userId={session.user.id} />}
-          </View>
-          <AnalyticsConsentBanner pathname={pathname} />
-        </SafeAreaView>
+            <AnalyticsConsentBanner pathname={pathname} />
+          </SafeAreaView>
+        </GettingStartedProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
   );

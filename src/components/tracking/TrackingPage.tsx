@@ -1,14 +1,19 @@
 import { Link } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTourAnchor } from '@/src/components/GettingStartedProvider';
+import type { TourTarget } from '@/src/lib/gettingStarted';
 import { Colors, Radii } from '@/src/styles/colors';
 
-export function TrackingPage({title,description,children}:{title:string;description:string;children:ReactNode}) {
+export function TrackingPage({title,description,tourTarget,children}:{title:string;description:string;tourTarget:TourTarget;children:ReactNode}) {
+  const headingAnchor = useTourAnchor(tourTarget);
   return <KeyboardAvoidingView style={trackingStyles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={trackingStyles.container}>
       <View style={trackingStyles.content}>
         <Link href="/" style={trackingStyles.link}>Back to dashboard</Link>
-        <Text accessibilityRole="header" style={trackingStyles.title}>{title}</Text>
+        <View ref={headingAnchor} testID={`getting-started-target-${tourTarget}`}>
+          <Text accessibilityRole="header" style={trackingStyles.title}>{title}</Text>
+        </View>
         <Text style={trackingStyles.copy}>{description}</Text>
         {children}
       </View>

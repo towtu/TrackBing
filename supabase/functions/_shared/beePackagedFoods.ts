@@ -32,14 +32,20 @@ export function packagedIdentity(query: FoodQuery): ProductIdentity | undefined 
 
 export function packagedNutritionQuestion(text: string): FoodQuery | null {
   let subject = (nutritionQuestionSubject(text) ?? text.trim()).replace(/[.!?]+$/, "");
-  const can = /^(?:(?:one|1|a|the whole) can of)\s+/i.exec(subject);
+  const can = /^(?:(?:one|1|a|the)\s+)?(?:(?:whole|full)\s+)?can of\s+/i.exec(subject);
   const quantity = /^(\d+(?:\.\d+)?\s*(?:g|grams?|oz|ounces?))(?:\s+of)?\s+/i.exec(subject);
   if (can || quantity) subject = subject.slice((can ?? quantity)![0].length);
-  else subject = subject.replace(/^(?:one|1) serving of /i, "");
+  else subject = subject.replace(/^(?:(?:one|1) serving of|an?|the)\s+/i, "");
   const name = normalizeName(subject);
   const product = products.find(row => [row.name, ...(row.aliases ?? [])].some(alias => normalizeName(alias) === name));
-  const portion = quantity ? portionCorrection(quantity[1]) : { amount: 1, unit: can ? "pack" as const : "serving" as const };
-  if (!product || !portion || (can && !product.canGrams)) return null;
+  if (!product || (can && !product.canGrams)) return null;
+  let portion;
+  try {
+    portion = quantity ? portionCorrection(quantity[1]) : { amount: 1, unit: can ? "pack" as const : "serving" as const };
+  } catch {
+    return null;
+  }
+  if (!portion) return null;
   return {
     name: product.name, barcode: product.barcode, market: "Philippines",
     preparation: null, brand: null, variant: null, packageGrams: product.canGrams ?? null,

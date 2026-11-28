@@ -1,6 +1,6 @@
 import { parseIntent, record, retainFoodList } from "./beeIntent.ts";
 import { packagedNutritionQuestion } from "./beePackagedFoods.ts";
-import { readyNutritionReference } from "./beeFoodRetrieval.ts";
+import { needsTenderWeight, readyNutritionReference, TENDERS_WEIGHT_QUESTION } from "./beeFoodRetrieval.ts";
 import { requestFingerprint } from "./beeService.ts";
 import { readBoundedRequestJson } from "./beeRequest.ts";
 import { isSafeGroundingUrl, validateSuggestionsHtml } from "./beeGrounding.ts";
@@ -107,6 +107,9 @@ export async function handleLegacyFoodRequest(req: Request, deps: LegacyFoodDepe
       try { interpreted=await deps.interpret(request.query,signal,value=>{interpretationUsage=value;}); }
       finally {await store.recordCall?.(request,token,interpretCall,interpretationUsage??{inputTokens:6000,outputTokens:4096,searchQueries:0});}
       const parsed = parseIntent(interpreted);
+      if ((parsed.kind === "nutrition" || parsed.kind === "clarify") && needsTenderWeight(parsed.query, request.query)) {
+        return await finish({ error: "needs_input", message: TENDERS_WEIGHT_QUESTION }, false);
+      }
       const reference = parsed.kind === "nutrition" || parsed.kind === "clarify"
         ? readyNutritionReference(parsed.query, request.query) : null;
       intent = retainFoodList(reference ? { kind: "nutrition", query: reference } : parsed, request.query);

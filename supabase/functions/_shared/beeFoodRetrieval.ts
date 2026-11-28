@@ -74,7 +74,7 @@ export function readyTypicalRice(query: FoodQuery | null | undefined, previous: 
 }
 
 export function nutritionQuestionSubject(text: string): string | undefined {
-  return /^(?:(?:how (?:many|much)|what(?:'s| is| are)|show me)\s+)?(?:the\s+)?(?:calories?|nutrition|macros?|protein|carbs?|carbohydrates?|fat)\s+(?:in|for|of)\s+(.+)$/i.exec(text.trim())?.[1];
+  return /^(?:(?:how (?:many|much)|what(?:'s| is| are)|show me)\s+)?(?:the\s+)?(?:calories?|nutrition|macros?|protein|carbs?|carbohydrates?|fat)\s+(?:(?:is|are|there)\s+)*(?:in|for|of)\s+(.+)$/i.exec(text.trim())?.[1];
 }
 
 export function isNutritionReferenceQuestion(text: string): boolean {
@@ -94,4 +94,11 @@ export function isGenericFriedTenders(query: FoodQuery): boolean {
   if (query.brand || query.variant || query.barcode || query.packageGrams !== null) return false;
   const terms = [...new Set(words(`${query.name} ${query.preparation ?? ""}`))].sort().join(" ");
   return terms === "chicken fried tenders" || terms === "breaded chicken fried tenders";
+}
+
+export const TENDERS_WEIGHT_QUESTION = "What is the total weight in grams or ounces? Chicken tenders vary in size.";
+
+export function needsTenderWeight(query: FoodQuery | null | undefined, text: string): boolean {
+  return !!query && isGenericFriedTenders(query) && !isNutritionReferenceQuestion(text) &&
+    (!/\d+(?:\.\d+)?\s*(?:g|grams?|oz|ounces?)\b/i.test(text) || /\beach\b/i.test(text));
 }

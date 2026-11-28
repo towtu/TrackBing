@@ -155,14 +155,17 @@ describe("source-backed nutrition overviews", () => {
     return d;
   }
 
-  it.each(["Fudgee bar chocolate", "Fudgee Barr Dark Chocolate"] as const)("uses the exact single-bar record for %s even without a user-supplied weight", async (name) => {
+  it.each([
+    ["Fudgee bar chocolate", "How many calories in a Fudgee bar chocolate?"],
+    ["Fudgee Barr Dark Chocolate", "How many calories are in Fudgee Barr Dark Chocolate?"],
+  ] as const)("uses the exact single-bar record for %s even without a user-supplied weight", async (name, text) => {
     const dark = name.includes("Dark"), code = dark ? "4800092553226" : "4800092550904";
     const grams = dark ? 38 : 42;
     const d = productLookup(code, dark ? "" : "Fudgee bar", grams, grams);
     d.personal = vi.fn().mockResolvedValue([{ id: "TEST", name, calories: 63, protein: 2, carbs: 12, fat: 1,
       default_unit: "serving", serving_grams: 25 }]);
     const model = vi.fn().mockResolvedValue({ nextStep: "ask_one_question", reply: "How many grams?", suggestedPose: "thinking", query: { ...query(name), portion: null } });
-    const result = await adaptiveTurn(request(`How many calories in ${name}?`), context, progress, "pro", model, q => searchNutrition(q, d, "preferred"), new Date());
+    const result = await adaptiveTurn(request(text), context, progress, "pro", model, q => searchNutrition(q, d, "preferred"), new Date());
     expect(vi.mocked(d.fetch!).mock.calls[0]?.[0]).toContain(`/product/${code}?`);
     expect(model).not.toHaveBeenCalled();
     expect(d.personal).not.toHaveBeenCalled();
@@ -235,5 +238,15 @@ describe("source-backed nutrition overviews", () => {
       kind: "found", food: { source: "usda", grams: 100, calories: 215, evidence: { sourceId: "2706098" } },
     });
     expect(d.fetch).toHaveBeenCalledWith(expect.stringContaining("/fdc/v1/food/2706098?"), expect.any(Object));
+  });
+
+  it("does not turn an unresolved piece count into a model-guessed weight", async () => {
+    const q = { ...query("fried chicken tenders"), portion: { amount: 100, unit: "g" } };
+    const search = vi.fn().mockResolvedValue({ kind: "unavailable", message: "Wrong lookup" });
+    const model = vi.fn().mockResolvedValue({ nextStep: "lookup_food", reply: "Checking", suggestedPose: "thinking", query: q });
+    const result = await adaptiveTurn(request("How many calories in 4 fried chicken tenders?"), context, progress, "pro", model, search, new Date());
+    expect(result.text).toMatch(/weight|grams/i);
+    expect(result.draft).toBeUndefined();
+    expect(search).not.toHaveBeenCalled();
   });
 });

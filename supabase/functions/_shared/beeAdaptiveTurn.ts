@@ -20,7 +20,7 @@ import {
 import type { BeeRequest, BeeTier, FoodQuery } from "./beeTypes.ts";
 import type { NutritionResult } from "./beeNutrition.ts";
 import { foodFromUserLabel, makePersonalFoodDraft, resolveRecipe } from "./beeCreation.ts";
-import { readyNutritionReference, readyTypicalRice, riceRequestConflict, RICE_CLARIFICATION } from "./beeFoodRetrieval.ts";
+import { needsTenderWeight, readyNutritionReference, readyTypicalRice, riceRequestConflict, RICE_CLARIFICATION, TENDERS_WEIGHT_QUESTION } from "./beeFoodRetrieval.ts";
 import { packagedNutritionQuestion } from "./beePackagedFoods.ts";
 import {FOOD_CONTEXT_PROMPT,isFoodClarification,parseFoodContext,mergeFoodClarification} from './beeFoodContext.ts';
 export type ProgressContext = {
@@ -92,6 +92,9 @@ export async function adaptiveTurn(
     if ((parsed.kind === "clarify" || parsed.kind === "nutrition") && riceRequestConflict(parsed.query, text)) {
       parsed = { kind: "clarify", question: RICE_CLARIFICATION, query: parsed.query };
     }
+    if ((parsed.kind === "clarify" || parsed.kind === "nutrition") && needsTenderWeight(parsed.query, text)) {
+      parsed = { kind: "clarify", question: TENDERS_WEIGHT_QUESTION, query: parsed.query ? { ...parsed.query, portion: null } : null };
+    }
     const ready = parsed.kind === "clarify" || parsed.kind === "nutrition"
       ? readyTypicalRice(parsed.query, context.state.query, text) : null;
     const reference = parsed.kind === "clarify" || parsed.kind === "nutrition"
@@ -151,6 +154,11 @@ export async function adaptiveTurn(
   }
   if (riceRequestConflict(decision.query, text) && ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
     decision = { ...decision, nextStep: "ask_one_question", reply: RICE_CLARIFICATION, followUpQuestion: RICE_CLARIFICATION };
+  }
+  if (decision.query && needsTenderWeight(decision.query, text) &&
+    ["ask_one_question", "lookup_food", "propose_food", "search_food_web"].includes(decision.nextStep)) {
+    decision = { ...decision, query: { ...decision.query, portion: null }, nextStep: "ask_one_question",
+      reply: TENDERS_WEIGHT_QUESTION, followUpQuestion: TENDERS_WEIGHT_QUESTION };
   }
   const reference = readyNutritionReference(decision.query, text);
   const ready = readyTypicalRice(decision.query, context.state.query, text) ?? reference;

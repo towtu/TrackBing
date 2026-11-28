@@ -172,6 +172,7 @@ export default function CookbookPage() {
 
   // Open the builder in edit mode for this recipe.
   const editRecipe = (recipe: Recipe) => {
+    setSelectedRecipe(null);
     router.push({ pathname: "/create-recipe", params: { id: recipe.id } });
   };
 
@@ -651,6 +652,15 @@ export default function CookbookPage() {
 
               {/* Actions */}
               {reviewError && <Text accessibilityRole="alert" style={localStyles.inlineError}>{reviewError}</Text>}
+              {selectedRecipe ? <TouchableOpacity
+                accessibilityRole="button"
+                style={[localStyles.adjustToggleBtn, { marginBottom: 12 }]}
+                disabled={submitting}
+                onPress={() => editRecipe(selectedRecipe)}
+              >
+                <Pencil size={18} color={Colors.text} />
+                <Text style={localStyles.adjustToggleText}>Edit saved recipe</Text>
+              </TouchableOpacity> : null}
               {adjustMode ? (
                 <TouchableOpacity
                   accessibilityRole="button"

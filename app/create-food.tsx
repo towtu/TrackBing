@@ -32,6 +32,7 @@ import { calculateCaloriesFromMacros } from "@/src/lib/macros";
 import { parseManualFood, parseServingGrams } from "@/src/lib/foodValidation";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { emitFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
+import { toPersonalFoodItem } from "@/src/lib/foodSearch";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
 
@@ -56,7 +57,9 @@ const formatMacroInput = (value: number) => {
 
 export default function CreateFoodPage() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ barcode?: string | string[] }>();
+  const params = useLocalSearchParams<{ barcode?: string | string[]; labelName?: string; recipeRequest?: string }>();
+  const recipeRequest = typeof params.recipeRequest === "string" && /^[\da-f-]{36}$/i.test(params.recipeRequest)
+    ? params.recipeRequest : null;
   const { width, isDesktop } = useResponsive();
   const compactForm = width < 390;
   const accountRef = useRef<ReturnType<typeof createFoodAccountGuard> | null>(null);
@@ -109,6 +112,7 @@ export default function CreateFoodPage() {
     if (parsed.ok && parsed.barcode) {
       setBarcode(parsed.barcode);
       setUnit("serving");
+      if (typeof params.labelName === "string") setName(params.labelName.trim().slice(0, 160));
       return;
     }
 
@@ -118,7 +122,7 @@ export default function CreateFoodPage() {
       title: "Barcode not carried over",
       message: "Use a barcode containing 4 to 32 digits.",
     });
-  }, [params.barcode]);
+  }, [params.barcode, params.labelName]);
 
   const handleSave = async () => {
     if (submitting) return;
@@ -162,26 +166,26 @@ export default function CreateFoodPage() {
     }
 
     if (!writer.isActive()) return;
-    const { error } = await writer.client.from("personal_foods").insert([
-      {
-        user_id: writer.userId,
-        name: checked.value.name,
-        calories: checked.value.calories,
-        protein: checked.value.protein,
-        carbs: checked.value.carbs,
-        fat: checked.value.fat,
-        default_unit: basis,
-        serving_grams: servingGrams,
-        barcode: parsedBarcode.barcode,
-        ai_estimated: aiEstimated,
-        ...(canShareBarcode && shareBarcode && parsedBarcode.barcode ? { share_barcode: true } : {}),
-      },
-    ]);
+    const row = {
+      user_id: writer.userId,
+      name: checked.value.name,
+      calories: checked.value.calories,
+      protein: checked.value.protein,
+      carbs: checked.value.carbs,
+      fat: checked.value.fat,
+      default_unit: basis,
+      serving_grams: servingGrams,
+      barcode: parsedBarcode.barcode,
+      ai_estimated: aiEstimated,
+      ...(canShareBarcode && shareBarcode && parsedBarcode.barcode ? { share_barcode: true } : {}),
+    };
+    const insert = writer.client.from("personal_foods").insert([row]);
+    const { data, error } = await (recipeRequest ? insert.select("id").single() : insert);
     if (!writer.isActive()) return;
 
-    if (error) {
+    if (error || (recipeRequest && typeof data?.id !== "string")) {
       const duplicateBarcode =
-        error.code === "23505" && parsedBarcode.barcode !== null;
+        error?.code === "23505" && parsedBarcode.barcode !== null;
       setFeedback({
         type: "error",
         title: duplicateBarcode ? "Barcode already saved" : "Could not save food",
@@ -193,7 +197,11 @@ export default function CreateFoodPage() {
       return;
     }
 
-    emitFoodLibraryChanged("personal_food");
+    emitFoodLibraryChanged("personal_food", recipeRequest && data ? {
+      requestId: recipeRequest,
+      userId: writer.userId,
+      food: toPersonalFoodItem({ ...row, id: data.id }),
+    } : undefined);
     setFeedback({
       type: "success",
       title: "Saved!",

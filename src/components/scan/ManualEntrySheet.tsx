@@ -13,6 +13,7 @@ import { Colors } from "@/src/styles/colors";
 
 interface ManualEntrySheetProps {
   visible: boolean;
+  busy?: boolean;
   value: string;
   onChange: (text: string) => void;
   onClose: () => void;
@@ -21,6 +22,7 @@ interface ManualEntrySheetProps {
 
 export default function ManualEntrySheet({
   visible,
+  busy = false,
   value,
   onChange,
   onClose,
@@ -53,12 +55,13 @@ export default function ManualEntrySheet({
             keyboardType="numeric"
             maxLength={32}
             value={value}
+            editable={!busy}
             onChangeText={onChange}
             autoFocus
           />
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Search barcode" style={styles.searchBtn} onPress={onSubmit}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Search barcode" accessibilityState={{ busy }} disabled={busy} style={styles.searchBtn} onPress={onSubmit}>
             <MagnifyingGlass size={20} color="black" weight="bold" />
-            <Text style={styles.searchBtnText}>Search Product</Text>
+            <Text style={styles.searchBtnText}>{busy ? "Searching product…" : "Search Product"}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

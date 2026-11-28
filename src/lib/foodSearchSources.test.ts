@@ -1,47 +1,31 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { searchAllFoods } from "./foodSearch";
 
 vi.mock("./supabase", () => ({
   supabase: {
     from: () => ({
-      select: () => ({ ilike: async () => ({ data: [] }) }),
+      select: () => ({
+        ilike: async () => ({
+          data: [{ id: "fixture", name: "My test rice", default_unit: "g", calories: 100, protein: 2, carbs: 20, fat: 0 }],
+        }),
+      }),
     }),
   },
 }));
-vi.mock("./usda", () => ({ searchUSDA: async () => [] }));
+vi.mock("./usda", () => ({
+  searchUSDA: async () => [{ code: "usda-fixture", product_name: "USDA test rice" }],
+}));
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("packaged-food search", () => {
-  it("uses the browser-accessible world endpoint so Philippine products are not limited to the US catalog", async () => {
-    const requested: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
-      const url = String(input);
-      requested.push(url);
-      if (url.includes("gist.githubusercontent.com")) {
-        return new Response("[]", { status: 200 });
-      }
-      if (url.startsWith("https://world.openfoodfacts.org/cgi/search.pl?")) {
-        return new Response(JSON.stringify({ products: [{
-          code: "fixture-001",
-          product_name: "Fixture Chocolate Bar",
-          brands: "Fixture Brand",
-          nutriments: {
-            // Illustrative test data only; not a real product label.
-            "energy-kcal_100g": 205,
-            proteins_100g: 10,
-            carbohydrates_100g: 30,
-            fat_100g: 5,
-          },
-        }] }), { status: 200 });
-      }
-      throw new Error("Unexpected source URL");
-    }));
+it("shows My Foods, curated results and USDA for name search without calling Open Food Facts", async () => {
+  const requests: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify([{ name: "Curated test rice", c: 100, p: 2, cb: 20, f: 0 }]), { status: 200 });
+  }));
 
-    const foods = await searchAllFoods("Fixture Chocolate Bar");
-    expect(requested).toContain(
-      "https://world.openfoodfacts.org/cgi/search.pl?search_terms=Fixture%20Chocolate%20Bar&search_simple=1&action=process&json=1&page_size=10&lc=en",
-    );
-    expect(foods).toMatchObject([{ product_name: "Fixture Chocolate Bar", brands: "Fixture Brand" }]);
-  });
+  const foods = await searchAllFoods("rice");
+  expect(requests).toEqual([expect.stringMatching(/^https:\/\/gist\.githubusercontent\.com\//)]);
+  expect(foods.map(food => food.product_name)).toEqual(["My test rice", "Curated test rice", "USDA test rice"]);
 });

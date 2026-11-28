@@ -11,13 +11,27 @@ by 209 divided by the recorded serving weight before rounding. The diary keeps
 the actual grams you entered. Switching to servings retains the same portion.
 Foods with an unknown serving weight still support serving counts.
 
-Barcode matching checks the account's My Foods, then the TrackBing catalog, then
-Open Food Facts. Diary and recipe scans use the same order. My Foods syncs within
+Barcode matching checks My Foods, then the TrackBing catalog, then
+[USDA FoodData Central](https://fdc.nal.usda.gov/api-guide/) for a valid 12–14 digit
+GTIN. Open Food Facts is the final barcode fallback. A USDA match needs the exact
+GTIN, a known serving basis, calories and all three macros. Barcode lookup waits
+up to three seconds for USDA before trying Open Food Facts. Coverage varies by market.
+Diary and recipe scans and typed barcodes use the same order. Find Food and recipe
+name search show My Foods, the curated list and USDA. My Foods syncs within
 the signed-in account. One configured operator can choose **Share this label**
 while registering a barcode. Other accounts can retrieve that label by its exact
 code. The shared result contains its name, nutrients and basis, with no publisher
 identifier, diary data or private food history. Previously saved foods remain
 private. Removing a published food from My Foods also removes the shared match.
+
+In a recipe, **Add ingredient → Scan barcode → Create this food** opens the label
+form with the barcode filled in. After saving, review the portion and choose
+**Add to recipe**. On a saved recipe, **Edit saved recipe** opens the same builder
+to add ingredients and save the updated recipe. **Adjust amounts** applies to the
+current diary entry.
+
+This cookbook and USDA fallback update uses the existing schema and `USDA_API_KEY`
+configuration. The cookbook browser suite covers the flow with test labels.
 
 Dashboard Bee stays on the dashboard when chat opens. Its existing nutrition
 and review poses track diary state and chat actions. DeepSeek generates dashboard

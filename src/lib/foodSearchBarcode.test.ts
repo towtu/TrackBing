@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  lookupBarcode,
   resolveBarcodeWithSources,
   type BarcodeSourceLookup,
 } from "./foodSearch";
@@ -26,6 +27,26 @@ const publicFood: FoodItem = {
   product_name: "Public Cereal",
   brands: "Packaged",
 };
+
+it("bounds an unresponsive Open Food Facts request", async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn((_url: string, init?: RequestInit): Promise<Response> => {
+    if (!init?.signal) return Promise.resolve(new Response(null, { status: 404 }));
+    return new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    const result = lookupBarcode("012345678905");
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(result).resolves.toEqual({ ok: false, reason: "unreachable" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
 
 describe("resolveBarcodeWithSources", () => {
   it("uses a shared exact barcode after a private miss, without querying Open Food Facts", async () => {
@@ -94,6 +115,32 @@ describe("resolveBarcodeWithSources", () => {
       }),
     ).resolves.toEqual({ ok: false, reason: "not-found" });
   });
+
+  it("uses an exact USDA match before calling Open Food Facts", async () => {
+    const findUSDA = vi.fn(async () => ({ ok: true as const, food: publicFood, hasNutrition: true }));
+    const findPublic = vi.fn();
+    await expect(resolveBarcodeWithSources("012345678905", {
+      findPersonal: async () => ({ ok: true, food: null }),
+      findUSDA,
+      findPublic,
+    })).resolves.toMatchObject({ source: "usda", hasNutrition: true });
+    expect(findUSDA).toHaveBeenCalledWith("012345678905");
+    expect(findPublic).not.toHaveBeenCalled();
+  });
+
+  it.each(["not-found", "unreachable"] as const)(
+    "tries Open Food Facts on USDA %s and keeps incomplete matches reviewable",
+    async (reason) => {
+      const findUSDA = vi.fn(async () => ({ ok: false as const, reason }));
+      const findPublic = vi.fn(async () => ({ ok: true as const, food: publicFood, hasNutrition: false }));
+      await expect(resolveBarcodeWithSources("012345678905", {
+        findPersonal: async () => ({ ok: true, food: null }),
+        findUSDA,
+        findPublic,
+      })).resolves.toMatchObject({ source: "open-food-facts", hasNutrition: false });
+      expect(findUSDA).toHaveBeenCalledBefore(findPublic);
+    },
+  );
 
   it("does not call the public service after a personal lookup failure", async () => {
     const findPublic = vi.fn();

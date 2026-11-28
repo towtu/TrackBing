@@ -8,15 +8,20 @@ const owner = '11111111-1111-4111-8111-111111111111';
 const ingredient = { name: 'TEST DATA oats', brands: 'Fixture', weight: 100, unit: 'g', default_unit: 'g', nutriments: { 'energy-kcal_100g': 200, proteins_100g: 10, carbohydrates_100g: 30, fat_100g: 5 } };
 const recipe = { id: '77777777-7777-4777-8777-777777777777', name: 'TEST DATA breakfast', user_id: owner, ingredients: [ingredient] };
 const fixtureUser = { id: owner, aud: 'authenticated', role: 'authenticated', email: 'test@example.test', app_metadata: {}, user_metadata: {}, identities: [] };
+const barcode = '012345678905';
 
 async function verify(page, base, width) {
   recipe.name = 'TEST DATA breakfast';
+  recipe.ingredients = [ingredient];
   await require('./fixtures/bee-browser.cjs')(page);
   let failOwnerCheck = true, differentOwner = false, failRead = true, failDelete = true, removed = false;
   let holdVerification = false, releaseVerification, releaseLog, logStatus = 503;
   let reads = 0, summaryCalls = 0;
   let failEditorRead = true, missingUpdatedRow = true, releaseUpdate;
   const updates = [];
+  const labels = [];
+  const firstLookup = fixtureEvent('product lookup');
+  let releaseFirstLookup;
   const logs = [], deletes = [];
   const logStarted = fixtureEvent('food log write');
   const updateStarted = fixtureEvent('recipe update');
@@ -33,7 +38,10 @@ async function verify(page, base, width) {
       assert.equal(url.searchParams.get('select'), 'id');
       updates.push(req.postDataJSON());
       if (!releaseUpdate) await new Promise(resolve => { releaseUpdate = resolve; updateStarted.signal(); });
-      if (!missingUpdatedRow) recipe.name = updates.at(-1).name;
+      if (!missingUpdatedRow) {
+        recipe.name = updates.at(-1).name;
+        recipe.ingredients = updates.at(-1).ingredients;
+      }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(missingUpdatedRow ? null : { id: recipe.id }) });
     }
     if (req.method() === 'DELETE') {
@@ -63,6 +71,35 @@ async function verify(page, base, width) {
   await page.route('**/rest/v1/rpc/refresh_daily_summary', route => {
     summaryCalls++;
     return route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"TEST DATA summary outage"}' });
+  });
+  await page.route('**/rest/v1/rpc/lookup_shared_barcode', route => route.fulfill({ json: null }));
+  await page.route('**/rest/v1/rpc/can_share_barcodes', route => route.fulfill({ json: false }));
+  await page.route(`**/api/v0/product/${barcode}.json`, async route => {
+    if (width === 375 && !releaseFirstLookup) {
+      await new Promise(resolve => { releaseFirstLookup = resolve; firstLookup.signal(); });
+    }
+    return route.fulfill({ json: { status: 0 } });
+  });
+  await page.route('**/functions/v1/usda-search', route => {
+    assert.deepEqual(route.request().postDataJSON(), { query: '00012345678905', dataType: ['Branded'], pageSize: 10 });
+    return route.fulfill({ json: { foods: [] } });
+  });
+  await page.route('**/rest/v1/personal_foods**', async route => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      const [food] = request.postDataJSON();
+      assert.equal(food.user_id, owner);
+      assert.equal(food.barcode, barcode);
+      assert.equal(food.default_unit, 'serving');
+      assert.equal(food.serving_grams, 35);
+      assert.equal(food.share_barcode, undefined);
+      labels.push(food);
+      return route.fulfill({ status: 201, json: { id: '22222222-2222-4222-8222-222222222222' } });
+    }
+    const url = new URL(request.url());
+    assert.equal(url.searchParams.get('user_id'), `eq.${owner}`);
+    assert.equal(url.searchParams.get('barcode'), `eq.${barcode}`);
+    return route.fulfill({ json: null });
   });
 
   await page.goto(`${base}/cookbook`);
@@ -147,7 +184,8 @@ async function verify(page, base, width) {
   await summaryResponse;
   assert.equal(summaryCalls, 1);
   await review.waitFor();
-  await page.getByRole('button', { name: `Edit ${recipe.name}`, exact: true }).click();
+  await review.click();
+  await page.getByRole('button', { name: 'Edit saved recipe', exact: true }).click({ timeout: 3500 });
   await page.getByText('This recipe couldn’t load. It may have been removed, or your connection needs a retry.', { exact: true }).waitFor();
   const saveRecipe = page.getByRole('button', { name: 'Save recipe', exact: true });
   assert.equal(await saveRecipe.isDisabled(), true, 'failed loading cannot become a blank edit');
@@ -167,6 +205,46 @@ async function verify(page, base, width) {
   await page.getByRole('button', { name: 'Close ingredient review', exact: true }).click();
   await page.locator('[aria-label="Ingredient portion"]').waitFor({ state: 'hidden' });
   await name.fill('TEST DATA edited breakfast');
+  await page.getByRole('button', { name: 'Add ingredient', exact: true }).click();
+  const submitBarcode = async (checkCamera = false) => {
+    await page.getByRole('button', { name: 'Scan barcode', exact: true }).click();
+    if (checkCamera) await page.waitForFunction(() => document.querySelector('video')?.srcObject?.active === true);
+    await page.getByRole('button', { name: 'Type barcode manually', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Barcode number', exact: true }).fill(barcode);
+    await page.getByRole('button', { name: 'Search barcode', exact: true }).click();
+  };
+  if (width === 375) {
+    await submitBarcode(true);
+    await firstLookup.wait();
+    await page.getByText('Searching product…', { exact: true }).waitFor();
+    const staleLookup = page.waitForResponse(`**/api/v0/product/${barcode}.json`);
+    await page.getByRole('button', { name: 'Close barcode entry', exact: true }).click();
+    await page.getByRole('button', { name: 'Close ingredient scanner', exact: true }).click();
+    releaseFirstLookup();
+    await staleLookup;
+    assert.equal(await page.getByRole('button', { name: 'Create this food', exact: true }).count(), 0);
+  }
+  await submitBarcode();
+  await page.getByText('Product not found', { exact: true }).waitFor();
+  await page.screenshot({ path: `${output}/unknown-barcode-${width}.png`, animations: 'disabled' });
+  await page.getByRole('button', { name: 'Create this food', exact: true }).click();
+  assert.equal(await page.getByLabel('Barcode number', { exact: true }).inputValue(), barcode);
+  await page.getByLabel('Food name', { exact: true }).fill('TEST DATA package label');
+  await page.getByLabel('Serving weight in grams', { exact: true }).fill('35');
+  await page.getByLabel('Protein in grams', { exact: true }).fill('5');
+  await page.getByLabel('Carbohydrate in grams', { exact: true }).fill('10');
+  await page.getByLabel('Fat in grams', { exact: true }).fill('2');
+  await page.getByLabel('Calories from label', { exact: true }).fill('80');
+  await page.getByRole('button', { name: 'Save Food', exact: true }).click();
+  const newPortion = page.getByRole('textbox', { name: 'Ingredient portion', exact: true });
+  await newPortion.waitFor();
+  assert.equal(await newPortion.inputValue(), '35');
+  await newPortion.fill('70');
+  await page.getByRole('button', { name: 'Add to recipe', exact: true }).click();
+  await newPortion.waitFor({ state: 'hidden' });
+  assert.equal(await name.inputValue(), 'TEST DATA edited breakfast');
+  await page.getByRole('button', { name: 'Edit ingredient TEST DATA package label', exact: true }).waitFor();
+  assert.equal(labels.length, 1);
   await page.screenshot({ path: `${output}/builder-${width}.png`, fullPage: true, animations: 'disabled' });
   await saveRecipe.click();
   await page.getByText('Saving...', { exact: true }).waitFor();
@@ -177,6 +255,10 @@ async function verify(page, base, width) {
   await saveRecipe.press('Enter');
   assert.equal(updates.length, 1);
   assert.equal(updates[0].ingredients[0].weight, 100, 'cancelling a portion edit keeps the original ingredient');
+  assert.equal(updates[0].ingredients.length, 2);
+  assert.equal(updates[0].ingredients[1].weight, 70);
+  assert.equal(updates[0].ingredients[1].serving_weight, 35);
+  assert.equal(updates[0].ingredients[1].nutriments['energy-kcal_100g'], 80);
   releaseUpdate();
   await page.getByText('Could not save recipe', { exact: true }).waitFor();
   assert.equal(await page.getByText('Saved!', { exact: true }).count(), 0, 'an update of zero owned rows cannot claim success');
@@ -188,6 +270,7 @@ async function verify(page, base, width) {
   assert.equal(updates.length, 2);
   assert.equal(logs.length, 2, 'saving a recipe does not log its food');
   await page.getByRole('button', { name: `Review ${recipe.name}`, exact: true }).waitFor();
+  await page.getByText('2 ingredients · 360 kcal total', { exact: true }).waitFor();
   await page.getByRole('button', { name: `Remove ${recipe.name}`, exact: true }).click();
   await page.getByRole('button', { name: 'Keep it', exact: true }).click();
   assert.equal(deletes.length, 0);
@@ -214,13 +297,13 @@ async function verify(page, base, width) {
   await page.getByText('No saved recipes yet', { exact: true }).waitFor();
   assert.equal(deletes.length, 2);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
-  return { width, verifiedOwnedReadsAndRetry: true, readableMacros: true, exactFractionAndInvalidInput: true, cancelWithoutWrite: true, accountMismatchDenied: true, repeatTapGuard: true, failedSavePreservesReview: true, successfulSaveSurvivesSummaryFailure: true, builderLoadRetryAndPortionCancel: true, missingUpdateRowCannotClaimSaved: true, ownerScopedRecipeEdit: true, ownedDeleteRetry: true };
+  return { width, verifiedOwnedReadsAndRetry: true, readableMacros: true, exactFractionAndInvalidInput: true, cancelWithoutWrite: true, accountMismatchDenied: true, repeatTapGuard: true, failedSavePreservesReview: true, successfulSaveSurvivesSummaryFailure: true, builderLoadRetryAndPortionCancel: true, missingUpdateRowCannotClaimSaved: true, ownerScopedRecipeEdit: true, barcodeLabelAndPersistedIngredient: true, ownedDeleteRetry: true };
 }
 
 (async () => {
   fs.mkdirSync(output, { recursive: true });
   const local = process.env.UI_BASE_URL ? null : await require('./serve-web-export.cjs').serveExport();
-  const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN || 'google-chrome', headless: true, args: ['--no-sandbox'] });
+  const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN || 'google-chrome', headless: true, args: ['--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
   const results = [];
   try {
     for (const width of [375, 768, 1440]) {

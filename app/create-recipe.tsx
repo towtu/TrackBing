@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   Barcode,
   CaretLeft,
@@ -34,6 +34,9 @@ import { resolveBarcode, searchAllFoods } from "@/src/lib/foodSearch";
 import WebBarcodeScanner from "@/src/components/WebBarcodeScanner";
 import AndroidBarcodeScanner from "@/src/components/scan/AndroidBarcodeScanner";
 import ManualEntrySheet from "@/src/components/scan/ManualEntrySheet";
+import NotFoundSheet from "@/src/components/scan/NotFoundSheet";
+import { parseBarcode } from "@/src/lib/barcodes";
+import { createBeeRequestId } from "@/src/lib/beeChat";
 import {
   calcMacros,
   changeFoodPortionUnit,
@@ -46,7 +49,11 @@ import {
 } from "@/src/lib/macros";
 import { validateRecipe, validateLoggedPortion } from "@/src/lib/foodValidation";
 import { parseRecipeDetails } from "@/src/lib/recipeDetails";
-import { emitFoodLibraryChanged } from "@/src/lib/foodLibraryEvents";
+import {
+  emitFoodLibraryChanged,
+  subscribeFoodLibraryChanged,
+  type RecipeIngredientRegistration,
+} from "@/src/lib/foodLibraryEvents";
 import { createFoodAccountGuard } from "@/src/lib/foodAccountGuard";
 import { Colors } from "@/src/styles/colors";
 import { useResponsive } from "@/src/hooks/useResponsive";
@@ -102,6 +109,9 @@ export default function CreateRecipePage() {
   const [scanBusy, setScanBusy] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualCode, setManualCode] = useState("");
+  const scanRequest = useRef<symbol | null>(null);
+  const [missingLabel, setMissingLabel] = useState<{ barcode: string; name?: string } | null>(null);
+  const registration = useRef<{ requestId: string; saved?: RecipeIngredientRegistration } | null>(null);
 
   // ── INGREDIENT EDITOR MODAL ──
   // editingFood holds the macro source (a search result or an existing row).
@@ -182,7 +192,7 @@ export default function CreateRecipePage() {
   }, [editId, reloadVersion]);
 
   // Open the editor for a freshly picked search result.
-  const pickResult = (item: FoodItem) => {
+  const pickResult = useCallback((item: FoodItem) => {
     const portion = defaultFoodPortion(item);
     setEditingFood(item);
     setEditorOpen(true);
@@ -190,27 +200,51 @@ export default function CreateRecipePage() {
     setEditUnit(portion.unit);
     setEditWeight(portion.amount);
     setSearchOpen(false);
-  };
+  }, []);
+
+  useEffect(() => subscribeFoodLibraryChanged((kind, saved) => {
+    const pending = registration.current;
+    if (kind === "personal_food" && pending && saved?.requestId === pending.requestId) {
+      pending.saved = saved;
+    }
+  }), []);
+
+  useFocusEffect(useCallback(() => {
+    const saved = registration.current?.saved;
+    registration.current = null;
+    if (!saved) return;
+    let focused = true;
+    void accountRef.current?.authorize().then((account) => {
+      if (focused && account?.isActive() && account.userId === saved.userId) pickResult(saved.food);
+    });
+    return () => { focused = false; };
+  }, [pickResult]));
 
   // Barcode scanning: resolve the code to a product, then drop it straight
   // into the ingredient editor — without leaving the recipe being built.
   const handleScannedBarcode = useCallback(
     async (code: string) => {
-      if (scanBusy) return;
+      if (scanRequest.current) return;
+      const request = Symbol();
+      scanRequest.current = request;
       setScanBusy(true);
-      const result = await resolveBarcode(code);
+      const guard = accountRef.current;
+      const result = await resolveBarcode(code).catch(() => ({ ok: false, reason: "unreachable" } as const));
+      if (scanRequest.current !== request) return;
+      scanRequest.current = null;
+      if (!guard?.isActive()) return;
       setScanOpen(false);
+      setManualOpen(false);
+      setManualCode("");
       setScanBusy(false);
-      if (result.ok) {
-        if (!result.hasNutrition) {
-          notify(
-            "No nutrition data",
-            `Found "${result.food.product_name}", but the database has no calories or macros for it. Add it under My Foods to set those yourself.`,
-            "warning"
-          );
-          return;
-        }
+      if (result.ok && result.hasNutrition) {
         pickResult(result.food);
+      } else if (result.ok || result.reason === "not-found") {
+        const parsed = parseBarcode(code);
+        if (parsed.ok && parsed.barcode) setMissingLabel({
+          barcode: parsed.barcode,
+          name: result.ok ? result.food.product_name : undefined,
+        });
       } else if (result.reason === "unreachable") {
         notify(
           "Food database unavailable",
@@ -223,23 +257,26 @@ export default function CreateRecipePage() {
           result.reason === "invalid" ? "Use a barcode containing 4 to 32 digits." : "Sign in again to look up a barcode.",
           "warning",
         );
-      } else {
-        notify(
-          "Barcode not found",
-          "Search by name, or create this food in My Foods using its package label.",
-          "warning"
-        );
       }
     },
-    [scanBusy]
+    [pickResult]
   );
+
+  const cancelBarcodeLookup = () => {
+    scanRequest.current = null;
+    setScanBusy(false);
+  };
+
+  const closeScanner = () => {
+    cancelBarcodeLookup();
+    setScanOpen(false);
+    setSearchOpen(true);
+  };
 
   // Manually typed barcode — same lookup path as a camera scan.
   const submitManualCode = () => {
     const code = manualCode.trim();
     if (!code) return;
-    setManualOpen(false);
-    setManualCode("");
     handleScannedBarcode(code);
   };
 
@@ -625,7 +662,7 @@ export default function CreateRecipePage() {
       </Modal>
 
       {/* ── BARCODE SCAN MODAL ── */}
-      <Modal visible={scanOpen} animationType="slide">
+      <Modal visible={scanOpen} animationType="slide" onRequestClose={closeScanner}>
         <View style={{ flex: 1, backgroundColor: "black" }}>
           {Platform.OS === "web" ? (
             <WebBarcodeScanner
@@ -642,15 +679,17 @@ export default function CreateRecipePage() {
           <View style={s.scanOverlay} pointerEvents="box-none">
             <View style={s.scanHeader}>
               <TouchableOpacity
-                onPress={() => {
-                  setScanOpen(false);
-                  setSearchOpen(true);
-                }}
+                accessibilityRole="button"
+                accessibilityLabel="Close ingredient scanner"
+                onPress={closeScanner}
                 style={s.scanCloseBtn}
               >
                 <X size={24} color="white" />
               </TouchableOpacity>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Type barcode manually"
+                disabled={scanBusy}
                 onPress={() => {
                   // Swap the camera for the manual entry sheet — single modal
                   // on screen at a time, same as the rest of this flow.
@@ -682,13 +721,32 @@ export default function CreateRecipePage() {
       {/* ── MANUAL BARCODE ENTRY ── */}
       <ManualEntrySheet
         visible={manualOpen}
+        busy={scanBusy}
         value={manualCode}
         onChange={setManualCode}
         onClose={() => {
+          cancelBarcodeLookup();
           setManualOpen(false);
           setScanOpen(true);
         }}
         onSubmit={submitManualCode}
+      />
+
+      <NotFoundSheet
+        visible={missingLabel !== null}
+        title={missingLabel?.name ? "Nutrition label needed" : "Product not found"}
+        message="Enter the package label to save the food and review its portion for this recipe."
+        canCreate={missingLabel !== null}
+        onScanAgain={() => { setMissingLabel(null); setScanOpen(true); }}
+        onCreateManually={() => {
+          if (!missingLabel) return;
+          const requestId = createBeeRequestId();
+          registration.current = { requestId };
+          setMissingLabel(null);
+          router.push({ pathname: "/create-food", params: {
+            barcode: missingLabel.barcode, labelName: missingLabel.name, recipeRequest: requestId,
+          } });
+        }}
       />
 
       {/* ── INGREDIENT EDITOR MODAL ── */}

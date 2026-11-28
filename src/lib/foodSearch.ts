@@ -1,12 +1,7 @@
-// Combined food search across every source the app knows about:
-// the user's own My Foods (personal_foods), the generic gist DB, USDA/FDC
-// data, and OpenFoodFacts. Both the Find Food screen and the Recipe builder
-// use this so the two stay in lockstep.
-
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {completeOffNutrition,labeledServingWeight} from "./independentNutrition";
 import { supabase } from "./supabase";
-import { searchUSDA } from "./usda";
+import { lookupUSDABarcode, searchUSDA } from "./usda";
 import { parseBarcode } from "./barcodes";
 import { createFoodAccountGuard } from "./foodAccountGuard";
 import type { FoodItem } from "./macros";
@@ -138,35 +133,6 @@ export async function loadRecentBarcodeFoods(limit = 8): Promise<FoodItem[]> {
   }
 }
 
-async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
-  try {
-    const res = await fetch(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
-        query
-      )}&search_simple=1&action=process&json=1&page_size=10&lc=en`
-    );
-    const offData = await res.json();
-    return (
-      offData.products?.filter((item: {nutriments?:unknown})=>completeOffNutrition(item.nutriments)!==null).map((item: any, index: number) => ({
-        code: item.code || `off-${index}`,
-        product_name: item.product_name || "Unknown Food",
-        brands: item.brands || "Packaged",
-        default_unit: item.product_quantity_unit === "ml" ? "ml" : "g",
-        serving_weight: labeledServingWeight(item.serving_size,item.product_quantity_unit === "ml" ? "ml" : "g"),
-        nutriments: {
-          "energy-kcal_100g": item.nutriments?.["energy-kcal_100g"] || 0,
-          proteins_100g: item.nutriments?.proteins_100g || 0,
-          carbohydrates_100g: item.nutriments?.carbohydrates_100g || 0,
-          fat_100g: item.nutriments?.fat_100g || 0,
-        },
-      })) || []
-    );
-  } catch (e) {
-    console.warn("OpenFoodFacts search failed", e);
-    return [];
-  }
-}
-
 /**
  * Outcome of a barcode lookup. We distinguish "couldn't reach the database"
  * from "that code isn't in the database" so the UI can react sensibly, and
@@ -184,12 +150,13 @@ export type BarcodeSourceLookup = {
   findPersonal: (barcode: string) => Promise<PersonalBarcodeResult>;
   findShared?: (barcode: string) => Promise<PersonalBarcodeResult>;
   findPublic: (barcode: string) => Promise<BarcodeResult>;
+  findUSDA?: (barcode: string) => Promise<BarcodeResult>;
 };
 
 export type ResolvedBarcode =
   | {
       ok: true;
-      source: "personal" | "trackbing-catalog" | "open-food-facts";
+      source: "personal" | "trackbing-catalog" | "open-food-facts" | "usda";
       food: FoodItem;
       hasNutrition: boolean;
     }
@@ -210,59 +177,67 @@ export async function lookupBarcode(code: string): Promise<BarcodeResult> {
     code
   )}.json`;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url);
-      // 5xx is the transient flakiness we want to retry past.
-      if (res.status >= 500) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    for (let attempt = 0; attempt < 3 && !controller.signal.aborted; attempt++) {
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        // 5xx is the transient flakiness we want to retry past.
+        if (res.status >= 500) {
+          if (attempt < 2) {
+            await sleep(500 * (attempt + 1));
+            continue;
+          }
+          return { ok: false, reason: "unreachable" };
+        }
+        if (res.status === 404) return { ok: false, reason: "not-found" };
+        if (!res.ok) return { ok: false, reason: "unreachable" };
+
+        const json = await res.json();
+        if (json.status !== 1 || !json.product) {
+          return { ok: false, reason: "not-found" };
+        }
+
+        const p = json.product;
+        const n = p.nutriments || {};
+        const complete=completeOffNutrition(n);
+        const kcal=complete?.["energy-kcal_100g"]??NaN,protein=complete?.proteins_100g??NaN,carbs=complete?.carbohydrates_100g??NaN,fat=complete?.fat_100g??NaN;
+        const isLiquid =
+          p.product_quantity_unit === "ml" ||
+          p.product_quantity_unit === "cl" ||
+          p.product_quantity_unit === "l";
+
+        return {
+          ok: true,
+          hasNutrition: complete!==null,
+          food: {
+            code,
+            product_name: p.product_name || "Unknown Product",
+            brands: p.brands || "Packaged Item",
+            default_unit: isLiquid ? "ml" : "g",
+            serving_weight: labeledServingWeight(p.serving_size,isLiquid ? "ml" : "g"),
+            nutriments: {
+              "energy-kcal_100g": kcal,
+              proteins_100g: protein,
+              carbohydrates_100g: carbs,
+              fat_100g: fat,
+            },
+          },
+        };
+      } catch {
+        if (controller.signal.aborted) break;
+        // Network error or HTML body that failed to parse as JSON — retry.
         if (attempt < 2) {
           await sleep(500 * (attempt + 1));
           continue;
         }
+        console.warn("Open Food Facts barcode lookup failed");
         return { ok: false, reason: "unreachable" };
       }
-      if (!res.ok) return { ok: false, reason: "unreachable" };
-
-      const json = await res.json();
-      if (json.status !== 1 || !json.product) {
-        return { ok: false, reason: "not-found" };
-      }
-
-      const p = json.product;
-      const n = p.nutriments || {};
-      const complete=completeOffNutrition(n);
-      const kcal=complete?.["energy-kcal_100g"]??NaN,protein=complete?.proteins_100g??NaN,carbs=complete?.carbohydrates_100g??NaN,fat=complete?.fat_100g??NaN;
-      const isLiquid =
-        p.product_quantity_unit === "ml" ||
-        p.product_quantity_unit === "cl" ||
-        p.product_quantity_unit === "l";
-
-      return {
-        ok: true,
-        hasNutrition: complete!==null,
-        food: {
-          code,
-          product_name: p.product_name || "Unknown Product",
-          brands: p.brands || "Packaged Item",
-          default_unit: isLiquid ? "ml" : "g",
-          serving_weight: labeledServingWeight(p.serving_size,isLiquid ? "ml" : "g"),
-          nutriments: {
-            "energy-kcal_100g": kcal,
-            proteins_100g: protein,
-            carbohydrates_100g: carbs,
-            fat_100g: fat,
-          },
-        },
-      };
-    } catch (e) {
-      // Network error or HTML body that failed to parse as JSON — retry.
-      if (attempt < 2) {
-        await sleep(500 * (attempt + 1));
-        continue;
-      }
-      console.warn("Barcode lookup failed", e);
-      return { ok: false, reason: "unreachable" };
     }
+  } finally {
+    clearTimeout(timeout);
   }
   return { ok: false, reason: "unreachable" };
 }
@@ -293,6 +268,9 @@ export async function resolveBarcodeWithSources(
       if (!shared.ok) return shared;
       if (shared.food) return { ok: true, source: "trackbing-catalog", food: shared.food, hasNutrition: true };
     }
+
+    const usda = await sources.findUSDA?.(parsed.barcode);
+    if (usda?.ok && usda.hasNutrition) return { ...usda, source: "usda" };
 
     const publicResult = await sources.findPublic(parsed.barcode);
     if (!publicResult.ok) return publicResult;
@@ -380,6 +358,7 @@ export async function resolveBarcode(code: string): Promise<ResolvedBarcode> {
         return { ok: true, food: data ? barcodeFood(data as BarcodeNutritionRow, barcode, "TrackBing catalog") : null };
       },
       findPublic: lookupBarcode,
+      findUSDA: (barcode) => lookupUSDABarcode(barcode, account.client),
     });
     return account.isActive() ? result : { ok: false, reason: "auth-required" };
   } finally {
@@ -387,22 +366,15 @@ export async function resolveBarcode(code: string): Promise<ResolvedBarcode> {
   }
 }
 
-/**
- * Search every source at once. Results are ordered with the user's own foods
- * first (My Foods, then generic gist matches), followed by USDA and packaged
- * OpenFoodFacts entries.
- */
+/** Find Food and the recipe builder share this name search. */
 export async function searchAllFoods(query: string): Promise<FoodItem[]> {
-  const gist = await loadGistFoods();
-  const gistMatches = gist.filter((f) =>
-    f.product_name?.toLowerCase().includes(query.toLowerCase())
-  );
-
-  const [personal, usdaResults, offResults] = await Promise.all([
+  const [personal, gist, usdaResults] = await Promise.all([
     searchPersonalFoods(query),
+    loadGistFoods(),
     searchUSDA(query),
-    searchOpenFoodFacts(query),
   ]);
-
-  return [...personal, ...gistMatches, ...usdaResults, ...offResults];
+  const gistMatches = gist.filter(food =>
+    food.product_name?.toLowerCase().includes(query.toLowerCase())
+  );
+  return [...personal, ...gistMatches, ...usdaResults];
 }

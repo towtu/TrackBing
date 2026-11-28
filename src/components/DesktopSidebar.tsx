@@ -88,7 +88,7 @@ export default function DesktopSidebar() {
       isActive: pathname === "/" || pathname === "/index" || pathname.includes("/(tabs)/index") || (!pathname.includes("/add") && !pathname.includes("/cookbook") && !pathname.includes("/my-foods") && !pathname.includes("/create") && !pathname.includes("/stats") && !pathname.includes("/profile") && !pathname.includes("/scan")),
     },
     {
-      label: "Find Food",
+      label: "Log food",
       icon: MagnifyingGlass,
       route: "/(tabs)/add",
       isActive: pathname.includes("/add"),

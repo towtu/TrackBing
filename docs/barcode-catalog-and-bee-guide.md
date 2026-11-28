@@ -16,8 +16,8 @@ Barcode matching checks My Foods, then the TrackBing catalog, then
 GTIN. Open Food Facts is the final barcode fallback. A USDA match needs the exact
 GTIN, a known serving basis, calories and all three macros. Barcode lookup waits
 up to three seconds for USDA before trying Open Food Facts. Coverage varies by market.
-Diary and recipe scans and typed barcodes use the same order. Find Food and recipe
-name search show My Foods, the curated list and USDA. My Foods syncs within
+Diary and recipe scans and typed barcodes use the same order. Name searches in
+Log food and the recipe editor show My Foods, the curated list and USDA. My Foods syncs within
 the signed-in account. One configured operator can choose **Share this label**
 while registering a barcode. Other accounts can retrieve that label by its exact
 code. The shared result contains its name, nutrients and basis, with no publisher
